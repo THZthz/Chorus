@@ -558,6 +558,54 @@ decks:
     assert!(deck.iter().any(|x| x.contains("deck POST2:")), "{deck:?}");
 }
 
+// ---------------------------------------------------------------------------
+// the §4.2 `unique` keyword (v0.9.6): a prototype-line keyword only, and the
+// deck livelock advisory's exemption (the mint face skips while a copy
+// lives, so the deck never pins)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn unique_and_stackable_on_one_prototype_line_is_a_load_error() {
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item unique stackable")),
+        r"prototype 'RELIC' cannot carry both `stackable` and `unique` — a unique prototype is never stackable",
+    );
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item stackable unique")),
+        r"prototype 'RELIC' cannot carry both `stackable` and `unique` — a unique prototype is never stackable",
+    );
+}
+
+#[test]
+fn unique_on_an_entity_line_is_a_load_error() {
+    assert_err_msg(
+        compile(&base("  RELIC is item unique")),
+        r"entity 'RELIC' cannot carry `unique` — a declared entity exists once by name already",
+    );
+    // the keyword position only: the word inside a desc string is prose
+    assert!(compile(&base("  RELIC is item desc \"a unique relic\"")).is_ok());
+}
+
+#[test]
+fn a_unique_deck_entry_is_exempt_from_the_livelock_rule() {
+    // the mint face skips while a copy lives (§4.2): the deck never pins
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+prototypes:
+  RELIC is item unique
+
+decks:
+  POST spec RELIC, RELIC reset
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(w, Vec::<String>::new(), "{w:?}");
+}
+
 /// `spec X defaultcard X` is one problem about one name: exactly one
 /// finding (the spec position's), never the byte-identical pair.
 #[test]

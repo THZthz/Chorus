@@ -138,6 +138,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             PrototypeDef {
                 kind,
                 stackable,
+                unique: false,
                 aspects: Some(aspects),
                 attrs: None,
                 derive: None,

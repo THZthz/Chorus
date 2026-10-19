@@ -45,6 +45,13 @@ fn stackable_re() -> &'static Regex {
     static_regex(&RE, || Regex::new(&format!(r"^stackable(?-u:\b){DSL_WS_CLASS}*")))
 }
 
+/// `/^unique\b\s*/` (a PREFIX match; the matched text is sliced off
+/// `rest`) — the §4.2 `unique` keyword, a sibling of `stackable`.
+fn unique_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    static_regex(&RE, || Regex::new(&format!(r"^unique(?-u:\b){DSL_WS_CLASS}*")))
+}
+
 /// `/(?:^|\s+)(?:at|in)\s+(\S+)\s*$/`
 fn at_in_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -295,6 +302,17 @@ pub(super) fn parse_entity_line(
         let end = sm.end();
         rest.drain(..end);
     }
+    // §4.2 (v0.9.6): an entity line cannot carry `unique` — a declared
+    // entity exists once by name already, so the keyword would be redundant.
+    // The keyword-position check only (the same prefix discipline as
+    // `stackable`): the word inside a desc string or after the clause walk
+    // never reaches here, and a stray trailing `unique` stays the ordinary
+    // could-not-parse error.
+    if unique_re().is_match(&rest) {
+        return Err(ChorusError::new(format!(
+            "line {ln}: entity '{name}' cannot carry `unique` — a declared entity exists once by name already (§4.2)"
+        )));
+    }
     // trailing clauses, in either order: "with specs" and "at/in PLACE" —
     // strip whichever matches last — plus the §4.2 `desc "…"` attribute,
     // spliced out of the line before the scanners on EVERY iteration, so its
@@ -383,12 +401,37 @@ pub(super) fn parse_prototype_line(
     }
     let mut proto = PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() };
     let mut rest: String = grp_text(&m, 3).to_string();
-    // §4.2: the `stackable` keyword sits before `deriving`/`with` clauses
-    if let Some(sm) = stackable_re().find(&rest) {
-        proto.stackable = true;
-        let end = sm.end();
-        rest.drain(..end);
+    // §4.2: the `stackable`/`unique` keywords sit before `deriving`/`with`
+    // clauses, in either order — carrying BOTH is a load error (a unique
+    // prototype is never stackable, §4.2)
+    let mut stackable = false;
+    let mut unique = false;
+    loop {
+        if !stackable {
+            if let Some(sm) = stackable_re().find(&rest) {
+                stackable = true;
+                let end = sm.end();
+                rest.drain(..end);
+                continue;
+            }
+        }
+        if !unique {
+            if let Some(um) = unique_re().find(&rest) {
+                unique = true;
+                let end = um.end();
+                rest.drain(..end);
+                continue;
+            }
+        }
+        break;
     }
+    if unique && stackable {
+        return Err(ChorusError::new(format!(
+            "line {ln}: prototype '{name}' cannot carry both `stackable` and `unique` — a unique prototype is never stackable (§4.2)"
+        )));
+    }
+    proto.stackable = stackable;
+    proto.unique = unique;
     let mut aspects_done = false;
     let mut derive_done = false;
     let mut desc: Option<String> = None;

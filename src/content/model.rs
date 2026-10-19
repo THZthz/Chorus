@@ -162,6 +162,11 @@ pub struct PrototypeDef {
     /// copies. Every read is a truthiness test, so a
     /// plain `bool` (default false) is exact.
     pub stackable: bool,
+    /// §4.2: the `unique` keyword — at most one living copy of the name, and
+    /// after its first mint the name never serves from a deck again. A
+    /// unique prototype is never stackable (`unique` + `stackable` on one
+    /// line is a load error); the flag is a sibling truthiness `bool`.
+    pub unique: bool,
     pub aspects: Option<Aspects>,
     pub attrs: Option<Attrs>,
     pub derive: Option<PrototypeDerive>,
@@ -382,6 +387,13 @@ pub struct CompiledContent {
     /// + script entity side, once, here) is behavior-preserving.
     pub stackable_names: IndexSet<String>,
     pub stackable_kinds: IndexSet<String>,
+    /// §4.2 uniqueness, derived from the prototypes carrying `unique` at
+    /// load: their NAMES. Uniqueness attaches to the NAME — a `derive`d
+    /// rename escapes it (the mint's new name is not the declared one), and
+    /// kind-mates are unaffected (CS B9's `Element.Unique` is per-element
+    /// too). The set is what keeps play and fold glued: both faces recompute
+    /// the flag from the concrete row's resolved name alone.
+    pub unique_names: IndexSet<String>,
     /// §4.2 the card descriptions: declared entity and prototype NAMES
     /// carrying a `desc "…"` — the mint-time lookup by the mint's RESOLVED
     /// name (the stackable sets' discipline). Display text only: no
@@ -399,6 +411,16 @@ pub struct CompiledContent {
 }
 
 impl CompiledContent {
+    /// §4.2 uniqueness of a mint: a NAME declared unique — the same
+    /// one-lookup shape as [`CompiledContent::mint_is_stackable`], so play
+    /// and fold recompute the flag from the concrete row's resolved name
+    /// (a `derive`d rename carries a different name and is not unique —
+    /// both faces agree).
+    #[must_use]
+    pub fn mint_is_unique(&self, name: &str) -> bool {
+        self.unique_names.contains(name)
+    }
+
     /// §4.2 stackability of a mint, decided from the RESOLVED name+kind: a
     /// NAME declared stackable, or a KIND carrying a stackable declaration.
     /// Concrete SPAWN rows always carry the resolved `kind:K`, so the fold
@@ -406,7 +428,10 @@ impl CompiledContent {
     /// resolved kind too, or a plain spawn of a non-stackable prototype in a
     /// stackable KIND would mint non-stackable at play but stackable at fold
     /// (snap would diverge). The reach census applies the same rule to every
-    /// site it registers.
+    /// site it registers. (A unique prototype cannot DECLARE stackable —
+    /// the grammar rejects `unique` + `stackable` on one line, §4.2 — and a
+    /// unique name never outlives one living copy anyway: the mint face
+    /// skips while one lives.)
     #[must_use]
     pub fn mint_is_stackable(&self, name: &str, kind: &str) -> bool {
         self.stackable_names.contains(name) || self.stackable_kinds.contains(kind)

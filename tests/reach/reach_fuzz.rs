@@ -7,12 +7,13 @@
 //!   obtainable   ⇒ appears in some explored play        (hard; downgraded to
 //!                  inconclusive when the exploration hit its state cap)
 //!
-//! The scenario space (gen_scenario v10) now generates completion triggers
+//! The scenario space (gen_scenario v11) now generates completion triggers
 //! (`on complete [<aspect>]`), §6.7 chain candidates in verb recipes and
 //! trigger bodies (the recipe-body table is the GLOBAL build prefix —
 //! recipe-body RUNs cross verbs; slot/expire bodies chain onto the global
 //! duration>0 table), recipe-line `aspects`, recipe-line `dur`, and the two
-//! §6.3 predicate sum scopes in the `when` candidate table — features whose
+//! §6.3 predicate sum scopes in the `when` candidate table, ambient verbs,
+//! and `unique` prototypes (riding deck specs) — features whose
 //! analyzer
 //! coverage is still being established, and which legitimately surface open
 //! false-`obtainable` gaps (the Wave-3 worklist, triaged by the reach-fuzz
@@ -25,6 +26,32 @@
 //! draw-order accident) breaks this first, before it can masquerade as a
 //! verdict change. Failures still print to the test output so a red
 //! campaign seed is visible from the test log.
+//!
+//! The v11 campaign ledger (the reshuffled scenario space surfaced latent
+//! gap shapes on four seeds — every one a CHAIN-class interaction between
+//! the §6.6/§6.7 event-channel follow-ups and the dead-verb / mint-collision
+//! demotions, none involving `unique` — those scenarios declare none, so the
+//! unique model is inert on them):
+//!   - 70, 103, 170: a completion/slot trigger or chain follow-up applies a
+//!     recipe whose sibling chain arm collides or whose home verb is
+//!     slot-dead — the analyzer proves the mint, the play's completion dies
+//!     with the whole settle (false `obtainable`);
+//!   - 84: a chain-fed recipe (FORK onto a slot-dead verb) mints at play
+//!     over empty event bindings, but the dead-verb demotion closes every
+//!     site of that verb (false `unobtainable`).
+//!
+//! The ledger also carries one UNIQUE-shaped composition, triaged by hand
+//! and pinned deliberately as an engine+reach split (reach_unique.rs), not
+//! generated: deck `QUEST spec U, B`, a `once` slot trigger drawing QUEST,
+//! and any verb minting U. The analyzer's manifested projection is load-time
+//! only (in-play mints never mark manifested in its world), so its
+//! once-window pins the trigger's single serve on U's live deck position
+//! and judges B unobtainable/None, while at play the mint manifests U first
+//! and the draw skips the dead position and serves B — a false
+//! `unobtainable`, the conservative direction (U non-unique → the analyzer
+//! is correct: the single serve genuinely takes position 0).
+//!
+//! The seed entries are the chain model's open faces, pre-dating v11.
 //!
 //! Bounds rationale (2026-10 audit, v7 scenarios): the default 8 steps ×
 //! 500 states per run, twice per seed; complete-trigger worlds explore
@@ -316,14 +343,15 @@ fn seed_2_carries_an_ambient_verb_and_stays_deterministic() {
 }
 
 #[test]
-fn seed_18_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
+fn seed_24_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
     // the v9 sum-scope probe rides this seed too: a `when` whose comparison
     // names `total(bound, aspect:a)` or `total(table, aspect:b)` — the
     // analyzer's window-model and world-sum interval faces, exercised by the
-    // same differential sweep
-    assert!(scenario_has_sum_scope_when(18));
-    assert!(scenario_recipe_run_crosses_verbs(18));
-    assert_seed_deterministic(18);
+    // same differential sweep. (Seed re-pinned under generator v11: the
+    // unique draw shifted the draw order.)
+    assert!(scenario_has_sum_scope_when(24));
+    assert!(scenario_recipe_run_crosses_verbs(24));
+    assert_seed_deterministic(24);
 }
 
 // The v8 recipe `dur` band: a minority of recipes complete under a window of
@@ -345,9 +373,11 @@ fn scenario_has_recipe_dur(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_3_carries_a_recipe_dur_override_and_stays_deterministic() {
-    assert!(scenario_has_recipe_dur(3));
-    assert_seed_deterministic(3);
+fn seed_6_carries_a_recipe_dur_override_and_stays_deterministic() {
+    // (seed re-pinned under generator v11: the unique draw shifted the draw
+    // order)
+    assert!(scenario_has_recipe_dur(6));
+    assert_seed_deterministic(6);
 }
 
 // The v7 event-body chain band: slot/expire bodies draw RUN/FORK onto the
@@ -369,7 +399,31 @@ fn scenario_event_body_chains(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_3_carries_an_event_body_chain_op_and_stays_deterministic() {
-    assert!(scenario_event_body_chains(3));
-    assert_seed_deterministic(3);
+fn seed_20_carries_an_event_body_chain_op_and_stays_deterministic() {
+    // (seed re-pinned under generator v11: the unique draw shifted the draw
+    // order)
+    assert!(scenario_event_body_chains(20));
+    assert_seed_deterministic(20);
+}
+
+// The v11 unique draw (§4.2): a prototype rolled unique — never stackable —
+// riding a deck spec. The probe pins a seed whose scenario verifiably carries
+// both: the mint face and the deck filter are the analyzer's unique-rule
+// faces, exercised by the same differential sweep.
+fn scenario_has_unique_deck_card(seed: u32) -> bool {
+    let sc = gen_scenario(seed);
+    let mut dict = core_dictionary();
+    for v in sc.raw.verbs.keys() {
+        let _ = dict.register_verb(v);
+    }
+    let content =
+        compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the generated scenario compiles");
+    content.unique_names.iter().any(|n| content.prototypes.get(n).is_some_and(|p| p.unique))
+        && content.decks.values().any(|d| d.order.iter().any(|c| content.mint_is_unique(&c.name)))
+}
+
+#[test]
+fn seed_8_carries_a_unique_prototype_riding_a_deck_and_stays_deterministic() {
+    assert!(scenario_has_unique_deck_card(8));
+    assert_seed_deterministic(8);
 }

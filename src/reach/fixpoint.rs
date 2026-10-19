@@ -20,11 +20,11 @@ use crate::core::query::{match_query, QueryTerm};
 use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
 use crate::core::sentence::{Arg, IntoTarget};
-use crate::core::types::Entity;
+use crate::core::types::{Entity, State};
 
 use super::census::{
-    draw_blinds_bare, draw_deck, mint_stacks, object_always, op_throws, site_mints, trigger_owner,
-    RawSite, SetSite, SiteKind, DERIVED_NAME, MANY,
+    draw_blinds_bare, draw_deck, mint_name_reusable, mint_stacks, object_always, op_throws,
+    site_mints, trigger_owner, RawSite, SetSite, SiteKind, DERIVED_NAME, MANY,
 };
 use super::render::pred_text;
 use super::world::{
@@ -344,6 +344,20 @@ impl<'c> WorldFacts<'c> {
         let site = self.census.sites[si].clone();
         if site.kind == SiteKind::Draw {
             let deck = draw_deck(&site);
+            // copied out so the `dead` closure borrows no `self` (the pushes
+            // below take &mut while the closure is still alive)
+            let initial: &'c State = self.initial;
+            // the §4.2 unique deck filter's dead positions (the engine's lazy
+            // draw rule): a manifested unique, or a later occurrence of any
+            // unique — the earliest copy's serve always manifests the name,
+            // so a later occurrence never serves in any execution. Dead
+            // positions cost no serve (the serving draw consumes them).
+            let dead = |idx: usize| -> bool {
+                let c = &deck.order[idx];
+                content.mint_is_unique(&c.name)
+                    && (initial.manifested_uniques.contains(&c.name)
+                        || deck.order[..idx].iter().any(|p| p.name == c.name))
+            };
             // capacity-aware: only the first `site.cap`
             // order positions are ever served (seed 150846 phantom entries)
             let served_len = std::cmp::min(site.cap as usize, deck.order.len());
@@ -358,8 +372,16 @@ impl<'c> WorldFacts<'c> {
                     as usize
             };
             let mut counts: IndexMap<String, i64> = IndexMap::new();
-            for c in &deck.order[start..served_len] {
+            let mut budget = served_len - start; // the live serves the window carries
+            for (idx, c) in deck.order.iter().enumerate().skip(start) {
+                if budget == 0 {
+                    break;
+                }
+                if dead(idx) {
+                    continue; // consumed within a serving draw, costs no serve
+                }
                 *counts.entry(c.name.clone()).or_insert(0) += 1;
+                budget -= 1;
             }
             for (name, n) in &counts {
                 // the FIRST order entry with the
@@ -375,9 +397,13 @@ impl<'c> WorldFacts<'c> {
                 // the deck's endless face — a reset deck re-serves its order
                 // and a defaultcard serves forever — only repeats while the
                 // SOURCE does: a `max`-capped recipe and a once trigger draw
-                // a bounded number of times, whatever the deck's shape
-                let endless =
-                    deck.reset || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == *name);
+                // a bounded number of times, whatever the deck's shape. A
+                // UNIQUE card never repeats: its first serve manifests it,
+                // and every later serve — next period or defaultcard alike —
+                // is skipped by the mint face (§4.2)
+                let unique = content.mint_is_unique(name);
+                let endless = !unique
+                    && (deck.reset || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == *name));
                 let repeats = endless && self.source_repeat_bound(&site) == MANY;
                 // a derive-card drawn behind an
                 // object-mandatory verb mints under the DERIVED name (90936)
@@ -393,6 +419,8 @@ impl<'c> WorldFacts<'c> {
                         } else {
                             " (defaultcard)"
                         }
+                    } else if unique {
+                        " (unique — one living copy)"
                     } else {
                         ""
                     }
@@ -408,8 +436,14 @@ impl<'c> WorldFacts<'c> {
                 );
             }
             if let Some(dc) = &deck.defaultcard {
-                if site.cap > deck.order.len() as i64 && !counts.contains_key(&dc.name) {
-                    let repeats = self.source_repeat_bound(&site) == MANY;
+                // the defaultcard is reached when the draws outrun the LIVE
+                // order (dead unique positions exhaust the deck sooner);
+                // a UNIQUE defaultcard still mints at most one living copy
+                let live_full =
+                    deck.order.iter().enumerate().filter(|(i, _)| !dead(*i)).count() as i64;
+                if site.cap > live_full && !counts.contains_key(&dc.name) {
+                    let repeats = !content.mint_is_unique(&dc.name)
+                        && self.source_repeat_bound(&site) == MANY;
                     let proto = content.prototypes.get(&dc.name);
                     let blind = draw_blinds_bare(content, &site, &dc.name);
                     let key = if blind { DERIVED_NAME } else { dc.name.as_str() };
@@ -444,9 +478,11 @@ impl<'c> WorldFacts<'c> {
         // the honest repeat count: a stackable mint from an UNBOUNDED
         // source is MANY; a `max`-capped recipe and a once trigger mint
         // exactly their bound; a REPLACE consumes its live target (bound 1
-        // — [`Self::source_repeat_bound`])
+        // — [`Self::source_repeat_bound`]); a UNIQUE mint never repeats —
+        // its pool never outlives one living copy (the mint face skips),
+        // whatever the kind's stackable declarations say
         let bound = self.source_repeat_bound(&site);
-        let count = if stacks { bound } else { 1 };
+        let count = if stacks && !content.mint_is_unique(&site.name) { bound } else { 1 };
         let entity = self.synth(key, &kind, proto, None);
         let how = format!(
             "{} {} by {}{}",
@@ -1233,12 +1269,12 @@ impl<'c> WorldFacts<'c> {
                 let deck = draw_deck(s);
                 if s.cap >= 1 {
                     if let Some(c) = deck.order.first() {
-                        if !mint_stacks(self.content, &c.name, Some(c.kind.as_str())) {
+                        if !mint_name_reusable(self.content, &c.name, Some(c.kind.as_str())) {
                             out.insert(c.name.clone());
                         }
                     }
                 }
-            } else if !mint_stacks(self.content, &s.name, s.kind_override.as_deref()) {
+            } else if !mint_name_reusable(self.content, &s.name, s.kind_override.as_deref()) {
                 out.insert(s.name.clone());
             }
         }
@@ -1376,13 +1412,17 @@ impl<'c> WorldFacts<'c> {
                     return None; // the draw throws on every application
                 }
                 let c = deck.order.first()?;
-                (mint_stacks(self.content, &c.name, Some(c.kind.as_str())), c.name.clone())
+                (mint_name_reusable(self.content, &c.name, Some(c.kind.as_str())), c.name.clone())
             } else {
-                (mint_stacks(self.content, &s.name, s.kind_override.as_deref()), s.name.clone())
+                (
+                    mint_name_reusable(self.content, &s.name, s.kind_override.as_deref()),
+                    s.name.clone(),
+                )
             };
             if !stacks {
-                // a non-stackable draft name colliding with a sibling mint
-                // or a living initial card refuses the first application
+                // a name-sharing-hostile draft mint colliding with a sibling
+                // mint or a living initial card refuses the first application
+                // (a UNIQUE draft mint is exempt — it skips instead, §4.2)
                 if draft.contains(&mint) || self.init_names.get(&mint).is_some_and(|e| !e.stackable)
                 {
                     return None;

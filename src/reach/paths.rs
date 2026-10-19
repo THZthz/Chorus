@@ -319,29 +319,81 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
 }
 
 impl<'c> WorldFacts<'c> {
+    /// The §4.2 unique deck filter's dead-position test (the serving face of
+    /// the engine's lazy draw rule): a position is dead when its card names
+    /// a unique that is already MANIFESTED (the midgame truth — the initial
+    /// state's manifested set, rebuilt through the mint path), or when it is
+    /// a LATER occurrence of any unique name — the earliest copy's serve (or
+    /// skip) always manifests the name first, so a later occurrence never
+    /// serves in any execution.
+    pub(crate) fn deck_position_dead(&self, deck: &CompiledDeck, idx: usize) -> bool {
+        let c = &deck.order[idx];
+        self.content.mint_is_unique(&c.name)
+            && (self.initial.manifested_uniques.contains(&c.name)
+                || deck.order[..idx].iter().any(|p| p.name == c.name))
+    }
+
     /// The deck serving predicate with the midgame deck cursor folded in —
-    /// ONE serving predicate, one home: [`served_by_cap`] judged from the
-    /// cursor-shifted origin. `cap` counts the draws still AVAILABLE (the
-    /// freeze/`--by` rewrite's firing count, or MANY) and they serve the
-    /// position window `[cursor, cursor + cap)` — on a non-reset deck the
-    /// positions before the replayed cursor are already drawn and never
-    /// return. The default face reads no cursors (script states carry
-    /// none), so this IS `served_by_cap` there verbatim — the graph face
-    /// (export.rs) shares this exact verdict with analyze_name /
-    /// analyze_demand.
+    /// ONE serving predicate, one home. `cap`
+    /// counts the draws still AVAILABLE (the freeze/`--by` rewrite's firing
+    /// count, or MANY) and they serve the position window `[cursor, …)`
+    /// — on a non-reset deck the positions before the replayed cursor are
+    /// already consumed and never return, and the §4.2 dead positions (a
+    /// manifested unique, or a later occurrence of any unique) cost no draw:
+    /// a target's reach is measured in LIVE positions before it, and the
+    /// defaultcard's face at true exhaustion over the LIVE order length. The
+    /// default face reads no cursors and no manifested set (script states
+    /// carry none), so the arithmetic IS the old raw-position face verbatim
+    /// there — the graph face (export.rs) shares this exact verdict with
+    /// analyze_name / analyze_demand.
     pub(crate) fn deck_serves_cap(&self, deck: &CompiledDeck, target: &str, cap: i64) -> bool {
-        let cursor =
-            if deck.reset { 0 } else { self.initial.decks.get(&deck.id).copied().unwrap_or(0) };
-        if cursor == 0 {
-            return served_by_cap(deck, target, cap);
-        }
-        // a consumed order position never serves again; the defaultcard
-        // rides past the order's end, so only the shifted-cap arm bites
-        let position_ok = match deck.order.iter().position(|c| c.name == target) {
-            Some(idx) => idx as i64 >= cursor,
-            None => true,
+        let n = deck.order.len();
+        // live positions in order[..to]
+        let live_before = |to: usize| -> i64 {
+            deck.order[..to]
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !self.deck_position_dead(deck, *i))
+                .count() as i64
         };
-        position_ok && served_by_cap(deck, target, cap.saturating_add(cursor))
+        let position = deck.order.iter().position(|c| c.name == target);
+        match position {
+            Some(idx) => {
+                if self.deck_position_dead(deck, idx) {
+                    return false;
+                }
+                if deck.reset {
+                    // the order is periodic, but a UNIQUE target serves at
+                    // most once ever (its serve manifests it — every later
+                    // period skips it), so the first-period face is the only
+                    // one; with no uniques this is the raw `cap > idx`
+                    return cap > live_before(idx);
+                }
+                let cursor = self.initial.decks.get(&deck.id).copied().unwrap_or(0);
+                if (idx as i64) < cursor {
+                    // a consumed order position never serves again
+                    return false;
+                }
+                let consumed_live = live_before(cursor.clamp(0, n as i64) as usize);
+                cap > live_before(idx) - consumed_live
+            }
+            None => {
+                if !deck.defaultcard.as_ref().is_some_and(|dc| dc.name == target) {
+                    return false;
+                }
+                let live_len = live_before(n);
+                if deck.reset {
+                    // a reset deck reaches the defaultcard only at TRUE
+                    // exhaustion: every position dead (its every unique
+                    // manifested — the B9.4 filtered reshuffle leaving an
+                    // empty pile, B10's defaultcard face)
+                    return live_len == 0 && cap > 0;
+                }
+                let cursor = self.initial.decks.get(&deck.id).copied().unwrap_or(0);
+                let consumed_live = live_before(cursor.clamp(0, n as i64) as usize);
+                cap > live_len - consumed_live
+            }
+        }
     }
 
     /// Can a card matching `query` EVER exist? No memo is needed: the
@@ -563,26 +615,6 @@ impl<'c> WorldFacts<'c> {
 pub(crate) fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
     deck.order.iter().any(|c| c.name == target)
         || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == target)
-}
-
-/// Does `cap` total draws suffice to serve `target`?
-/// order positions need cap > idx; the defaultcard needs the cursor to pass
-/// the order's end; reset only makes the sequence periodic (seed 74985).
-/// (`pub(crate)`: the `--graph` face's draw-edge filter shares it — one
-/// serving predicate, one home.)
-pub(crate) fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool {
-    match deck.order.iter().position(|c| c.name == target) {
-        Some(idx) => cap > idx as i64,
-        None => {
-            if deck.reset {
-                return false;
-            }
-            if !deck.defaultcard.as_ref().is_some_and(|dc| dc.name == target) {
-                return false;
-            }
-            cap > deck.order.len() as i64
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

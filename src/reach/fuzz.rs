@@ -20,8 +20,12 @@
 //! `total(table, aspect:b) >= n`); v10 added the §6.9 ambient draw
 //! (p=0.15, FIRST draw of the verb block: an ambient verb declares no
 //! slots, draws its duration from the nonzero pool only, short-circuits
-//! the recipe `dur` band and the REFUSE band off). Every recorded
-//! fuzz run taken before v10 is therefore NOT reproducible
+//! the recipe `dur` band and the REFUSE band off); v11 added the §4.2
+//! `unique` draw to the prototype loop (p=0.15, AFTER the stackable draw,
+//! one roll per prototype always — the roll happens even when `stackable`
+//! already landed, and wins only on a non-stackable prototype: the grammar
+//! rejects `unique` + `stackable` on one line). Every recorded
+//! fuzz run taken before v11 is therefore NOT reproducible
 //! seed-for-seed; reproduce against the matching generator version. What
 //! stays pinned is that the generator is a pure function of its seed — the
 //! same seed builds the same scenario, draw for draw, under ONE version.
@@ -437,6 +441,15 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         }
         if r.next_f64() < 0.25 {
             p.stackable = true;
+        }
+        // §4.2 (v11 NEW draw, p=0.15, AFTER the stackable draw): the
+        // prototype goes unique — one roll per prototype ALWAYS (the draw
+        // order stays draw-for-draw stable), landing only on a non-stackable
+        // prototype (`unique` + `stackable` on one line is a load error).
+        // Unique prototypes feed the deck spec pool like any other name, so
+        // unique entries ride the deck bands for free.
+        if r.next_f64() < 0.15 && !p.stackable {
+            p.unique = true;
         }
         // short-circuit: no draw once derive is done
         if !derive_done && r.next_f64() < 0.25 {

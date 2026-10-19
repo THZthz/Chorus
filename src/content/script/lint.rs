@@ -12,8 +12,8 @@ use super::parse::parse_script;
 use super::types::declared_entities;
 use super::when_dead::{when_verdict, WhenCx, WhenRange, WhenVerdict};
 use crate::content::{
-    collect_stackable, for_each_authored_outcome_infallible, mint_recipe_id, CompiledTrigger,
-    RecipeDef, SlotDef,
+    collect_stackable, collect_uniques, for_each_authored_outcome_infallible, mint_recipe_id,
+    CompiledTrigger, RecipeDef, SlotDef,
 };
 use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
@@ -499,9 +499,12 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     // second spawn name-collides and rejects the step (§9.2). A non-stackable
     // spec entry that can physically be served only ONCE cannot collide with
     // itself: the deck exhausts before a second copy is ever asked for.
+    // A UNIQUE entry is exempt too: its mint face skips while a copy lives
+    // (§4.2), so the second serve deals nothing and the deck never pins.
     let declared = declared_entities(&script.entities);
     let (stackable_names, stackable_kinds) =
         collect_stackable(&declared, script.content.prototypes.as_ref());
+    let unique_names = collect_uniques(script.content.prototypes.as_ref());
     if let Some(decks) = &script.content.decks {
         // the serve census: how many spec/defaultcard positions across ALL
         // decks serve each name — a name with a second serving position can
@@ -540,6 +543,9 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                 if stackable_names.contains(entry)
                     || kind.is_some_and(|k| stackable_kinds.contains(k))
                 {
+                    continue;
+                }
+                if unique_names.contains(entry) {
                     continue;
                 }
                 // the once-only physics, all three required: the entry comes

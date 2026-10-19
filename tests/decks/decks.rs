@@ -22,8 +22,8 @@ use chorus::engine::settle::{act, done, refusal};
 
 use chorus::content::script::compile_script;
 use chorus::content::{
-    compile_content, draw_from, permute_positions, CompiledContent, ContentRaw, DeckRaw,
-    PrototypeDef, RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
+    compile_content, permute_positions, CompiledContent, ContentRaw, DeckRaw, PrototypeDef,
+    RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
 };
 use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::format::format_sentence;
@@ -203,31 +203,36 @@ verbs:
 #[test]
 fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_forever() {
     // Through the full script compiler, plus the
-    // defaultcard-forever leg.
+    // defaultcard-forever leg. No uniques anywhere, so the manifested set is
+    // empty and the serving rule is the raw position face.
     let dict = core_dictionary();
     let game = compile_script(
         &deck_rig("  RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset\n  SOLO spec HEARSAY reset\n  GOSSIP spec RUMOUR, HEARSAY, SCANDAL defaultcard HEARSAY\n  SINGLES spec HEARSAY"),
         &dict,
     )
     .unwrap();
+    let none = indexmap::IndexSet::new();
+    let serve = |deck: &chorus::content::CompiledDeck, cursor: i64| {
+        chorus::content::draw_from(&game.content, deck, cursor, &none).unwrap()
+    };
     let rumours = game.content.decks.get("RUMOURS").unwrap();
-    assert_eq!(draw_from(rumours, 0).unwrap().name, "RUMOUR");
-    assert_eq!(draw_from(rumours, 3).unwrap().name, "SCANDAL");
-    assert_eq!(draw_from(rumours, 4).unwrap().name, "RUMOUR"); // reset wraps: period 4
-    assert_eq!(draw_from(rumours, 9).unwrap().name, "HEARSAY"); // 9 % 4 = 1
+    assert_eq!(serve(rumours, 0).0.name, "RUMOUR");
+    assert_eq!(serve(rumours, 3).0.name, "SCANDAL");
+    assert_eq!(serve(rumours, 4).0.name, "RUMOUR"); // reset wraps: period 4
+    assert_eq!(serve(rumours, 9).0.name, "HEARSAY"); // 9 % 4 = 1
     let solo = game.content.decks.get("SOLO").unwrap();
-    assert_eq!(draw_from(solo, 17).unwrap().name, "HEARSAY");
+    assert_eq!(serve(solo, 17).0.name, "HEARSAY");
     // defaultcard forever: past the spec every draw serves the default
     // (GOSSIP's seed-0 permutation is the identity [0,1,2], pinned here so
     // draw 0 below is the in-period first spec entry)
     let gossip = game.content.decks.get("GOSSIP").unwrap();
-    assert_eq!(draw_from(gossip, 0).unwrap().name, "RUMOUR"); // in-period
+    assert_eq!(serve(gossip, 0).0.name, "RUMOUR"); // in-period
     for cursor in [3, 10, 99] {
-        assert_eq!(draw_from(gossip, cursor).unwrap().name, "HEARSAY");
+        assert_eq!(serve(gossip, cursor).0.name, "HEARSAY");
     }
     // neither: the verbatim exhaustion error
     let singles = game.content.decks.get("SINGLES").unwrap();
-    let err = draw_from(singles, 1).unwrap_err();
+    let err = chorus::content::draw_from(&game.content, singles, 1, &none).unwrap_err();
     assert_eq!(err.msg, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§4.4)");
 }
 

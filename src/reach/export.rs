@@ -251,10 +251,11 @@ pub fn graph_dot(content: &CompiledContent, initial: &State, dict: &Dictionary) 
                     // one serving predicate, one home: the CURSOR-AWARE
                     // `deck_serves_cap` — the very verdict analyze_name /
                     // analyze_demand report — not a re-derivation. At
-                    // cursor 0 (every script-state face) it IS
-                    // `served_by_cap`, so the frozen pins hold; under
-                    // `--from-state` a consumed order position emits no
-                    // edge, exactly as the card face reports.
+                    // cursor 0 with an empty manifested set (every
+                    // script-state face) it is the raw position face, so the
+                    // frozen pins hold; under `--from-state` a consumed
+                    // order position or a manifested unique emits no edge,
+                    // exactly as the card face reports.
                     if !facts.deck_serves_cap(deck, m, cap) {
                         continue;
                     }

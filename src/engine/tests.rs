@@ -236,6 +236,7 @@ mod smoke {
                     PrototypeDef {
                         kind: "idea".to_string(),
                         stackable: true,
+                        unique: false,
                         aspects: Some(
                             Attrs::from([("secret".to_string(), AttrValue::Num(1))])
                                 .into_iter()

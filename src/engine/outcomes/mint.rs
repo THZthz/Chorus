@@ -9,7 +9,7 @@ use crate::core::roles::Role;
 use crate::core::sentence::{Arg, IntoTarget, Outcome};
 use crate::core::types::{
     add_entity, aspect_get, is_truthy, release_name_entry, AspectVal, Aspects, AttrValue, Attrs,
-    Entity,
+    Entity, State,
 };
 use crate::error::{ChorusError, Result};
 
@@ -78,8 +78,11 @@ pub(super) fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResul
     let desc = ctx.content.mint_desc(&name).map(str::to_string);
     // §5.1 + §4.2: a non-stackable mint demands a free name; a stackable
     // mint stacks with its own kind of pool but may not collide with a
-    // distinct NON-stackable living name (shared namespace)
-    check_mint_name_free(ctx, &name, is_stack, "SPAWN")?;
+    // distinct NON-stackable living name (shared namespace). A unique mint
+    // skips this gate — its living-check below is the whole story.
+    if !ctx.content.mint_is_unique(&name) {
+        check_mint_name_free(ctx, &name, is_stack, "SPAWN")?;
+    }
     // an explicit AS id, else the mint generator
     let as_id = args.iter().find_map(|a| match a {
         Arg::AsId { id } => Some(id.clone()),
@@ -183,20 +186,40 @@ pub(super) fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResul
             a.tag()
         )));
     }
-    add_entity(
-        ctx.state,
-        Entity {
-            id: id.clone(),
-            kind: kind.clone(),
-            name: name.clone(),
-            aspects: aspects.clone(),
-            attrs: attrs.clone(),
-            born_action: Some(ctx.record_id),
-            dead_action: None,
-            stackable: is_stack,
-            desc,
-        },
-    )?;
+    // §4.2 unique — the MINT FACE: a unique mint whose name already has a
+    // LIVING copy mints nothing (CS B9's retire-the-incumbent is deliberately
+    // not copied: simpler and non-destructive here — the incumbent stays).
+    // Uniqueness attaches to the RESOLVED name — the same name the fold
+    // recomputes the flag from, so the two faces glue. The concrete row
+    // still logs, byte-identical to a minting SPAWN, and the fold replays it
+    // through THIS SAME path with the same living-check — play and fold skip
+    // identically. A locked copy is living (the by_name pool only ever holds
+    // living ids), so a lock blocks the mint too. The name manifests
+    // PERMANENTLY either way — the manifested set, not the living set, is
+    // what the deck filter reads — and the deck filter is why the row must
+    // log even on a skip: the fold's manifested-set rebuild rides these
+    // rows.
+    let is_unique = ctx.content.mint_is_unique(&name);
+    let skip_mint = is_unique && name_is_living(ctx.state, &name);
+    if is_unique {
+        ctx.state.manifested_uniques.insert(name.clone());
+    }
+    if !skip_mint {
+        add_entity(
+            ctx.state,
+            Entity {
+                id: id.clone(),
+                kind: kind.clone(),
+                name: name.clone(),
+                aspects: aspects.clone(),
+                attrs: attrs.clone(),
+                born_action: Some(ctx.record_id),
+                dead_action: None,
+                stackable: is_stack,
+                desc,
+            },
+        )?;
+    }
     // concrete outcome: everything a fold needs,
     // nothing from the step context
     let mut concrete_args: Vec<Arg> = vec![Arg::Ref { r#ref: name_ref(name, Some(kind)) }];
@@ -279,8 +302,20 @@ pub(super) fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyRes
         // spawn happens while the dying card is still alive, so a
         // non-stackable successor's name collides with any living holder —
         // whole-step rejection (§4.4); a stackable successor may share a
-        // stackable pool
-        check_mint_name_free(ctx, &proto_name, is_stack, "REPLACE")?;
+        // stackable pool. A UNIQUE successor never rejects: its mint face
+        // manifests the name permanently and SKIPS the spawn when a living
+        // copy exists — the dying card included (it is still in the pool at
+        // mint time, so `REPLACE X WITH X` on a unique X destroys X and
+        // mints nothing). The DESTROY half still applies either way, and
+        // the concrete SPAWN row still logs (the fold replays it through
+        // the same living-check — play and fold skip identically).
+        let skip_mint = if ctx.content.mint_is_unique(&proto_name) {
+            ctx.state.manifested_uniques.insert(proto_name.clone());
+            name_is_living(ctx.state, &proto_name)
+        } else {
+            check_mint_name_free(ctx, &proto_name, is_stack, "REPLACE")?;
+            false
+        };
         let id = (ctx.id_gen)();
         let mut attrs: Attrs = match proto.and_then(|p| p.attrs.as_ref()) {
             Some(a) => clone_map_in_key_order(a),
@@ -314,20 +349,22 @@ pub(super) fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyRes
         if let Some(z) = &zone {
             attrs.insert("zone".to_string(), AttrValue::Str(z.clone()));
         }
-        add_entity(
-            ctx.state,
-            Entity {
-                id: id.clone(),
-                kind: kind.clone(),
-                name: proto_name.clone(),
-                aspects: clone_aspects(&aspects_tpl),
-                attrs: attrs.clone(),
-                born_action: Some(ctx.record_id),
-                dead_action: None,
-                stackable: is_stack,
-                desc: desc.clone(),
-            },
-        )?;
+        if !skip_mint {
+            add_entity(
+                ctx.state,
+                Entity {
+                    id: id.clone(),
+                    kind: kind.clone(),
+                    name: proto_name.clone(),
+                    aspects: clone_aspects(&aspects_tpl),
+                    attrs: attrs.clone(),
+                    born_action: Some(ctx.record_id),
+                    dead_action: None,
+                    stackable: is_stack,
+                    desc: desc.clone(),
+                },
+            )?;
+        }
         // soft-destroy AFTER the spawn
         if let Some(d) = ctx.state.entities.get_mut(&dying_id) {
             d.dead_action = Some(ctx.record_id);
@@ -364,16 +401,27 @@ pub(super) fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyRes
 /// distinct NON-stackable living name (shared namespace). `what` names the
 /// op for the pinned message ("SPAWN" / "REPLACE").
 fn check_mint_name_free(ctx: &ApplyCtx, name: &str, is_stack: bool, what: &str) -> Result<()> {
-    if let Some(pool) = ctx.state.by_name.get(name) {
-        if !pool.is_empty() {
-            let all_stackable =
-                pool.iter().all(|pid| ctx.state.entities.get(pid).is_some_and(|e| e.stackable));
-            if !is_stack || !all_stackable {
-                return Err(ChorusError::new(format!("{what}: name '{name}' already in use")));
-            }
+    if name_is_living(ctx.state, name) {
+        if !is_stack {
+            return Err(ChorusError::new(format!("{what}: name '{name}' already in use")));
+        }
+        // a stackable mint may share a pool, but only with its own kind of
+        // pool — every living holder must itself be stackable
+        let pool = &ctx.state.by_name[name];
+        let all_stackable =
+            pool.iter().all(|pid| ctx.state.entities.get(pid).is_some_and(|e| e.stackable));
+        if !all_stackable {
+            return Err(ChorusError::new(format!("{what}: name '{name}' already in use")));
         }
     }
     Ok(())
+}
+
+/// Does `name` have a LIVING copy? The by_name pool only ever holds living
+/// ids (a death releases its entry, §4.2), so pool membership is the whole
+/// test — a locked copy is living and counts (§4.2's unique mint face).
+fn name_is_living(state: &State, name: &str) -> bool {
+    state.by_name.get(name).is_some_and(|pool| !pool.is_empty())
 }
 
 /// The aspects clone: the top-level walk AND each sub-map clone are

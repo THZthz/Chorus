@@ -754,7 +754,17 @@ impl<'c> WorldFacts<'c> {
         let mut distinct: Vec<DistEntry> = Vec::new();
         for list in self.avail.values() {
             for f in list {
+                let unique = self.content.mint_is_unique(&f.entity.name);
+                // §4.2 unique: at most ONE living copy of a unique name can
+                // ever exist (the mint face skips while one lives) — the
+                // pooled total clamps at 1 and only the FIRST fact becomes
+                // the distinct instance (no slot can ever bind two), whatever
+                // the sources' own counts say
+                if unique && by_name.contains_key(&f.entity.name) {
+                    continue;
+                }
                 let w = std::cmp::min(f.count, FLATTEN_WEIGHT_CAP);
+                let w = if unique { w.min(1) } else { w };
                 by_name.insert(
                     f.entity.name.clone(),
                     by_name.get(&f.entity.name).copied().unwrap_or(0) + w,

@@ -74,6 +74,26 @@ pub(crate) fn collect_stackable(
     (names, kinds)
 }
 
+/// The §4.2 unique-set builder: the prototypes carrying `unique` contribute
+/// their NAMES. Uniqueness attaches to the name (a derive-renamed mint
+/// escapes it; kind-mates are unaffected), so there is no kind set beside
+/// it. Entity lines reject `unique` at parse, so prototypes are the only
+/// source. Set membership is order-independent, so the walk order here
+/// changes no result anywhere.
+pub(crate) fn collect_uniques(
+    prototypes: Option<&IndexMap<String, PrototypeDef>>,
+) -> IndexSet<String> {
+    let mut names = IndexSet::new();
+    if let Some(prototypes) = prototypes {
+        for (name, p) in entries_in_key_order(prototypes) {
+            if p.unique {
+                names.insert(name.to_string());
+            }
+        }
+    }
+    names
+}
+
 /// The §4.2 description table: the declared entity and prototype names
 /// carrying a `desc "…"`. Keyed by NAME (an entity/prototype name collision
 /// is a load error, so the keys are unique); insertion order is
@@ -117,6 +137,8 @@ pub fn compile_content(
     let fns = build_call_tables(raw, dict)?;
     // §4.2: two derived sets every mint site reads
     let (stackable_names, stackable_kinds) = collect_stackable(entities, raw.prototypes.as_ref());
+    // §4.2: …and the unique names beside them
+    let unique_names = collect_uniques(raw.prototypes.as_ref());
     // §4.2: …and the description table they mint from
     let descs = collect_descs(entities, raw.prototypes.as_ref());
     let endings = compile_endings(raw.endings.as_ref())?;
@@ -188,6 +210,7 @@ pub fn compile_content(
         endings,
         stackable_names,
         stackable_kinds,
+        unique_names,
         descs,
         decks,
         recipe_verbs,

@@ -710,10 +710,11 @@ fn fire_slot(
 /// off onto a busy station), `parent_end` is the crossing minute (the
 /// follow-up BEGINS at the boundary), `parent_refs` is the empty map (the
 /// projection produces a clause with NO refs — the follow-up locks nothing,
-/// and its gate merge reduces to the empty bindings, so a role-reading
-/// `when:` never matches while a world-form one works), and `deferring` is
-/// false — event bodies have no deferral phase; chain ops apply inline, in
-/// list order.
+/// and its gate merge reduces to the empty bindings, so a role-path
+/// comparison reads false; counts/sums over a role read 0, while the world
+/// forms — `exists`, `count(name:…)` — are the selection vocabulary), and
+/// `deferring` is false — event bodies have no deferral phase; chain ops
+/// apply inline, in list order.
 fn make_event_ctx<'a>(
     state: &'a mut State,
     dict: &'a Dictionary,

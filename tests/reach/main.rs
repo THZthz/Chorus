@@ -14,4 +14,5 @@ mod reach_fuzz;
 mod reach_held;
 mod reach_scale;
 mod reach_timing;
+mod reach_unique;
 mod reach_why;

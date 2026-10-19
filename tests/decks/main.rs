@@ -5,3 +5,4 @@ mod common;
 
 mod decks;
 mod stackable;
+mod unique;

@@ -186,8 +186,17 @@ pub struct State {
     /// outcome; the fold lands the same spot from the concrete
     /// `ROLLED(<total>, <ctrAfter>)` row (law 3).
     pub rng: i64,
-    /// §4.4: deck cursors — for each deck id, how many cards it has served.
+    /// §4.4: deck cursors — for each deck id, how many permutation
+    /// positions it has consumed (a §4.2 unique skip consumes its position
+    /// within the serving draw, so the count can jump past one position per
+    /// draw).
     pub decks: IndexMap<String, i64>,
+    /// §4.2 (v0.9.6): the MANIFESTED set — every unique name ever minted,
+    /// permanently (a minted-then-destroyed unique still never serves from a
+    /// deck again). Maintained by the ONE mint path play and fold share
+    /// (the `fired` precedent, §6.6): the fold rebuilds it from the logged
+    /// SPAWN rows' unique faces.
+    pub manifested_uniques: IndexSet<String>,
     /// §6.4: recipe execution counts — recipe id → registered windows.
     /// Maintained by the ONE window-registration path play and fold share;
     /// selection reads only this map, never the log (the `fired`
@@ -209,6 +218,7 @@ pub fn new_state(now: i64) -> State {
         ended: None,
         rng: 0,
         decks: IndexMap::new(),
+        manifested_uniques: IndexSet::new(),
         executed: IndexMap::new(),
         windows: IndexMap::new(),
     }
@@ -242,6 +252,9 @@ impl Clone for State {
             ended: self.ended.clone(),
             rng: self.rng,
             decks: self.decks.clone(),
+            // law 6 (§4.2): the manifested set is copied — a discarded
+            // draft's unique mints must not manifest into the real state
+            manifested_uniques: self.manifested_uniques.clone(),
             executed: self.executed.clone(),
             windows: self.windows.clone(),
         }

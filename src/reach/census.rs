@@ -401,13 +401,37 @@ pub(crate) fn walk_sites<'c>(
 /// A mint's stackability is the engine's §4.2 rule
 /// ([`CompiledContent::mint_is_stackable`]) over the RESOLVED kind: the
 /// site's kind override when it carries one, else the prototype's own kind;
-/// a name with neither only stacks by declaration.
+/// a name with neither only stacks by declaration. Uniqueness does NOT gate
+/// this flag — the REPEAT-COUNT consumers test [`mint_name_reusable`] /
+/// [`CompiledContent::mint_is_unique`] beside it (a unique mint in a
+/// stackable KIND carries the kind's flag, but its pool never outlives one
+/// living copy: the mint face skips).
 pub(crate) fn mint_stacks(content: &CompiledContent, name: &str, kind: Option<&str>) -> bool {
     let resolved = kind.or_else(|| content.prototypes.get(name).map(|p| p.kind.as_str()));
     match resolved {
         Some(k) => content.mint_is_stackable(name, k),
         None => content.stackable_names.contains(name),
     }
+}
+
+/// A mint's NAME-REUSE face (§4.2): may it share its name with living
+/// copies? A declared stackable mint stacks; a UNIQUE mint is skipped by the
+/// engine's mint face while a copy lives, so it never name-collides either —
+/// every collision/duplication consumer (the census mint counters, the
+/// co-mint freeze scan through `collision_names`, the duplicate-collision
+/// risk, the window/draft refusal rungs) reads this, not [`mint_stacks`].
+/// Uniqueness is name-level (the declared unique NAMES, §4.2); stackability
+/// resolves the kind like [`mint_stacks`] does.
+pub(crate) fn mint_name_reusable(
+    content: &CompiledContent,
+    name: &str,
+    kind: Option<&str>,
+) -> bool {
+    content.mint_is_unique(name)
+        || match kind.or_else(|| content.prototypes.get(name).map(|p| p.kind.as_str())) {
+            Some(k) => content.mint_is_stackable(name, k),
+            None => content.stackable_names.contains(name),
+        }
 }
 
 /// The verb binds an object on EVERY
@@ -693,7 +717,8 @@ fn draw_cap<'c>(
 }
 
 /// Per-name UNIFORMITY: a list re-minting X
-/// collides unless EVERY mint of X stacks (§5.1; seed 2654).
+/// collides unless EVERY mint of X shares its name safely (§5.1; seed 2654 —
+/// stackable mints stack, unique mints skip, §4.2).
 fn add_mint(
     content: &CompiledContent,
     mint_counts: &mut IndexMap<String, MintCount>,
@@ -701,18 +726,18 @@ fn add_mint(
     name: &str,
     kind: Option<&str>,
 ) {
-    let stacks = mint_stacks(content, name, kind);
-    if !stacks {
+    let reusable = mint_name_reusable(content, name, kind);
+    if !reusable {
         collision_names.insert(name.to_string());
     }
     let e = mint_counts.entry(name.to_string()).or_insert(MintCount { count: 0, all_stack: true });
     e.count += 1;
-    e.all_stack = e.all_stack && stacks;
+    e.all_stack = e.all_stack && reusable;
 }
 
-/// Collect the STACKABLE names this list mints.
+/// Collect the name-sharing (STACKABLE or UNIQUE) names this list mints.
 fn stacky(content: &CompiledContent, set: &mut IndexSet<String>, name: &str, kind: Option<&str>) {
-    if mint_stacks(content, name, kind) {
+    if mint_name_reusable(content, name, kind) {
         set.insert(name.to_string());
     }
 }

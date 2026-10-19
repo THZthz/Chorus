@@ -195,6 +195,18 @@ fn dispatch(game: &mut Game, line: &str, out: &mut impl Write) -> Flow {
         }
         // a word like `saved …` falls through (the boundary fails)
     }
+    // `/^explain\b\s*(.*)$/` over the trimmed line; the SAME ASCII
+    // word-boundary class as the inspect and save prefixes: a following word
+    // (`explained`, `explain5`) means NO boundary and the line falls through
+    // to handle_line
+    if let Some(rest) = trimmed.strip_prefix("explain") {
+        if rest.is_empty() || rest.starts_with(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
+            // `Game::explain` answers bare `explain` with the usage line
+            emit_all(game.explain(rest.trim()), out);
+            return Flow::Continue;
+        }
+        // a word like `explained …` falls through to handle_line
+    }
     // the meta commands (the typed views); the turns — undo, wait, a line of
     // play — are followed by the live area (what is processing, what to try)
     match trimmed {

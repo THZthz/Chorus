@@ -11,10 +11,25 @@ use crate::core::types::{AspectVal, Aspects, Ending};
 use crate::engine::ActionRecord;
 use crate::error::Result;
 
-/// The canonical journal: one canonical sentence per line.
+/// One row's play-surface text: the canonical sentence, then the executed
+/// recipe ids in a trailing bracket — `0:42 @ MARCH READ THE_MANIFEST
+/// [read.manifest]`. A REFUSED row's bracket names the recipe that refused;
+/// a step no recipe matched never becomes a row (the engine's rejection
+/// line says `<verb>: no recipe matched`).
+#[must_use]
+pub fn row_text(r: &ActionRecord) -> String {
+    if r.recipes.is_empty() {
+        return r.sentence.clone();
+    }
+    format!("{} [{}]", r.sentence, r.recipes.join(", "))
+}
+
+/// The canonical journal: one canonical sentence per line — a row that
+/// executed recipes carries their ids in the same trailing bracket the
+/// play echo shows (§11).
 #[must_use]
 pub fn journal(records: &[ActionRecord]) -> String {
-    records.iter().map(|r| r.sentence.clone()).collect::<Vec<_>>().join("\n")
+    records.iter().map(row_text).collect::<Vec<_>>().join("\n")
 }
 
 /// the status-area banner once the story has ended: — NO MORE · melancholy —

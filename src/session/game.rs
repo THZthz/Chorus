@@ -20,17 +20,21 @@ use crate::core::predicate::{eval_pred, PredCtx, RoleBindings};
 use crate::core::query::{match_query, QueryTerm};
 use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
-use crate::core::sentence::{Arg, IntoTarget};
-use crate::core::text::{cmp_ascii_ci, dsl_trim};
-use crate::core::types::{clone_state, is_truthy, AttrValue, Entity, OpenWindow, State};
+use crate::core::sentence::{Arg, Clause, IntoTarget};
+use crate::core::text::{cmp_ascii_ci, dsl_trim, split_dsl_ws};
+use crate::core::types::{
+    clone_state, get_alive, is_truthy, oldest_named, AttrValue, Entity, OpenWindow, State,
+};
 use crate::engine::fold::fold;
 use crate::engine::store::{save_log, Log};
 use crate::engine::{execute_step, ExecOptions};
 use crate::error::Result;
 
+use super::explain::{explain_verb, DETAIL_LIMIT};
 use super::lenient::{parse_player_input, LenientCtx, ParsedInput};
 use super::render::{
     clock_text, display_name, ending_notice, flatten_aspects, hhmm, journal, pretty, prose_lines,
+    row_text,
 };
 
 /// the idle wait advance: one hour when nothing is in flight (§11)
@@ -39,6 +43,10 @@ const IDLE_WAIT_MIN: i64 = 60;
 /// the round-robin scan cap over the per-verb suggestion groups — the frozen
 /// [`SUGGEST_LIMIT`] (3) always bites before it does
 const ROUND_ROBIN_CAP: usize = 64;
+
+/// the longest verb lexeme an `explain` head may span — a superset of the
+/// lenient scan, which stops at two tokens
+const VERB_TOKEN_CAP: usize = 6;
 
 /// The kind of turn: an action, an info notice, or an input error.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,13 +73,16 @@ fn turn(kind: TurnKind, lines: Vec<String>) -> Turn {
 /// player, not carried by the player and not locked in a window, that match
 /// the slot's query — the `actors` pool holds the player's possible
 /// companions (same kind as the player when the slot has no query). `None`
-/// when a min-count slot cannot fill (the verb is skipped outright); the
-/// actors slot counts the player toward its minimum.
+/// when `bail_on_short` is set and a min-count slot cannot fill (the verb
+/// is skipped outright); explain passes `false` — it diagnoses the verb as
+/// it stands, so a short pool binds what it has. The actors slot counts the
+/// player toward its minimum.
 fn verb_pools<'a>(
     verb: &CompiledVerb,
     alive: &[&'a Entity],
     me: &Entity,
     busy_cards: &HashSet<&str>,
+    bail_on_short: bool,
 ) -> Option<IndexMap<String, Vec<&'a Entity>>> {
     // same-container cards rank first (the Option
     // equality models strict equality over possibly-missing attrs)
@@ -100,7 +111,7 @@ fn verb_pools<'a>(
         let mut pool = pool;
         pool.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| cmp_ascii_ci(&a.name, &b.name)));
         let have = pool.len() as i64 + i64::from(is_actors);
-        if slot.min >= 1 && have < slot.min {
+        if bail_on_short && slot.min >= 1 && have < slot.min {
             return None;
         }
         pools.insert(slot.role.clone(), pool);
@@ -336,15 +347,13 @@ impl Game {
             }
         }
         // the « … » canonical echo of the player's OWN sentence — the BEGIN
-        // row(s) the line produced; the engine-written COMPLETE / EVENT / WAIT
+        // row(s) the line produced, each carrying its executed recipe id in
+        // the trailing bracket (`… [read.manifest]`; a REFUSED row names the
+        // recipe that refused). The engine-written COMPLETE / EVENT / WAIT
         // rows stay in the journal (they carry ids and materialized JSON
         // that read as noise beside the prose)
-        let own: Vec<String> = result
-            .records
-            .iter()
-            .filter(|r| r.kind == "action")
-            .map(|r| r.sentence.clone())
-            .collect();
+        let own: Vec<String> =
+            result.records.iter().filter(|r| r.kind == "action").map(row_text).collect();
         if !own.is_empty() {
             lines.push(String::new());
             lines.push(format!("« {} »", own.join(" | ")));
@@ -481,6 +490,7 @@ impl Game {
             "  names forgive case, underscores and articles; one distinctive word is enough".to_string(),
             "  time: an action opens a station that finishes later — `wait` jumps to the next thing due; a clock like 1:4 jumps there".to_string(),
             "  save: write the play log to a file — `save <file.jsonl>`; `reach --from-state <file>` analyzes the midgame".to_string(),
+            "  explain: `explain <verb> [bindings…] [all]` — every recipe of the verb, marked against the table or those bindings".to_string(),
             format!("  verbs: {}", self.verb_list()),
             "  views: look · cards · inspect <card> · story · journal · save <file> · undo · help · quit".to_string(),
         ])
@@ -821,6 +831,131 @@ impl Game {
         lines
     }
 
+    /// `explain <verb> [bindings…] [all]` — §11's recipe view: the verb's
+    /// slots and every recipe in evaluation order, each marked against a
+    /// binding (the §6.4 first-match walk made visible). The bindings parse
+    /// through the SAME lenient input play lines use (`explain work
+    /// introjob`, `explain talk to brack about the motive`); with none, each
+    /// role fills from the table to its slot minimum (the try row's base
+    /// binding). The trailing word `all` lists every recipe instead of the
+    /// capped first deciding + no-match entries.
+    pub fn explain(&self, args: &str) -> Result<Vec<String>> {
+        let tokens = split_dsl_ws(dsl_trim(args));
+        // the trailing `all` is the show-everything flag, not a name
+        let (tokens, show_all) = match tokens.split_last() {
+            Some((t, rest)) if t.eq_ignore_ascii_case("all") && !rest.is_empty() => (rest, true),
+            _ => (tokens.as_slice(), false),
+        };
+        if tokens.is_empty() {
+            return Ok(self.explain_usage());
+        }
+        // the verb: the LONGEST leading run of tokens naming a content verb
+        // (`use on`, `curse affliction`) — a superset of the lenient scan,
+        // which stops at two
+        let mut found: Option<(&CompiledVerb, usize)> = None;
+        for len in (1..=tokens.len().min(VERB_TOKEN_CAP)).rev() {
+            let joined = tokens[..len].join("_").to_uppercase();
+            if let Some(v) = self.content.verbs.get(&joined) {
+                found = Some((v, len));
+                break;
+            }
+        }
+        let Some((v, used)) = found else {
+            let mut lines = vec![format!("no verb answers to '{}'", tokens.join(" "))];
+            lines.extend(self.explain_usage());
+            return Ok(lines);
+        };
+        let rest = &tokens[used..];
+        let bindings = if rest.is_empty() {
+            self.table_binding(v)
+        } else {
+            // the same lenient front door play lines use, anchored on the
+            // canonical UPPER verb token so a verb of any length re-enters it
+            let line = format!("{} {}", v.name, rest.join(" "));
+            match parse_player_input(&line, &self.lenient_ctx()) {
+                ParsedInput::Ok { step } => match step.clauses.first() {
+                    Some(clause) => self.bindings_of(clause),
+                    None => self.table_binding(v),
+                },
+                ParsedInput::Fail { error, suggestions, hint } => {
+                    let mut lines = vec![format!("explain: {error}")];
+                    if !suggestions.is_empty() {
+                        lines.push(format!("did you mean: {}?", suggestions.join(", ")));
+                    }
+                    lines.extend(hint);
+                    lines.extend(self.usage(&v.name));
+                    return Ok(lines);
+                }
+            }
+        };
+        explain_verb(v, &bindings, &self.state, show_all)
+    }
+
+    /// the table binding behind a bare `explain <verb>`: each role filled to
+    /// its slot minimum from the try row's pools — the player in `actors`,
+    /// companions after, then the same-container-first name order. A pool
+    /// that runs short binds what it has: explain diagnoses the verb as it
+    /// stands, it never bails the way the suggestion scan does.
+    fn table_binding(&self, verb: &CompiledVerb) -> RoleBindings {
+        let Some(me) = self.living_player() else {
+            return RoleBindings::new();
+        };
+        let alive = self.visible();
+        let Some(pools) = verb_pools(verb, &alive, me, &HashSet::new(), false) else {
+            // (bail_on_short=false always builds the pools)
+            unreachable!("explain's pools never bail")
+        };
+        base_binding(me, verb, &pools)
+    }
+
+    /// Role ids for a parsed clause: the §4.2 oldest-pool resolution the
+    /// engine's slot validation applies (a name ref → the pool head, an id
+    /// ref → the living entity); a ref nothing living answers drops.
+    fn bindings_of(&self, clause: &Clause) -> RoleBindings {
+        let roles: [(&Role, &[Ref]); 6] = [
+            (&Role::Actors, &clause.actors),
+            (&Role::Object, &clause.objects),
+            (&Role::With, &clause.with),
+            (&Role::At, clause.at.as_slice()),
+            (&Role::About, clause.about.as_slice()),
+            (&Role::To, clause.to.as_slice()),
+        ];
+        let mut b = RoleBindings::new();
+        for (role, rs) in roles {
+            b.insert(*role, rs.iter().filter_map(|r| self.binding_id(r)).collect());
+        }
+        b
+    }
+
+    /// the entity id one ref binds: an id must be living, a name addresses
+    /// the OLDEST living copy (the §4.2 pool head)
+    fn binding_id(&self, r: &Ref) -> Option<String> {
+        match r {
+            Ref::Id { id } => get_alive(&self.state, id).map(|_| id.clone()),
+            Ref::Name { name, kind } => {
+                let e = oldest_named(&self.state, name)?;
+                match kind {
+                    Some(k) if &e.kind != k => None,
+                    _ => Some(e.id.clone()),
+                }
+            }
+            // param refs are authored-only (§10) — never in a typed clause
+            Ref::Param { .. } => None,
+        }
+    }
+
+    /// the bare `explain` face: the usage, the binding syntax, the flag
+    fn explain_usage(&self) -> Vec<String> {
+        vec![
+            "usage: explain <verb> [bindings…] [all]".to_string(),
+            "  bindings parse like a play line — `explain work introjob`, `explain talk to brack about the motive`; omitted, the table fills each role".to_string(),
+            format!(
+                "  every recipe prints marked fires / refused / shadowed / spent / no-match; the default shows the first {DETAIL_LIMIT} deciding + {DETAIL_LIMIT} no-match, `all` lists everything"
+            ),
+            format!("  verbs: {}", self.verb_list()),
+        ]
+    }
+
     /// the log as prose
     pub fn story(&self) -> Result<Vec<String>> {
         let mut lines = Vec::new();
@@ -997,6 +1132,12 @@ impl Game {
             };
             let Some(role) = Role::from_lower(role_str) else { continue };
             let cap = fill_cap(slot);
+            // a candidate must fit the slot's own bounds — the swap arms
+            // rebuild past the fill cap, so the bound (not the cap) decides
+            // (`0..1` actors takes the player alone, a `2..2` slot swaps)
+            let fits_slot = |ids: &[String]| {
+                ids.len() as i64 >= slot.min && slot.max.is_none_or(|m| ids.len() as i64 <= m)
+            };
             let base_es: Vec<String> = base.get(&role).cloned().unwrap_or_default();
             let mut candidates: Vec<Vec<String>> = Vec::new();
             for e in pool {
@@ -1013,6 +1154,9 @@ impl Game {
                         vec![e.id.clone()]
                     };
                 }
+                if !fits_slot(&combined) {
+                    continue;
+                }
                 candidates.push(combined);
             }
             // the full hand: everything the pool offers, up to the cap
@@ -1023,7 +1167,11 @@ impl Game {
             } else {
                 pool.iter().take(cap as usize).map(|e| e.id.clone()).collect()
             };
-            if full.len() as i64 > 1 && full != base_es && !candidates.contains(&full) {
+            if full.len() as i64 > 1
+                && fits_slot(&full)
+                && full != base_es
+                && !candidates.contains(&full)
+            {
                 candidates.push(full);
             }
             for combined in candidates {
@@ -1067,14 +1215,18 @@ impl Game {
             let Some(actors_slot) = verb.slot_by_role.get("actors") else {
                 continue;
             };
-            if actors_slot.min < 1 {
+            // the player is the default actor the lenient input binds; a
+            // slot that cannot hold them can never take a typed line. A
+            // `0..1` slot IS suggested — the player acting alone is exactly
+            // what it accepts
+            if actors_slot.max.is_some_and(|m| m < 1) {
                 continue;
             }
             if actors_slot.query.as_ref().is_some_and(|q| !match_query(me, q)) {
                 continue;
             }
             let display = display_name(&verb.name);
-            let Some(pools) = verb_pools(verb, &alive, me, &busy_cards) else {
+            let Some(pools) = verb_pools(verb, &alive, me, &busy_cards, true) else {
                 continue;
             };
             let base = base_binding(me, verb, &pools);

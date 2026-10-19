@@ -1829,9 +1829,14 @@ tests. The shipped interface is a plain **line REPL** (`bin/chorus`: a
 `read_line` loop over `Game`; the `» ` prompt is drawn only when stdin is a
 TTY, so a piped session's stdout stays byte-clean). No TUI ships in this
 crate — `Game` is the headless seam a drawn UI would sit on. An action turn
-ends with the `« … »` canonical echo — every record's sentence, `|`-joined —
+ends with the `« … »` canonical echo — every record's sentence with its
+executed recipe ids in a trailing bracket (`0:42 @ MARCH READ THE_MANIFEST
+[read.manifest]`; a REFUSED row's bracket names the recipe that refused,
+right beside its `REFUSE(…)` outcome; a step no recipe matched never becomes
+a row — the rejection line says `<verb>: no recipe matched`), `|`-joined —
 printed under the prose; a game-over turn returns the ending notice instead
-of executing (§4.4).
+of executing (§4.4). The `journal` view speaks the same row text, so a
+journal line names what lit — COMPLETE rows included.
 
 **Lenient input** (`read the forgetting`) is a *front door*, not NLU (§2):
 it maps onto the canonical grammar, and the engine-composed canonical
@@ -1890,10 +1895,12 @@ relations the same way `rel(<dir>, …)` gates travel, what the player
 carries, the processing stations), `cards` (the visible table, copies
 grouped), `inspect <name>` (a card's face; a card that left play says
 "no longer in play (left play at action N)"; a bare `inspect` prints the
-usage and the table, never guessing a card), `journal` (canonical),
-`story` (prose), `undo` (names what it took back — `undone: « … »` or
-`undone: the wait`), `save <file>` (the log as JSONL — the file
-`reach --from-state` replays), `wait`, `help`, `quit`. A piped session echoes every
+usage and the table, never guessing a card), `journal` (canonical, recipe
+ids bracketed like the echo), `story` (prose), `undo` (names what it took
+back — `undone: « … »` or `undone: the wait`), `save <file>` (the log as
+JSONL — the file
+`reach --from-state` replays), `explain <verb>` (the recipe walk, below),
+`wait`, `help`, `quit`. A piped session echoes every
 line as `» line` (the stand-in for a TTY's prompt + typing; on a TTY the
 `» ` prompt is drawn instead and input is not echoed).
 `suggestions()` (the try row) is `Game` API the REPL prints: verb × card
@@ -1904,13 +1911,44 @@ lenient-parseable and typeable verbatim (lowercase display names), the
 list capped at 3; candidate pools rank same-container cards first, ties in
 the frozen name order (ASCII-lowercase, then byte order); an actors slot
 with no query defaults its pool to the player's own kind (§4.1's frozen
-role). A step rejection renders the verb's usage line from the same slot
-arithmetic, and the noun a slot wants is its kind — `<someone>` for
+role). The player is the actor every typed line binds, so a `0..1` actors
+slot is suggested with the player acting alone (`work health`); a slot that
+cannot hold the player at all skips its verb. Alternative bindings respect
+each slot's own bounds — a `2..2` slot swaps a companion, a `0..1` slot
+offers none. A step rejection renders the verb's usage line from the same
+slot arithmetic, and the noun a slot wants is its kind — `<someone>` for
 `kind:character` (§4.1's frozen role), `<kind>` for any other declared kind,
 `<thing>` when the slot queries no kind. Verbs with an
 open station and cards locked in a window are excluded; `recipe_lights`
 skips REFUSE recipes and spent `max` recipes (they land in flavor), and a
 REFUSED action prints the verb's authored `shown` hints under the refusal.
+
+**`explain <verb> [bindings…] [all]`** is the recipe walk made visible: the
+verb's slots (role, cardinality, query text), then every recipe in
+evaluation order, each marked against one binding — the §6.4 first-match
+selection the engine will run, pre-computed. The head line counts every
+recipe (`fires / refused / shadowed / spent / no-match`, hidden counted
+beside), then the outcome line names the decision: `<id> fires`, `REFUSED
+at the table by <id>` (a matching REFUSE gate — the attempt would journal
+and no window would open), or `no recipe matched` (the engine rejects the
+step). Each detail entry carries its number, mark, id and flags (`· hidden`,
+`· REFUSE`, `· max N`), the `when` rendered back to authored-shaped text
+(`total(object, aspect:health) >= 1 OR …`, `rel(north, actors.container,
+object)`), and for a no-MATCH the LEFTMOST failing clause — the walk
+mirrors `eval_pred`'s short-circuit, so the named clause is the one that
+decided. The marks come from the same evaluator selection runs
+(`eval_pred`, strict-false, roll-less, `max` counts read off the state), so
+a MATCH here is what the engine would decide on the same bindings. The
+bindings are the try row's arithmetic: given, they parse through the same
+lenient input play lines use (`explain work introjob`, `explain talk to
+brack about the motive` — a fail speaks the lenient error and the verb's
+usage); omitted, each role fills from the table to its slot minimum (a
+short pool binds what it has — explain never bails the way the suggestion
+scan does). Details cap at the first 5 deciding (fires / refused / shadowed
+/ spent) and first 5 no-MATCH entries, counts always complete; the trailing
+word `all` lists every recipe. `explain` bare prints the usage and the
+verb vocabulary; the verb head accepts the longest run of name-tokens that
+names a content verb (`use on`, `curse affliction`).
 
 **Lenient input meets its own suggestions**: name runs normalize
 with the same key the tables use — `MARCH READ THE_MANIFEST`, `the vane

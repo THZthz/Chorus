@@ -2,6 +2,7 @@
 //! Headless only: no TUI ships here; the game logic is fully testable
 //! without a TTY.
 
+pub mod explain;
 pub mod game;
 pub mod lenient;
 pub mod render;

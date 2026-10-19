@@ -13,8 +13,8 @@
 use indexmap::IndexMap;
 
 use chorus::content::{
-    compile_content, CompleteTriggerDef, ContentRaw, PrototypeDef, RecipeDef, SlotDef, TriggerDef,
-    VerbContent,
+    compile_content, CompleteTriggerDef, ContentRaw, PrototypeDef, RecipeDef, SlotDef,
+    SlotTriggerDef, TriggerDef, VerbContent,
 };
 use chorus::core::dict::core_dictionary;
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
@@ -64,6 +64,74 @@ fn complete_trigger(home: &str, aspect: Option<&str>) -> TriggerDef {
         aspect: aspect.map(str::to_string),
         out: vec!["SPAWN X_CARD".to_string()],
     })
+}
+
+/// WORK with one gated, completable recipe: the committed object slot locks
+/// the home, and the `when` is a world-form count gate over the funds pool —
+/// the shape where the window rung's selectability decides the trigger.
+fn gated_work(gate: &str) -> VerbContent {
+    VerbContent {
+        slots: vec![
+            SlotDef {
+                role: "actors".to_string(),
+                min: 1,
+                max: Some(1),
+                query: Some("kind:character".to_string()),
+                shown: None,
+            },
+            SlotDef { role: "object".to_string(), min: 1, max: Some(1), query: None, shown: None },
+        ],
+        duration: 30,
+        recipes: vec![RecipeDef {
+            id: Some("work.r0".to_string()),
+            when: Some(gate.to_string()),
+            shown: None,
+            hint: None,
+            max: None,
+            aspects: Vec::new(),
+            out: vec![],
+        }],
+    }
+}
+
+/// A stackable funds-bearing prototype.
+fn funds_proto() -> PrototypeDef {
+    let mut p = proto("resource");
+    p.stackable = true;
+    p.aspects = Some(IndexMap::from([("funds".to_string(), AspectVal::Num(1))]));
+    p
+}
+
+/// The gated-window fixture: WORK carries `gate`, `sources` are the extra
+/// verbs, `triggers` the trigger list (the completion trigger included by
+/// the caller).
+fn gated_window_raw(
+    gate: &str,
+    sources: Vec<(String, VerbContent)>,
+    triggers: Vec<TriggerDef>,
+    protos: IndexMap<String, PrototypeDef>,
+) -> ContentRaw {
+    let mut verbs = IndexMap::from([("WORK".to_string(), gated_work(gate))]);
+    verbs.extend(sources);
+    ContentRaw {
+        prototypes: Some(protos),
+        verbs,
+        triggers: Some(triggers),
+        ..ContentRaw::default()
+    }
+}
+
+/// The shared completion-state probe: X_CARD must stay a CANDIDATE — the
+/// honest demotion — never a proven mint over a gate that cannot select.
+fn gate_never_proves(raw: &ContentRaw, extra: Vec<Entity>) {
+    let content = compile(raw);
+    let mut world = vec![ent("ANA", "character", &[]), ent("HOME_CARD", "item", &[])];
+    world.extend(extra);
+    let state = state_with(world);
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
 }
 
 /// The Wave-3 window witness, as a raw verb (a core-dictionary name): the
@@ -410,4 +478,310 @@ fn an_optional_min0_slot_never_force_locks_so_the_completing_recipe_proves() {
         .chain
         .join("\n")
         .contains("WORK committable: actors ×1 ← initial entity ANA (character)"));
+}
+
+/// An UNKNOWN completing-recipe gate (an unbounded-pool count form — the
+/// stackable PURSE mints unconditionally, so the world count is a floor,
+/// never a ceiling) must NOT read as a deterministic refusal: the recipe
+/// may select once the pool is raised, the window-refuse retry is
+/// existential (§6.7), so the witness pair survives the selectability rung
+/// and the trigger proves.
+#[test]
+fn an_unknown_count_gate_keeps_the_completing_recipe_selectable() {
+    let work = VerbContent {
+        slots: vec![
+            SlotDef {
+                role: "actors".to_string(),
+                min: 1,
+                max: Some(1),
+                query: Some("kind:character".to_string()),
+                shown: None,
+            },
+            SlotDef { role: "object".to_string(), min: 1, max: Some(1), query: None, shown: None },
+        ],
+        duration: 30,
+        recipes: vec![RecipeDef {
+            id: Some("work.r0".to_string()),
+            when: Some("count(aspect:funds>=1) >= 40".to_string()),
+            shown: None,
+            hint: None,
+            max: None,
+            aspects: Vec::new(),
+            out: vec![],
+        }],
+    };
+    let mut purse = proto("resource");
+    purse.stackable = true;
+    purse.aspects = Some(IndexMap::from([("funds".to_string(), AspectVal::Num(1))]));
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+            ("PURSE".to_string(), purse),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "EXPLORE".to_string(),
+                VerbContent {
+                    slots: vec![SlotDef {
+                        role: "actors".to_string(),
+                        min: 1,
+                        max: Some(1),
+                        query: Some("kind:character".to_string()),
+                        shown: None,
+                    }],
+                    duration: 0,
+                    recipes: vec![RecipeDef {
+                        id: Some("explore.mint".to_string()),
+                        when: None,
+                        shown: None,
+                        hint: None,
+                        max: None,
+                        aspects: Vec::new(),
+                        out: vec!["SPAWN PURSE".to_string()],
+                    }],
+                },
+            ),
+            ("WORK".to_string(), work),
+        ]),
+        triggers: Some(vec![complete_trigger("HOME_CARD", None)]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let state = state_with(vec![ent("ANA", "character", &[]), ent("HOME_CARD", "item", &[])]);
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert_eq!(rep.existence, Existence::Proven);
+}
+
+// ---------------------------------------------------------------------------
+// the bounded-source demotions: each funds pool below is BOUNDED, so the
+// completing recipe's high gate decides FALSE over the honest pool and the
+// window never assembles — the trigger demotes to the candidate tier.
+// Flagging any of these pools unbounded (or reading the capped weight as
+// the count) would prove X_CARD over a gate that cannot select.
+// ---------------------------------------------------------------------------
+
+/// A once slot trigger is a BOUNDED source: it fires exactly once and mints
+/// one PURSE, so `>= 40` is false at the honest pool — never a selectably
+/// Unknown gate over a pool that cannot exist.
+#[test]
+fn a_once_trigger_funds_source_keeps_the_gated_completion_a_candidate() {
+    let raw = gated_window_raw(
+        "count(aspect:funds>=1) >= 40",
+        vec![],
+        vec![
+            TriggerDef::Slot(SlotTriggerDef {
+                id: "allowance".to_string(),
+                slot: 2,
+                once: Some(true),
+                out: vec!["SPAWN PURSE".to_string()],
+            }),
+            complete_trigger("HOME_CARD", None),
+        ],
+        IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+            ("PURSE".to_string(), funds_proto()),
+        ]),
+    );
+    gate_never_proves(&raw, vec![]);
+}
+
+/// A REPLACE consumes a live target per application — one initial POT means
+/// a pool of at most one PURSE — so the replacing site never arms the
+/// unbounded face and the `>= 40` gate stays decided-false.
+#[test]
+fn a_replace_source_keeps_the_gated_completion_a_candidate() {
+    let raw = gated_window_raw(
+        "count(aspect:funds>=1) >= 40",
+        vec![(
+            "MANSUS".to_string(),
+            VerbContent {
+                slots: vec![SlotDef {
+                    role: "actors".to_string(),
+                    min: 1,
+                    max: Some(1),
+                    query: Some("kind:character".to_string()),
+                    shown: None,
+                }],
+                duration: 0,
+                recipes: vec![RecipeDef {
+                    id: Some("swap.purse".to_string()),
+                    when: None,
+                    shown: None,
+                    hint: None,
+                    max: None,
+                    aspects: Vec::new(),
+                    out: vec!["REPLACE POT WITH PURSE".to_string()],
+                }],
+            },
+        )],
+        vec![complete_trigger("HOME_CARD", None)],
+        IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+            ("PURSE".to_string(), funds_proto()),
+        ]),
+    );
+    gate_never_proves(&raw, vec![ent("POT", "resource", &[("funds", 3)])]);
+}
+
+/// A `max: 1` recipe draws its endless deck exactly once — the draw arms
+/// consult the same cap the SPAWN arm does, so the defaultcard is a bounded
+/// fact and the `>= 40` gate stays decided-false.
+#[test]
+fn a_max_capped_draw_keeps_the_gated_completion_a_candidate() {
+    let raw = gated_window_raw(
+        "count(aspect:funds>=1) >= 40",
+        vec![(
+            "ACQUIRE".to_string(),
+            VerbContent {
+                slots: vec![SlotDef {
+                    role: "actors".to_string(),
+                    min: 1,
+                    max: Some(1),
+                    query: Some("kind:character".to_string()),
+                    shown: None,
+                }],
+                duration: 0,
+                recipes: vec![RecipeDef {
+                    id: Some("draw.once".to_string()),
+                    when: None,
+                    shown: None,
+                    hint: None,
+                    max: Some(1),
+                    aspects: Vec::new(),
+                    out: vec!["DRAW D1".to_string()],
+                }],
+            },
+        )],
+        vec![complete_trigger("HOME_CARD", None)],
+        IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+            ("COIN".to_string(), funds_proto()),
+        ]),
+    );
+    let mut raw = raw;
+    raw.decks = Some(vec![chorus::content::DeckRaw {
+        id: "D1".to_string(),
+        spec: vec!["COIN".to_string()],
+        defaultcard: Some("COIN".to_string()),
+        reset: true,
+    }]);
+    gate_never_proves(&raw, vec![]);
+}
+
+/// A bare uncapped recipe whose body DESTROYS its own actors filler
+/// consumes its own selection: the single initial character fills the
+/// actors slot exactly once, the first application kills it, and the second
+/// commit refuses — the SPAWN is a bounded source (one mint), so the
+/// `>= 32` gate decides false over the honest pool and the trigger demotes
+/// to the candidate tier. Arming the mint unbounded would flatten the fact
+/// to the 32-weight floor and flip the gate to decided-true — the false
+/// proven this test pins out.
+#[test]
+fn a_recipe_that_destroys_its_own_filler_keeps_the_gated_completion_a_candidate() {
+    let raw = gated_window_raw(
+        "count(aspect:funds>=1) >= 32",
+        vec![(
+            "DREAM".to_string(),
+            VerbContent {
+                slots: vec![SlotDef {
+                    role: "actors".to_string(),
+                    min: 1,
+                    max: Some(1),
+                    query: Some("kind:character".to_string()),
+                    shown: None,
+                }],
+                duration: 0,
+                recipes: vec![RecipeDef {
+                    id: Some("dream.coin".to_string()),
+                    when: None,
+                    shown: None,
+                    hint: None,
+                    max: None,
+                    aspects: Vec::new(),
+                    out: vec!["DESTROY actors".to_string(), "SPAWN COIN".to_string()],
+                }],
+            },
+        )],
+        vec![complete_trigger("HOME_CARD", None)],
+        IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+            ("COIN".to_string(), funds_proto()),
+        ]),
+    );
+    gate_never_proves(&raw, vec![]);
+}
+
+/// A threshold below the flatten weight cap but above the honest pool: the
+/// once-trigger source mints ONE purse and the fact says so, so a `>= 5`
+/// gate decides false and the window never assembles.
+#[test]
+fn a_threshold_inside_the_capped_weight_region_demotes_to_candidate() {
+    let raw = gated_window_raw(
+        "count(aspect:funds>=1) >= 5",
+        vec![],
+        vec![
+            TriggerDef::Slot(SlotTriggerDef {
+                id: "allowance".to_string(),
+                slot: 2,
+                once: Some(true),
+                out: vec!["SPAWN PURSE".to_string()],
+            }),
+            complete_trigger("HOME_CARD", None),
+        ],
+        IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+            ("PURSE".to_string(), funds_proto()),
+        ]),
+    );
+    gate_never_proves(&raw, vec![]);
+}
+
+/// A closed comparison the pool's floor already violates is FALSE, never
+/// may-select Unknown: the unbounded PURSE pool can only grow above its
+/// floor, so `count(aspect:funds>=1) < 1` holds at no reachable pool — the
+/// completing recipe never selects and the trigger demotes. (The invariant:
+/// Unknown may only widen toward candidate, never produce proven on its
+/// own.)
+#[test]
+fn a_floor_violated_closed_gate_never_selects_the_completing_recipe() {
+    let raw = gated_window_raw(
+        "count(aspect:funds>=1) < 1",
+        vec![(
+            "EXPLORE".to_string(),
+            VerbContent {
+                slots: vec![SlotDef {
+                    role: "actors".to_string(),
+                    min: 1,
+                    max: Some(1),
+                    query: Some("kind:character".to_string()),
+                    shown: None,
+                }],
+                duration: 0,
+                recipes: vec![RecipeDef {
+                    id: Some("explore.mint".to_string()),
+                    when: None,
+                    shown: None,
+                    hint: None,
+                    max: None,
+                    aspects: Vec::new(),
+                    out: vec!["SPAWN PURSE".to_string()],
+                }],
+            },
+        )],
+        vec![complete_trigger("HOME_CARD", None)],
+        IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+            ("PURSE".to_string(), funds_proto()),
+        ]),
+    );
+    gate_never_proves(&raw, vec![]);
 }

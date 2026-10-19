@@ -7,7 +7,7 @@
 //!   obtainable   ⇒ appears in some explored play        (hard; downgraded to
 //!                  inconclusive when the exploration hit its state cap)
 //!
-//! The scenario space (gen_scenario v2) now generates completion triggers
+//! The scenario space (gen_scenario v4) now generates completion triggers
 //! (`on complete [<aspect>]`), §6.7 RUN candidates in verb recipes and
 //! completion bodies, and recipe-line `aspects` — features whose analyzer
 //! coverage is still being established, and which legitimately surface open
@@ -22,7 +22,7 @@
 //! verdict change. Failures still print to the test output so a red
 //! campaign seed is visible from the test log.
 //!
-//! Bounds rationale (2026-10 audit, v2 scenarios): the default 8 steps ×
+//! Bounds rationale (2026-10 audit, v4 scenarios): the default 8 steps ×
 //! 500 states per run, twice per seed; complete-trigger worlds explore
 //! noticeably wider than v1's (complete triggers fire on EVERY completion —
 //! no once), but the base cap still bounds each run, and the deep phase
@@ -33,6 +33,8 @@
 
 use crate::common::snap::snap;
 use chorus::content::compile_content;
+use chorus::core::predicate::{Pred, ValExpr};
+use chorus::core::query::{CmpOp, QueryTerm};
 use chorus::engine::fold::fold;
 use chorus::reach::fuzz::{drive_fuzz_seed, gen_scenario, run_fuzz_seed, FuzzOutcome};
 
@@ -187,4 +189,67 @@ fn the_driven_seed_log_folds_back_to_the_driven_state() {
     let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the scenario compiles");
     let replayed = fold(&run.records, &run.base, &dict, &content).expect("the log replays");
     assert_eq!(snap(&replayed), snap(&run.final_state));
+}
+
+// The v4 `when` table's aspect-scoped world forms: two seeds whose scenarios
+// verifiably carry one (a CountQuery/ExistsQuery whose inner query reads an
+// Aspect term) — and, on the second seed, the v4 closed (strict `<`)
+// aspect-count form the open-ended table lacked — pinned deterministic like
+// the sweep above; the differential exercises the analyzer's world-form
+// evaluation path (open and closed faces) through them.
+fn scenario_has_aspect_world_form(seed: u32) -> bool {
+    scenario_pred_has(seed, &|p| {
+        matches!(p, Pred::ExistsQuery { query }
+            if query.iter().flatten().any(|t| matches!(t, QueryTerm::Aspect { .. })))
+            || matches!(p, Pred::Cmp { l, r, .. }
+                if [l, r].iter().any(|v| matches!(v, ValExpr::CountQuery { query }
+                    if query.iter().flatten().any(|t| matches!(t, QueryTerm::Aspect { .. })))))
+    })
+}
+
+/// The v4 closed face: a count-form comparison whose left operand is an
+/// aspect-scoped pool count and whose op is closed (`<` / `<=`) — the
+/// shape the floor-violation rule decides, invisible to the v3 table.
+fn scenario_has_closed_aspect_count_form(seed: u32) -> bool {
+    scenario_pred_has(seed, &|p| {
+        matches!(p, Pred::Cmp { l: ValExpr::CountQuery { query }, op, r: ValExpr::Int { .. } }
+            if matches!(op, CmpOp::Lt | CmpOp::Le)
+                && query.iter().flatten().any(|t| matches!(t, QueryTerm::Aspect { .. })))
+    })
+}
+
+fn scenario_pred_has(seed: u32, f: &dyn Fn(&Pred) -> bool) -> bool {
+    use chorus::core::dict::core_dictionary;
+    fn pred_has(p: &Pred, f: &dyn Fn(&Pred) -> bool) -> bool {
+        match p {
+            Pred::And(a, b) | Pred::Or(a, b) => pred_has(a, f) || pred_has(b, f),
+            Pred::Not(a) => pred_has(a, f),
+            Pred::Cmp { .. } | Pred::ExistsQuery { .. } => f(p),
+            _ => false,
+        }
+    }
+    let sc = gen_scenario(seed);
+    let mut dict = core_dictionary();
+    for v in sc.raw.verbs.keys() {
+        let _ = dict.register_verb(v);
+    }
+    let content =
+        compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the generated scenario compiles");
+    content
+        .verbs
+        .values()
+        .any(|v| v.recipes.iter().any(|r| r.when.as_ref().is_some_and(|w| pred_has(w, f))))
+}
+
+#[test]
+fn seed_13_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deterministic() {
+    assert!(scenario_has_aspect_world_form(13));
+    assert!(scenario_has_closed_aspect_count_form(13));
+    assert_seed_deterministic(13);
+}
+
+#[test]
+fn seed_22_emits_an_aspect_scoped_world_form_when_and_stays_deterministic() {
+    assert!(scenario_has_aspect_world_form(22));
+    assert_seed_deterministic(22);
 }

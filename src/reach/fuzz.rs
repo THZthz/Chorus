@@ -7,11 +7,13 @@
 //! evaluation-order choice carries an inline draw-order note) but VERSIONED,
 //! not frozen: the v2 scenario space added completion triggers, RUN
 //! candidates and recipe `aspects` bands, re-banding several thresholds and
-//! reordering the trigger-kind roll ahead of the body draws. Every recorded
-//! fuzz run taken before v2 is therefore NOT reproducible seed-for-seed;
-//! reproduce against the pre-v2 generator. What stays pinned is that the
-//! generator is a pure function of its seed — the same seed builds the same
-//! scenario, draw for draw, under ONE version.
+//! reordering the trigger-kind roll ahead of the body draws; v3 added the
+//! two aspect-scoped world forms to the `when` candidate table; v4 added a
+//! closed (strict `<`) aspect-count form to the same table. Every recorded
+//! fuzz run taken before v4 is therefore NOT reproducible
+//! seed-for-seed; reproduce against the matching generator version. What
+//! stays pinned is that the generator is a pure function of its seed — the
+//! same seed builds the same scenario, draw for draw, under ONE version.
 //!
 //! (Shared test lib discipline: the `allow` lives in this one place.)
 #![allow(dead_code)]
@@ -302,9 +304,10 @@ impl Gen<'_> {
         "NARRATE \"beat\"".to_string()
     }
 
-    /// The `when` candidates. All four are built EAGERLY — every template
+    /// The `when` candidates. All seven are built EAGERLY — every template
     /// interpolation draws BEFORE the final pick selects one:
-    /// t1 one int, t2 one pool pick, t3 none, t4 one proto-name pick.
+    /// t1 one int, t2 one pool pick, t3 none, t4 one proto-name pick,
+    /// ta one int, tb one int, tc one int.
     fn gen_when(&mut self) -> String {
         let t1 = format!("actors.aspect.a >= {}", 1 + int(self.r, 3) as i64);
         let mut pool = self.others.clone();
@@ -321,7 +324,17 @@ impl Gen<'_> {
         };
         let named = pick_of(self.r, &named_pool);
         let t4 = format!("count(name:{named}) >= 1");
-        let choices: [&str; 4] = [&t1, &t2, &t3, &t4];
+        // the aspect-scoped world forms (v3): an exists over the aspect
+        // pool and a pool-count form — the analyzer's world-static gates
+        // under the exact match and the unbounded-pool Unknown
+        let ta = format!("exists(aspect:a>={})", 1 + int(self.r, 2) as i64);
+        let tb = format!("count(aspect:b>=1) >= {}", 1 + int(self.r, 2) as i64);
+        // the closed face (v4): a strict comparison the pool's floor can
+        // already violate — over an unbounded pool the analyzer must
+        // decide it False (never may-select Unknown), and this form makes
+        // that face visible to the differential campaign
+        let tc = format!("count(aspect:b>=1) < {}", 1 + int(self.r, 3) as i64);
+        let choices: [&str; 7] = [&t1, &t2, &t3, &t4, &ta, &tb, &tc];
         pick_str(self.r, &choices)
     }
 }

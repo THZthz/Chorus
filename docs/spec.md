@@ -2048,7 +2048,31 @@ are the only reach files allowed to):
   `path_open` demands every path condition static AND true (anything
   non-static demotes); `writable_paths` unions the aspect/state keys a
   query demands across §4.5 alternation groups; the risky-freeze model
-  bounds freeze distance in first-crossing units.
+  bounds freeze distance in first-crossing units. The count-form world
+  reads (`count(<query>)` vs an integer) evaluate over the fact
+  INTERVALS: a fact whose source repeats UNCONDITIONALLY — a stackable
+  mint behind a bare (when-less, IF-less) list owned by an uncapped
+  recipe or a RECURRING trigger, or an endless reset / defaultcard draw
+  behind such a bare uncapped list — lifts the ceiling off its count
+  (the weight there is a floor, never a ceiling); the bounded sources
+  stay exact — a `max` cap bounds its recipe's applications, a `once`
+  slot trigger fires exactly once, a REPLACE consumes a live replace
+  target per application, and a recipe whose own body destroys or
+  replaces away a card its own selection depends on (a role-form kill
+  naming one of the verb's required roles, or a name-form kill whose
+  target fits a required slot) is bounded at 1 — each application
+  consumes a filler the next application's selection needs. The
+  comparison decides over the interval
+  pair: True when it holds at the floors (growth never un-holds it),
+  False when it holds at no reachable pool (a closed comparison false
+  at the floor of an upward-closed pool stays false), Unknown
+  otherwise; Kleene composition lifts the three values through
+  NOT/AND/OR, every demote-on-false consumer keeps the site unproven
+  (the honest candidate), and the completing-recipe selectability
+  treats an undecided gate as may-select — the window-refuse retry is
+  existential (§6.7), so the window witness pair survives. The
+  invariant: Unknown may only widen toward candidate, never produce
+  proven on its own.
 - **fixpoint** — committability as a NAIVE round-robin re-test (verbs in
   content order, then sites in live order) until nothing changes. The
   schedule is part of the contract: `count(X) <= k` gates make
@@ -2064,7 +2088,10 @@ are the only reach files allowed to):
   bind the home descriptor (max ≥ 1, query fit, min satisfiable around the
   home) under a COMPLETABLE recipe — selectable under first-match (no
   earlier when-less recipe, no earlier static-true `when` always beating
-  it), with no decided REFUSE, no deterministic completion-time error on
+  it; a count-form gate decides False only when it holds at no reachable
+  pool — an undecided interval gate may select, the window-refuse retry
+  being existential), with no decided REFUSE, no deterministic
+  completion-time error on
   the always-applying path (an application ERROR defers from the table to
   the completion and refuses the window; a census-frozen draw cap of 0
   never durably serves), and no unconditional non-stackable mint colliding
@@ -2356,7 +2383,7 @@ full 1,566 × 2,084 world) on worker threads — at most
 whole deterministic world — with a `--worker i k P R` child protocol
 dumping per-name JSON stats.
 
-The fuzz generator (`gen_scenario`, v2) builds one random script per
+The fuzz generator (`gen_scenario`, v4) builds one random script per
 seed over the FULL trigger face — slot, expiry and completion triggers
 (the complete form drawing its home and its optional §6.7 aspect gate) —
 plus §6.7 RUN candidates (a recipe body may RUN only the same verb's
@@ -2368,10 +2395,14 @@ short-circuit and evaluation-order choice carries an inline note) but
 VERSIONED, not frozen: the v2 space added the completion/RUN/aspects
 draws, re-banded the outcome-op table (RUN's 0.10 width funded by SET,
 ROLL and NARRATE; every other op keeps its exact v1 width) and moved the
-trigger-kind roll ahead of the body draws, so scenario streams differ
-across generator versions by design. What stays pinned is purity: the
-generator is a pure function of its seed — the same seed builds the same
-scenario, draw for draw, under ONE version.
+trigger-kind roll ahead of the body draws; v3 added the two
+aspect-scoped world forms (`exists(aspect:a>=m)`, `count(aspect:b>=1) >= v`)
+to the `when` candidate table; and v4 added a closed form
+(`count(aspect:b>=1) < n`) to the same table, making the closed
+comparison face visible to the differential campaign. Scenario streams
+differ across generator versions by design. What stays pinned is purity:
+the generator is a pure function of its seed — the same seed builds the
+same scenario, draw for draw, under ONE version.
 
 ### 13.2 The script lint
 
@@ -2395,7 +2426,17 @@ scenario, draw for draw, under ONE version.
   source — with no writer anywhere (declared `with` clauses, derive
   targets, `SET(…, aspect:x)`; every dotted prefix of a written path counts
   as written, so writing `a.b.c` satisfies reads of `a` and `a.b`, while a
-  read matches exactly — a shallow write never satisfies a deeper read); an
+  read matches exactly — a shallow write never satisfies a deeper read); a
+  `SPAWN <ref>` whose un-kinded ref resolves only to a declared entity —
+  the spawn has no kind to mint (prototype or kind:NAME required) and
+  refuses at play every time, while the load stays clean (mint names
+  resolve at runtime, §4.4) — so the fix is a prototype (or a `_CARD`
+  twin) spawned under the same name; an entity declaring no aspects gets
+  the finding all the same (the refusal is identical), and a kinded ref
+  (`SPAWN kind:NAME`) carries its kind and mints, outside the finding;
+  the walk runs on the compiled outcomes,
+  so a SPAWN inside an IF arm, a trigger body or an expanded op/function
+  call is still seen, deduplicated per owner and name; and an
   entity name outside the name-lexeme class (every ref to it must be
   quoted).
 - **WARNING** — a `when` PROVABLY never-matching: a three-valued,
@@ -2403,7 +2444,24 @@ scenario, draw for draw, under ONE version.
   §6.6 selection binding. Conservative at the boundary — staying Unknown is
   what keeps the warning sound: `exists`/`count(<query>)` world reads,
   `every`, non-integer comparisons and the cross-verb RUN re-evaluation
-  stay Unknown.
+  stay Unknown. And a `when` containing an always-true world-form gate —
+  the inverse face of the no-writer check: an `exists(aspect:k…)` or an
+  open-ended `count(aspect:k…) >= v` whose aspect the player cannot
+  prevent reads true in every relevant world, so the gate can never gate.
+  Two bearer faces: an aspect borne FROM LOAD (a declared `entities:`
+  line) — the count form counts only these, the load-present pool; and a
+  deck `defaultcard` through its prototype's aspects — NOT borne from
+  load, so its finding carries the once-served face (true once the deck
+  serves its default card, naming the card) and adds nothing to the
+  count form's pool; the finding names the aspect and the bearer(s). An
+  authored outcome that kills a bearer (`DESTROY <bearer>` /
+  `REPLACE <bearer> WITH …` reaching its name) stands that bearer out of
+  the finding — an aspect that can leave the world can genuinely gate;
+  a surviving bearer keeps the warning, naming only the survivors. Silent
+  on a name-constrained form (`exists(name:X aspect:k)`), a multi-term or
+  negated query, a closed count comparison (the pool can grow past it), a
+  threshold the load-present pool does not meet, an aspect with no writer
+  (the no-writer error is that finding), and `state.*` reads.
 - **WARNING (the reach bridge)** — `--reach` appends the reach analyzer's
   global-dynamic findings (§13.1's `bridge` module) to the same stream,
   each line `[reach]`-prefixed so the two layers read apart and the

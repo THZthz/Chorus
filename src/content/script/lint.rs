@@ -11,12 +11,17 @@ use super::load::compile_parsed;
 use super::parse::parse_script;
 use super::types::declared_entities;
 use super::when_dead::{when_verdict, WhenCx, WhenRange, WhenVerdict};
-use crate::content::{collect_stackable, mint_recipe_id, RecipeDef, SlotDef};
+use crate::content::{
+    collect_stackable, for_each_authored_outcome, mint_recipe_id, RecipeDef, SlotDef,
+};
 use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
-use crate::core::predicate::parse_predicate;
+use crate::core::predicate::{parse_predicate, Pred, ValExpr};
+use crate::core::query::{CmpOp, Query, QueryTerm};
+use crate::core::r#ref::Ref;
 use crate::core::regex_util::{grp_text, static_regex};
 use crate::core::roles::role_names;
+use crate::core::sentence::{Arg, Outcome};
 use crate::core::text::{is_dsl_ws_char, DSL_WS_CLASS};
 use crate::core::types::Aspects;
 use crate::error::Result;
@@ -72,15 +77,18 @@ fn name_lexeme_re() -> &'static Regex {
 pub enum LintSeverity {
     /// The load-time finding set (dead recipes, shadowed whens,
     /// slot-violating count gates, unknown template tokens, unwritten aspect
-    /// reads, unstackable deck entries, non-lexeme names). Errors are
-    /// counted as findings; the exit code
+    /// reads, unstackable deck entries, entity-form SPAWNs, non-lexeme
+    /// names). Errors are counted as findings; the exit code
     /// discipline is the caller's (the lint-scripts bin's constant-0 stands).
     Error,
     /// A recipe `when` that is PROVABLY false for every §6.6 selection
-    /// binding (see [`when_verdict`]). Advisory by design: a dead `when` is
-    /// sometimes the point (a deliberately parked clause documents a branch
-    /// the world can no longer reach), so this class warns with
-    /// the recipe id + reason and never fails anything by itself.
+    /// binding (see [`when_verdict`]), or PROVABLY always-true at a
+    /// world-form gate whose aspect is borne from load or rides a deck
+    /// defaultcard (the W1 check).
+    /// Advisory by design: a dead `when` is sometimes the point (a
+    /// deliberately parked clause documents a branch the world can no
+    /// longer reach), so this class warns with the recipe id + reason and
+    /// never fails anything by itself.
     Warning,
 }
 
@@ -103,13 +111,17 @@ impl LintFinding {
 /// probably not what the author meant. `compile_script` still owns errors;
 /// this never throws for a script that compiles, and returns one
 /// human-readable finding per problem, SEVERITY-CLASSIFIED (E11's two-class
-/// design): [`LintSeverity::Error`] is today's finding set (dead recipes,
-/// shadowed whens, slot-violating count gates, unknown tokens, unwritten
-/// aspect reads, …); [`LintSeverity::Warning`] is the never-matching-`when`
+/// design): [`LintSeverity::Error`] is the pre-E11 finding set plus the
+/// entity-form-SPAWN check (dead recipes, shadowed whens, slot-violating
+/// count gates, unknown tokens, unwritten aspect reads, …);
+/// [`LintSeverity::Warning`] is the never-matching-`when`
 /// detector (a recipe whose `when` is provably false for every §6.6
 /// selection binding — advisory, because a dead `when` is sometimes the
 /// point: the converter emits deliberate dead-marker twins under exactly
-/// such negation whens).
+/// such negation whens) and the always-true world-form gate check (an
+/// `exists(aspect:k…)`/`count(aspect:k…) >= v` whose aspect the player
+/// cannot prevent — borne from load, or riding a deck defaultcard after
+/// its first serve — so the gate can never gate).
 pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFinding>> {
     let script = parse_script(text, dict)?;
     // lints run on scripts that already compile — and the compile hands back
@@ -463,6 +475,284 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                 "aspect '{r}' is queried but never declared on any entity or prototype — check the spelling"
             )));
         }
+    }
+
+    // W1: the always-true world-form gate (the WARNING class) — the inverse
+    // face of the no-writer check above. An `exists(aspect:k…)` or an
+    // open-ended `count(aspect:k…) >= v` gate whose aspect rides cards the
+    // player cannot prevent reads true in every relevant world, so the gate
+    // can never gate. Two bearer faces: an aspect borne FROM LOAD — a
+    // declared `entities:` line — reads true in every load-present world;
+    // a deck `defaultcard` (whose aspects ride its prototype) reads true
+    // once the deck's first serve lands, so its finding carries that face
+    // (before the serve the gate genuinely gates — and the count form never
+    // counts a defaultcard: the load-present pool does not include it).
+    // Silent on a name-constrained form (`exists(name:X aspect:k)` — the
+    // name half can genuinely gate), on a multi-term or negated query, on a
+    // closed count comparison (the pool can grow past it), on an aspect
+    // with no writer (the no-writer error above is that finding), and on
+    // `state.*` reads (an attrs write can flip them at play time). The
+    // claim must also SURVIVE PLAY: an authored outcome that kills a
+    // bearer (`DESTROY <bearer>` / `REPLACE <bearer> WITH …`) stands the
+    // bearer out of the finding — an aspect that can leave the world can
+    // genuinely gate.
+    let load_bearers: Vec<(&str, &Aspects)> =
+        script.entities.iter().map(|e| (e.name.as_str(), &e.aspects)).collect();
+    let deck_bearers: Vec<(&str, &str, &Aspects)> = compiled
+        .content
+        .decks
+        .values()
+        .filter_map(|d| {
+            let dc = d.defaultcard.as_ref()?;
+            let aspects = compiled.content.prototypes.get(&dc.name)?.aspects.as_ref()?;
+            Some((dc.name.as_str(), d.id.as_str(), aspects))
+        })
+        .collect();
+    // the killed-name census: every name a DESTROY/REPLACE first arg
+    // reaches, walked on the compiled outcomes — the same walk E1 uses
+    let mut killed: IndexSet<String> = IndexSet::new();
+    let scan_kills = |killed: &mut IndexSet<String>, outs: &[Outcome]| {
+        let _ = for_each_authored_outcome(outs, &mut |o| {
+            if o.op != "DESTROY" && o.op != "REPLACE" {
+                return Ok(());
+            }
+            if let Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) = o.args.first() {
+                killed.insert(name.clone());
+            }
+            Ok(())
+        });
+    };
+    for (_, v) in &compiled.content.verbs {
+        for r in &v.recipes {
+            scan_kills(&mut killed, &r.out);
+        }
+    }
+    for t in &compiled.content.triggers {
+        scan_kills(&mut killed, t.out());
+    }
+    // the one positive `aspect:k` term of a world form's query — None for
+    // any multi-group, multi-term, negated, or name/kind/state-bearing form
+    fn single_aspect_term(query: &Query) -> Option<(&str, Option<CmpOp>, i64)> {
+        let [group] = query.as_slice() else { return None };
+        let [term] = group.as_slice() else { return None };
+        match term {
+            QueryTerm::Aspect { neg: false, path, op, level } => Some((path.as_str(), *op, *level)),
+            _ => None,
+        }
+    }
+    fn aspect_term_text(path: &str, op: Option<CmpOp>, level: i64) -> String {
+        match op {
+            Some(op) => format!("aspect:{path}{}{level}", op.as_str()),
+            None => format!("aspect:{path}"),
+        }
+    }
+    /// The Q13 read of one bearer's aspect map by dotted path — the same
+    /// two shapes `aspect_get` walks on an Entity (a scalar leaf, or a
+    /// one-level sub-map's leaf), scoped to the map alone.
+    fn bearer_aspect(a: &Aspects, path: &str) -> Option<i64> {
+        match path.find('.') {
+            None => a.get(path).and_then(|v| match v {
+                crate::core::types::AspectVal::Num(n) => Some(*n),
+                crate::core::types::AspectVal::Sub(_) => None,
+            }),
+            Some(dot) => match a.get(&path[..dot]) {
+                // a sub-map's leaves are all numbers (Q13)
+                Some(crate::core::types::AspectVal::Sub(m)) => m.get(&path[dot + 1..]).copied(),
+                _ => None,
+            },
+        }
+    }
+    /// The comparison flipped operand-order (`3 <= count(q)` ≡
+    /// `count(q) >= 3`) — the count form normalizes the int literal to the
+    /// right before its op checks.
+    fn mirror_cmp_op(op: CmpOp) -> CmpOp {
+        match op {
+            CmpOp::Ge => CmpOp::Le,
+            CmpOp::Le => CmpOp::Ge,
+            CmpOp::Gt => CmpOp::Lt,
+            CmpOp::Lt => CmpOp::Gt,
+            CmpOp::Eq => CmpOp::Eq,
+            CmpOp::Ne => CmpOp::Ne,
+        }
+    }
+    /// The W1 walk's shared context, threaded as one borrow: the two
+    /// bearer tables, the killed-name census and the written-path set.
+    struct W1Cx<'a> {
+        load_bearers: &'a [(&'a str, &'a Aspects)],
+        deck_bearers: &'a [(&'a str, &'a str, &'a Aspects)],
+        killed: &'a IndexSet<String>,
+        writes: &'a IndexSet<String>,
+    }
+    fn w1_walk(cx: &W1Cx<'_>, p: &Pred, id: &str, verb: &str, out: &mut IndexSet<String>) {
+        let W1Cx { load_bearers, deck_bearers, killed, writes } = *cx;
+        match p {
+            Pred::And(a, b) | Pred::Or(a, b) => {
+                w1_walk(cx, a, id, verb, out);
+                w1_walk(cx, b, id, verb, out);
+            }
+            // a NOT-wrapped world form flips the when's truth — the
+            // never-matching detector's territory, never the always-true one
+            Pred::Not(_) => {}
+            Pred::ExistsQuery { query } => {
+                let Some((path, op, level)) = single_aspect_term(query) else {
+                    return;
+                };
+                if !writes.contains(path) {
+                    return;
+                }
+                let meets = |(name, a): &(&str, &Aspects)| {
+                    !killed.contains(*name)
+                        && bearer_aspect(a, path).is_some_and(|v| match op {
+                            None => v >= level,
+                            Some(op) => op.num_cmp(v, level),
+                        })
+                };
+                let bearing: Vec<&str> =
+                    load_bearers.iter().copied().filter(meets).map(|(n, _)| n).collect();
+                if !bearing.is_empty() {
+                    out.insert(format!(
+                        "recipe {id} ({verb}): exists({}) is always true — aspect '{path}' is borne from load by {}, so the gate can never gate (§6.3)",
+                        aspect_term_text(path, op, level),
+                        bearing.join(", "),
+                    ));
+                    return;
+                }
+                // the defaultcard face: the aspect rides the served default
+                // card, so the gate reads false only before the deck's
+                // first serve — the finding names that face, not from-load
+                let served: Vec<String> = deck_bearers
+                    .iter()
+                    .filter(|(n, _, a)| {
+                        !killed.contains(*n)
+                            && bearer_aspect(a, path).is_some_and(|v| match op {
+                                None => v >= level,
+                                Some(op) => op.num_cmp(v, level),
+                            })
+                    })
+                    .map(|(n, _, _)| n.to_string())
+                    .collect();
+                if !served.is_empty() {
+                    out.insert(format!(
+                        "recipe {id} ({verb}): exists({}) is always true once the deck serves its default card {} — aspect '{path}' rides the default card, so the gate can never gate after the deck's first serve (§6.3)",
+                        aspect_term_text(path, op, level),
+                        served.join(", "),
+                    ));
+                }
+            }
+            Pred::Cmp { l, r, op } => {
+                // the count form, operands normalized (the int literal to the
+                // right): only the open-ended comparison warns — the
+                // load-present count is a floor, and a floor already over the
+                // threshold never gates. The count reads LOAD bearers only:
+                // a defaultcard is not on the table before its deck's first
+                // serve, and a killed bearer cannot hold the floor
+                let (query, op, k) = match (l, r) {
+                    (ValExpr::CountQuery { query }, ValExpr::Int { v }) => (query, *op, *v),
+                    (ValExpr::Int { v }, ValExpr::CountQuery { query }) => {
+                        (query, mirror_cmp_op(*op), *v)
+                    }
+                    _ => return,
+                };
+                let Some((path, aop, level)) = single_aspect_term(query) else {
+                    return;
+                };
+                if !writes.contains(path) || !matches!(op, CmpOp::Ge | CmpOp::Gt) {
+                    return;
+                }
+                let n = load_bearers
+                    .iter()
+                    .filter(|(name, a)| {
+                        !killed.contains(*name)
+                            && bearer_aspect(a, path).is_some_and(|v| match aop {
+                                None => v >= level,
+                                Some(op) => op.num_cmp(v, level),
+                            })
+                    })
+                    .count() as i64;
+                if !op.num_cmp(n, k) {
+                    return;
+                }
+                out.insert(format!(
+                    "recipe {id} ({verb}): count({}) {} {k} is always true — aspect '{path}' is borne from load by {n} card(s) from load, so the gate can never gate (§6.3)",
+                    aspect_term_text(path, aop, level),
+                    op.as_str(),
+                ));
+            }
+            _ => {}
+        }
+    }
+    for (name, verb) in verbs {
+        for (i, r) in verb.recipes.iter().enumerate() {
+            let Some(when) = &r.when else { continue };
+            // every when parsed at compile — a failure is skipped, never a
+            // panic (the lint never throws)
+            let Ok(pred) = parse_predicate(when, eff) else { continue };
+            let id = r.id.clone().unwrap_or_else(|| recipe_id(name, r, i));
+            let mut msgs: IndexSet<String> = IndexSet::new();
+            let cx = W1Cx {
+                load_bearers: &load_bearers,
+                deck_bearers: &deck_bearers,
+                killed: &killed,
+                writes: &writes,
+            };
+            w1_walk(&cx, &pred, &id, name, &mut msgs);
+            for m in msgs {
+                findings.push(LintFinding { severity: LintSeverity::Warning, message: m });
+            }
+        }
+    }
+
+    // E1: SPAWN of a non-prototype — an un-kinded ref resolving ONLY to a
+    // declared entity has no kind to mint: `apply_spawn` refuses the step
+    // every time ("SPAWN <name>: no kind (prototype or kind:NAME
+    // required)" — pinned by the ops suite), and the load is clean either
+    // way (mint names resolve at runtime, §4.4). The fix is a prototype
+    // (or a `_CARD` twin) under the same name; an entity declaring no
+    // aspects gets the finding all the same — the refusal is identical, so
+    // there is no bare-mint idiom to protect. A kinded ref
+    // (`SPAWN kind:NAME`) carries its kind and mints — outside this
+    // finding. The compile artifacts resolve the refs: a name in
+    // `prototypes` spawns cleanly (an entity and a prototype cannot share
+    // a name — the `_CARD` twin pattern), and a name in NEITHER table also
+    // loads clean but names no declared entity, so it is outside this
+    // finding's scope. The walk runs on the COMPILED content — op and
+    // function bodies expand into the recipe/trigger outcomes at compile
+    // (§10), so a SPAWN inside a call site is still seen.
+    let mut spawn_seen: IndexSet<String> = IndexSet::new();
+    let mut scan_spawns = |findings: &mut Vec<LintFinding>, owner: &str, outs: &[Outcome]| {
+        let _ = for_each_authored_outcome(outs, &mut |o| {
+            if o.op != "SPAWN" {
+                return Ok(());
+            }
+            let Some(Arg::Ref { r#ref: Ref::Name { name, kind, .. } }) = o.args.first() else {
+                return Ok(());
+            };
+            // a kinded ref carries its kind — the spawn mints (aspectless,
+            // but nothing refuses)
+            if kind.is_some() {
+                return Ok(());
+            }
+            if compiled.content.prototypes.contains_key(name) {
+                return Ok(());
+            }
+            if !script.entities.iter().any(|e| &e.name == name) {
+                return Ok(()); // neither table — names no declared entity
+            }
+            if spawn_seen.insert(format!("{owner}\u{0}{name}")) {
+                findings.push(LintFinding::error(format!(
+                    "{owner}: SPAWN {name} names a declared entity, not a prototype — the spawn has no kind to mint (prototype or kind:NAME required) and refuses at play every time; declare a prototype (or a `_CARD` twin) and spawn that (§4.2)"
+                )));
+            }
+            Ok(())
+        });
+    };
+    for (vname, v) in &compiled.content.verbs {
+        for r in &v.recipes {
+            scan_spawns(&mut findings, &format!("recipe {} ({vname})", r.id), &r.out);
+        }
+    }
+    for t in &compiled.content.triggers {
+        scan_spawns(&mut findings, &format!("trigger {}", t.id()), t.out());
     }
 
     // non-lexeme names are legal (§4.4's unsafe-name corner) but every ref

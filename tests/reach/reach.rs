@@ -1,4 +1,4 @@
-//! Static card-reachability (34 tests).
+//! Static card-reachability (40 tests).
 //! Both semantics — (a) existence and (b) usability — over hand-built
 //! ContentRaw fixtures. The conservative direction is the contract:
 //! 'unobtainable' only on structural absence; anything guarded demotes to
@@ -1224,4 +1224,196 @@ verbs:
         "the op body's SPAWN is a root: {:?}",
         rep.chain
     );
+}
+
+// ---------- aspect-scoped world forms --------------------------------------
+//
+// `exists(aspect:k>=m)` and `count(aspect:k>=m) >= v` are world-static and
+// evaluate EXACTLY over the enumerated world (initial entities + proven
+// mints' descriptors); an unbounded pool (an unconditional stackable source)
+// keeps the count form UNKNOWN — never assumed-false.
+
+/// A prototype with aspects.
+fn proto_with(kind: &str, aspects: &[(&str, i64)]) -> PrototypeDef {
+    let mut a: IndexMap<String, AspectVal> = IndexMap::new();
+    for (k, v) in aspects {
+        a.insert((*k).to_string(), AspectVal::Num(*v));
+    }
+    PrototypeDef { kind: kind.to_string(), aspects: Some(a), ..PrototypeDef::default() }
+}
+
+#[test]
+fn an_aspect_scoped_exists_gate_evaluates_over_the_enumerated_world() {
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), proto_with("resource", &[("funds", 1)])),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe_when("exists(aspect:funds>=1)", &["SPAWN PILLAR"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN PURSE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    // the initial bearer (funds 3) satisfies the gate from load
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana(), ent("POT", "resource", &[("funds", 3)])]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert!(
+        rep.paths[0].guards.contains(&"exists(aspect:funds>=1)".to_string()),
+        "{:?}",
+        rep.paths
+    );
+}
+
+#[test]
+fn an_aspect_scoped_gate_converges_over_a_minted_bearer() {
+    // the only funds bearer is MINT's product: the fixpoint proves MINT,
+    // the purse enters the world, and the re-tested gate reads true
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), proto_with("resource", &[("funds", 1)])),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe_when("exists(aspect:funds>=1)", &["SPAWN PILLAR"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN PURSE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let rep =
+        analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert!(
+        rep.paths[0].guards.contains(&"exists(aspect:funds>=1)".to_string()),
+        "{:?}",
+        rep.paths
+    );
+}
+
+#[test]
+fn a_count_form_world_gate_sums_the_enumerated_pool() {
+    // initial POT (3) + minted PURSE (1) — the gate needs two matching cards
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), proto_with("resource", &[("funds", 1)])),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe_when("count(aspect:funds>=1) >= 2", &["SPAWN PILLAR"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN PURSE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    // without the mint only POT matches — the gate stays closed and the
+    // honest verdict is the candidate tier, never a false unobtainable
+    let short = analyze_card(
+        &content,
+        &state_with(vec![ana(), ent("ANA2", "character", &[])]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(short.verdict, CardVerdict::Unproven);
+    assert_eq!(short.existence, Existence::Candidate);
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana(), ent("POT", "resource", &[("funds", 3)])]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+}
+
+#[test]
+fn an_unbounded_pool_keeps_a_count_gate_unknown_never_assumed_false() {
+    // PURSE mints unconditionally (no when, no IF conditions, no max) and
+    // stacks — the world count is a floor, never a ceiling, so the >= 40
+    // gate reads UNKNOWN: the site demotes to the candidate tier (the
+    // conservative direction) and the gate is never ASSUMED false
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), {
+                let mut p = proto_with("resource", &[("funds", 1)]);
+                p.stackable = true;
+                p
+            }),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe_when("count(aspect:funds>=1) >= 40", &["SPAWN PILLAR"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN PURSE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let rep =
+        analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
 }

@@ -18,7 +18,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::content::{CompiledContent, CompiledTrigger, PrototypeDef};
 use crate::core::dict::Dictionary;
 use crate::core::predicate::{Pred, ValExpr};
-use crate::core::query::{match_query, Query, QueryTerm};
+use crate::core::query::{match_query, CmpOp, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
 use crate::error::{ChorusError, Result};
 
@@ -73,54 +73,180 @@ pub(crate) struct CardWorld {
     pub distinct: Vec<DistEntry>,
 }
 
-/// One distinct fact: the entity descriptor `e` and its
-/// capped weight `w`.
+/// One distinct fact: the entity descriptor `e`, its
+/// capped weight `w`, and whether the fact's source repeats unconditionally
+/// (`CardFact::unbounded` — the weight is then a floor, not a ceiling).
 #[derive(Debug, Clone)]
 pub(crate) struct DistEntry {
     pub e: Entity,
     pub w: i64,
+    pub unbounded: bool,
 }
 
-/// Evaluate a static value expression against the available world.
-fn eval_expr_static(v: &ValExpr, world: &CardWorld) -> Result<i64> {
+/// Evaluate a static value expression against the available world, as an
+/// interval: `(lo, hi)` with `hi: None` = unbounded above. The lo face is
+/// exactly the plain capped-weight sum over matching facts); `hi` lifts off only when an UNBOUNDED fact matches the query —
+/// its source repeats unconditionally, so the world count is a floor, never
+/// a ceiling. Bounded operands carry `hi = Some(lo)`.
+fn eval_expr_interval(v: &ValExpr, world: &CardWorld) -> Result<(i64, Option<i64>)> {
     match v {
-        ValExpr::Int { v } => Ok(*v),
+        ValExpr::Int { v } => Ok((*v, Some(*v))),
         ValExpr::CountQuery { query } => {
-            Ok(world.distinct.iter().filter(|d| match_query(&d.e, query)).map(|d| d.w).sum())
+            let mut sum: i64 = 0;
+            let mut unbounded = false;
+            for d in &world.distinct {
+                if match_query(&d.e, query) {
+                    sum += d.w;
+                    unbounded |= d.unbounded;
+                }
+            }
+            Ok((sum, if unbounded { None } else { Some(sum) }))
         }
         // preserved as Err (catchable upstream)
-        _ => Err(ChorusError::new("internal: eval_expr_static over a non-static operand")),
+        _ => Err(ChorusError::new("internal: eval_expr_interval over a non-static operand")),
     }
 }
 
-/// Evaluate a static predicate against the available world.
-pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
+/// The three-valued static-truth verdict: `True`/`False` are exact over the
+/// card world; `Unknown` is the honest third value for a count-form
+/// comparison whose matching pool is UNBOUNDED and whose verdict the
+/// interval pair cannot decide — the world sum there is a floor, never a
+/// ceiling, so the comparison decides only when every reachable pool pair
+/// agrees (the Cmp arm's corner rule). Kleene composition lifts the
+/// three-valued count arms through NOT/AND/OR unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StaticTruth {
+    True,
+    False,
+    Unknown,
+}
+
+impl StaticTruth {
+    /// Kleene negation — NOT is exact over the two exact values and keeps
+    /// an Unknown Unknown.
+    fn not(self) -> Self {
+        match self {
+            StaticTruth::True => StaticTruth::False,
+            StaticTruth::False => StaticTruth::True,
+            StaticTruth::Unknown => StaticTruth::Unknown,
+        }
+    }
+
+    /// Kleene conjunction — False decides, True requires both.
+    fn and(self, b: Self) -> Self {
+        match (self, b) {
+            (StaticTruth::False, _) | (_, StaticTruth::False) => StaticTruth::False,
+            (StaticTruth::True, StaticTruth::True) => StaticTruth::True,
+            _ => StaticTruth::Unknown,
+        }
+    }
+
+    /// Kleene disjunction — True decides, False requires both.
+    fn or(self, b: Self) -> Self {
+        match (self, b) {
+            (StaticTruth::True, _) | (_, StaticTruth::True) => StaticTruth::True,
+            (StaticTruth::False, StaticTruth::False) => StaticTruth::False,
+            _ => StaticTruth::Unknown,
+        }
+    }
+}
+
+/// Evaluate a static predicate as a [`StaticTruth`]. The `Exists` /
+/// `ExistsQuery` arms and every bounded count-form comparison are exact
+/// two-valued (a plain bool comparison); Kleene composition lifts the
+/// three-valued count arms through NOT/AND/OR unchanged.
+pub(crate) fn eval_static_truth(p: &Pred, world: &CardWorld) -> Result<StaticTruth> {
     match p {
         Pred::And(a, b) => {
-            if !eval_static(a, world)? {
-                Ok(false)
-            } else {
-                eval_static(b, world)
+            let va = eval_static_truth(a, world)?;
+            if va == StaticTruth::False {
+                return Ok(StaticTruth::False);
             }
+            Ok(va.and(eval_static_truth(b, world)?))
         }
         Pred::Or(a, b) => {
-            if eval_static(a, world)? {
-                Ok(true)
-            } else {
-                eval_static(b, world)
+            let va = eval_static_truth(a, world)?;
+            if va == StaticTruth::True {
+                return Ok(StaticTruth::True);
             }
+            Ok(va.or(eval_static_truth(b, world)?))
         }
-        Pred::Not(a) => Ok(!eval_static(a, world)?),
+        Pred::Not(a) => Ok(eval_static_truth(a, world)?.not()),
         Pred::Cmp { l, op, r } => {
-            let l = eval_expr_static(l, world)?;
-            let r = eval_expr_static(r, world)?;
-            Ok(op.num_cmp(l, r))
+            // the count-form leaf, decided over the OPERAND INTERVALS: an
+            // unbounded matching pool opens its side's ceiling (the world
+            // sum there is a floor, never a ceiling). The verdict is the
+            // interval decision — True when the comparison holds at the
+            // WORST corner pair (the floors, so growth never un-holds it),
+            // False when it holds at NO pair (even the ceiling corners
+            // fail — a pool can only grow, so a comparison false at the
+            // floor of an upward-closed pool stays false), Unknown
+            // otherwise. The invariant over open pools: Unknown may only
+            // widen toward "candidate", never produce "proven" on its own.
+            // Bounded operands are single-point intervals, where this is
+            // exactly the capped-weight comparison.
+            let (lv, lhi) = eval_expr_interval(l, world)?;
+            let (rv, rhi) = eval_expr_interval(r, world)?;
+            // the open faces: an open ceiling is the floor's infinity
+            // stand-in (world counts never reach i64::MAX, so every
+            // comparison direction survives the substitution)
+            let l_lo = lv;
+            let l_hi = lhi.unwrap_or(INFINITY);
+            let r_lo = rv;
+            let r_hi = rhi.unwrap_or(INFINITY);
+            // the monotone ops decide on the corner pairs; the point ops
+            // (= and !=) are not monotone — they decide only on the
+            // interval SHAPES (equality needs two exact points; interval
+            // disjointness is the everywhere-face of both)
+            let exact_pair = l_lo == l_hi && r_lo == r_hi;
+            let disjoint = l_hi < r_lo || r_hi < l_lo;
+            let everywhere = match op {
+                CmpOp::Ge => l_lo >= r_hi,
+                CmpOp::Gt => l_lo > r_hi,
+                CmpOp::Le => l_hi <= r_lo,
+                CmpOp::Lt => l_hi < r_lo,
+                CmpOp::Eq => exact_pair && l_lo == r_lo,
+                CmpOp::Ne => disjoint,
+            };
+            let nowhere = match op {
+                CmpOp::Ge => l_hi < r_lo,
+                CmpOp::Gt => l_hi <= r_lo,
+                CmpOp::Le => l_lo > r_hi,
+                CmpOp::Lt => l_lo >= r_hi,
+                CmpOp::Eq => disjoint,
+                CmpOp::Ne => exact_pair && l_lo == r_lo,
+            };
+            Ok(if everywhere {
+                StaticTruth::True
+            } else if nowhere {
+                StaticTruth::False
+            } else {
+                StaticTruth::Unknown
+            })
         }
-        Pred::Exists { name } => Ok(world.by_name.contains_key(name)),
-        Pred::ExistsQuery { query } => Ok(world.distinct.iter().any(|d| match_query(&d.e, query))),
+        Pred::Exists { name } => Ok(if world.by_name.contains_key(name) {
+            StaticTruth::True
+        } else {
+            StaticTruth::False
+        }),
+        Pred::ExistsQuery { query } => {
+            Ok(if world.distinct.iter().any(|d| match_query(&d.e, query)) {
+                StaticTruth::True
+            } else {
+                StaticTruth::False
+            })
+        }
         // preserved as Err (catchable upstream)
-        _ => Err(ChorusError::new("internal: eval_static over a non-static predicate")),
+        _ => Err(ChorusError::new("internal: eval_static_truth over a non-static predicate")),
     }
+}
+
+/// Evaluate a static predicate against the available world. The bool face
+/// of [`eval_static_truth`]: Unknown reads false — every caller demotes on
+/// false, so Unknown keeps the site unproven (the honest candidate), never
+/// flips a verdict upward.
+pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
+    Ok(eval_static_truth(p, world)? == StaticTruth::True)
 }
 
 /// The path-open walk, reporting its evidence: the FIRST path
@@ -207,6 +333,16 @@ pub(crate) struct CardFact {
     pub entity: Entity,
     pub count: i64,
     pub how: String,
+    /// The source repeats UNCONDITIONALLY — a stackable mint behind a bare
+    /// (no `when`, no IF conditions) list owned by an uncapped recipe or a
+    /// recurring trigger, or an endless reset/defaultcard draw behind such
+    /// a bare uncapped list — so `count` is a floor, not a ceiling: any
+    /// number of copies is arrangeable. The bounded sources stay exact: a
+    /// `max` cap, a once trigger's single firing and a REPLACE's consumed
+    /// target all bound their count. Only the count-form world gates read
+    /// this (the [`CardWorld`] weight stays the capped flatten; an
+    /// unbounded matching fact lifts the count interval's ceiling off).
+    pub unbounded: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -373,7 +509,7 @@ impl<'c> WorldFacts<'c> {
                     f.entity.name.clone(),
                     by_name.get(&f.entity.name).copied().unwrap_or(0) + w,
                 );
-                distinct.push(DistEntry { e: f.entity.clone(), w });
+                distinct.push(DistEntry { e: f.entity.clone(), w, unbounded: f.unbounded });
             }
         }
         CardWorld { ver: self.avail_ver, by_name, distinct }
@@ -536,6 +672,7 @@ pub(crate) fn compute_world_facts<'c>(
                     entity: (*e).clone(),
                     count: init_count.get(name).copied().unwrap_or(1),
                     how: format!("initial entity {name} ({})", e.kind),
+                    unbounded: false,
                 },
             )
         })

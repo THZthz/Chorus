@@ -14,7 +14,7 @@
 use indexmap::{IndexMap, IndexSet};
 
 use crate::content::walk_outcomes;
-use crate::content::{CompiledSlot, CompiledTrigger};
+use crate::content::{CompiledRecipe, CompiledSlot, CompiledTrigger, CompiledVerb};
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, QueryTerm};
 use crate::core::r#ref::Ref;
@@ -28,8 +28,8 @@ use super::census::{
 };
 use super::render::pred_text;
 use super::world::{
-    eval_static_ok, path_open_first_failure, pred_static, CardFact, CardWorld, SlotFiller,
-    SlotProof, WorldFacts, INFINITY,
+    eval_static_ok, eval_static_truth, path_open_first_failure, pred_static, CardFact, CardWorld,
+    SlotFiller, SlotProof, StaticTruth, WorldFacts, INFINITY,
 };
 
 // ---------------------------------------------------------------------------
@@ -172,6 +172,104 @@ impl<'c> WorldFacts<'c> {
         Some(proofs)
     }
 
+    /// Whether the site's list is BARE — no recipe `when`, no IF
+    /// conditions — so every application of the list applies the mint and
+    /// nothing authored INSIDE the list can hold the repeats back. This is
+    /// the necessary half of the unbounded face, never a sufficiency
+    /// claim: the source can still be bounded from outside the list's
+    /// shape (a `max` cap, a once trigger, a REPLACE's consumed target —
+    /// [`Self::source_repeat_bound`]), and a non-bare list is treated
+    /// bounded even when its gate would let it repeat — the under-claim
+    /// only ever demotes.
+    fn bare_list(site: &RawSite<'_>) -> bool {
+        site.when.is_none() && site.path.is_empty()
+    }
+
+    /// The source's repeat bound, as a fact count: [`MANY`] only when the
+    /// source repeats without bound. The bounded faces, in arm order: a
+    /// REPLACE consumes a live replace target per application, so the
+    /// replacing site alone never claims a growing pool (a genuinely
+    /// unbounded upstream source arms its own SPAWN/trigger site); a
+    /// recipe-owned site is bounded by its recipe's `max` execution cap; a
+    /// recipe whose own body destroys or replaces away a card its own
+    /// selection depends on is bounded at 1 — each application consumes a
+    /// filler the next application's selection needs, so the applications
+    /// run out ([`Self::consumes_own_filler`]; the bound under-claims on
+    /// purpose — a smaller count only ever demotes toward the honest
+    /// candidate); a trigger-owned site by its trigger's once-ness (a
+    /// `once` slot trigger fires exactly once — the same cap `draw_cap`
+    /// polices for draws, honored here at the source level so the draw
+    /// arms consult the same bound the SPAWN arm does).
+    fn source_repeat_bound(&self, site: &RawSite<'_>) -> i64 {
+        if site.kind == SiteKind::Replace {
+            return 1;
+        }
+        if let Some(vi) = site.verb {
+            let Some((_, v)) = self.content.verbs.get_index(vi) else {
+                unreachable!("verb index {vi} came from content.verbs enumeration");
+            };
+            return match site.recipe.and_then(|ri| v.recipes.get(ri)) {
+                Some(r) if r.max.is_some() || self.consumes_own_filler(v, r) => r.max.unwrap_or(1),
+                _ => MANY,
+            };
+        }
+        match self.trig_idx.get(&site.owner) {
+            Some((CompiledTrigger::Slot { once: true, .. }, _)) => 1,
+            _ => MANY,
+        }
+    }
+
+    /// Whether the recipe's own body destroys or replaces away a card the
+    /// recipe's own selection depends on: a role-form `DESTROY actors` /
+    /// `REPLACE actors WITH …` naming one of the owning verb's required
+    /// roles (min ≥ 1), or a name-form kill whose target is a living card
+    /// fitting a required slot's query. Nested IF arms count too — a kill
+    /// that fires only on some applications still caps the repeats (the
+    /// rule is conservative on purpose: under-claiming the repeats only
+    /// ever demotes toward the honest candidate).
+    fn consumes_own_filler(&self, v: &CompiledVerb, r: &CompiledRecipe) -> bool {
+        let mut kills = false;
+        let _ = walk_outcomes(
+            &r.out,
+            &(),
+            &mut (),
+            &mut |_st, o, _path| {
+                if o.op != "DESTROY" && o.op != "REPLACE" {
+                    return Ok(());
+                }
+                match o.args.first() {
+                    // a role kill: the selection binds that role, so every
+                    // application consumes one of its fillers
+                    Some(Arg::Role { role }) => {
+                        kills =
+                            kills || v.slot_by_role.get(role.as_str()).is_some_and(|s| s.min > 0);
+                    }
+                    // a name kill: the target is a living card a required
+                    // slot accepts
+                    Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => {
+                        let desc = self.init_names.get(name).map(|e| (*e).clone()).or_else(|| {
+                            self.avail
+                                .get(name)
+                                .and_then(|facts| facts.first())
+                                .map(|f| f.entity.clone())
+                        });
+                        kills = kills
+                            || desc.is_some_and(|d| {
+                                v.slot_by_role.values().any(|s| {
+                                    s.min > 0 && s.query.as_ref().is_none_or(|q| match_query(&d, q))
+                                })
+                            });
+                    }
+                    _ => {}
+                }
+                Ok(())
+            },
+            &mut |_st, _arm, _path| (),
+            &mut |_st, _path| (),
+        );
+        kills
+    }
+
     /// Proven provenance: which PROVEN sites mint each
     /// name (bare names only — derive-mints behind object-mandatory verbs
     /// carry `<PROTO>_<OBJECT>` names).
@@ -227,8 +325,13 @@ impl<'c> WorldFacts<'c> {
                     unreachable!("counts keys come from deck.order");
                 };
                 let proto = content.prototypes.get(name);
-                let infinite =
+                // the deck's endless face — a reset deck re-serves its order
+                // and a defaultcard serves forever — only repeats while the
+                // SOURCE does: a `max`-capped recipe and a once trigger draw
+                // a bounded number of times, whatever the deck's shape
+                let endless =
                     deck.reset || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == *name);
+                let repeats = endless && self.source_repeat_bound(&site) == MANY;
                 // a derive-card drawn behind an
                 // object-mandatory verb mints under the DERIVED name (90936)
                 let blind = draw_blinds_bare(content, &site, name);
@@ -237,7 +340,7 @@ impl<'c> WorldFacts<'c> {
                 let how = format!(
                     "{name} ← deck {} order[{pos}]{}",
                     deck.id,
-                    if infinite {
+                    if repeats {
                         if deck.reset {
                             " (reset — periodic)"
                         } else {
@@ -249,17 +352,31 @@ impl<'c> WorldFacts<'c> {
                 );
                 self.push(
                     key.to_string(),
-                    CardFact { entity, count: if infinite { MANY } else { *n }, how },
+                    CardFact {
+                        entity,
+                        count: if repeats { MANY } else { *n },
+                        how,
+                        unbounded: repeats && Self::bare_list(&site),
+                    },
                 );
             }
             if let Some(dc) = &deck.defaultcard {
                 if site.cap > deck.order.len() as i64 && !counts.contains_key(&dc.name) {
+                    let repeats = self.source_repeat_bound(&site) == MANY;
                     let proto = content.prototypes.get(&dc.name);
                     let blind = draw_blinds_bare(content, &site, &dc.name);
                     let key = if blind { DERIVED_NAME } else { dc.name.as_str() };
                     let entity = self.synth(key, &dc.kind, proto, None);
                     let how = format!("{} ← deck {} defaultcard", dc.name, deck.id);
-                    self.push(key.to_string(), CardFact { entity, count: MANY, how });
+                    self.push(
+                        key.to_string(),
+                        CardFact {
+                            entity,
+                            count: if repeats { MANY } else { 1 },
+                            how,
+                            unbounded: repeats && Self::bare_list(&site),
+                        },
+                    );
                 }
             }
             return;
@@ -276,8 +393,13 @@ impl<'c> WorldFacts<'c> {
         let key = if blind { DERIVED_NAME } else { site.name.as_str() };
         // KIND-level stackable declarations stack the
         // mint exactly like name-level ones (§4.2, seed 81401)
-        let count =
-            if mint_stacks(content, &site.name, site.kind_override.as_deref()) { MANY } else { 1 };
+        let stacks = mint_stacks(content, &site.name, site.kind_override.as_deref());
+        // the honest repeat count: a stackable mint from an UNBOUNDED
+        // source is MANY; a `max`-capped recipe and a once trigger mint
+        // exactly their bound; a REPLACE consumes its live target (bound 1
+        // — [`Self::source_repeat_bound`])
+        let bound = self.source_repeat_bound(&site);
+        let count = if stacks { bound } else { 1 };
         let entity = self.synth(key, &kind, proto, None);
         let how = format!(
             "{} {} by {}{}",
@@ -289,7 +411,12 @@ impl<'c> WorldFacts<'c> {
                 .map(|ko| format!(" (kind overridden to {ko})"))
                 .unwrap_or_default(),
         );
-        self.push(key.to_string(), CardFact { entity, count, how });
+        // an unconditionally-repeatable source (no `when`, no IF
+        // conditions, an unbounded recipe/trigger, not a REPLACE) arms the
+        // fact's unbounded flag — the count-form world gates decide over
+        // its open interval instead of assuming the capped weight exact
+        let unbounded = count == MANY && Self::bare_list(&site);
+        self.push(key.to_string(), CardFact { entity, count, how, unbounded });
     }
 
     /// Whether a site proves this round: [`Self::site_ladder`]'s verdict,
@@ -1067,7 +1194,12 @@ impl<'c> WorldFacts<'c> {
     ///     deck can never durably serve (the census froze its cap to 0).
     ///
     /// Roll/role-gated ops sit out every part: they can fail this
-    /// application, and the window-refuse retry is existential.
+    /// application, and the window-refuse retry is existential. The same
+    /// retry covers an UNDECIDED static gate (an interval that could not
+    /// decide): firings below the threshold skip the arm — a skip is not a
+    /// refusal — and the completions before the pool crosses land the
+    /// trigger's mints, so sitting an undecided gate out widens only
+    /// toward candidate, never toward proven on its own.
     fn recipe_draft(&self, world: &CardWorld, vi: usize, ri: usize) -> Option<IndexSet<String>> {
         let (_, v) = self.content.verbs.get_index(vi)?;
         let r = v.recipes.get(ri)?;
@@ -1077,7 +1209,14 @@ impl<'c> WorldFacts<'c> {
         }
         if let Some(w) = &r.when {
             if pred_static(w) {
-                if !eval_static_ok(w, world) {
+                // FALSE demotes (never matches — a comparison false at the
+                // floor of an upward-closed pool is False, not Unknown);
+                // an UNKNOWN count-form gate stays — the interval pair
+                // could not decide, so the gate may hold once the pool is
+                // raised, and the window-refuse retry is existential (§6.7).
+                // The invariant: Unknown may only widen toward "candidate"
+                // (a selectable witness), never produce "proven" on its own.
+                if eval_static_truth(w, world).ok()? == StaticTruth::False {
                     return None; // never matches
                 }
                 if v.recipes[..ri].iter().any(|rr| {

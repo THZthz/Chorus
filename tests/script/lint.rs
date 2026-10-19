@@ -885,3 +885,459 @@ verbs:
         .unwrap_or_else(|| panic!("the never-matching-when warning must exist: {findings:?}"));
     assert_eq!(marked.severity, LintSeverity::Warning);
 }
+
+// ---------------------------------------------------------------------------
+// W1 — the always-true world-form gate (the WARNING class)
+// ---------------------------------------------------------------------------
+
+/// The W1 fixture base: MARCH plus a load-borne funds bearer.
+fn lint_base(extra: &str) -> String {
+    format!(
+        "
+script: Probe
+player: MARCH
+start: 0:0
+
+entities:
+  MARCH is character
+  POT is resource with funds:3
+{extra}
+"
+    )
+}
+
+/// The whole lint over the W1 fixture — the E1 checks reuse it too.
+fn lint_findings(extra: &str) -> Vec<LintFinding> {
+    let dict = core_dictionary();
+    lint_script_findings(&lint_base(extra), &dict).unwrap()
+}
+
+#[test]
+fn an_exists_gate_on_an_aspect_borne_from_load_warns_naming_the_aspect_and_bearer() {
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when exists(aspect:funds>=1) -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(
+        w[0].message.contains(
+            "recipe rite.gate (RITE): exists(aspect:funds>=1) is always true — aspect 'funds' is borne from load by POT, so the gate can never gate (§6.3)"
+        ),
+        "{w:?}"
+    );
+    assert_eq!(w[0].severity, LintSeverity::Warning);
+}
+
+#[test]
+fn an_open_count_gate_already_satisfied_by_load_bearers_warns() {
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when count(aspect:funds>=2) >= 1 -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(
+        w[0]
+            .message
+            .contains("count(aspect:funds>=2) >= 1 is always true — aspect 'funds' is borne from load by 1 card(s) from load"),
+        "{w:?}"
+    );
+}
+
+#[test]
+fn the_never_gating_faces_stay_silent() {
+    // a name-constrained form gates on the name half; a pure-name exists
+    // gates on a card; a closed count comparison can be grown past; a NOT
+    // form is the never-matching detector's territory; a threshold the
+    // load-present pool does not meet can genuinely gate
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  PURSE is resource with funds:1
+
+decks:
+  D1 spec PURSE defaultcard PURSE
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.named when exists(name:POT aspect:funds>=1) -> SPAWN PILLAR
+      rite.pure when exists(POT) -> SPAWN PILLAR
+      rite.closed when count(aspect:funds>=1) <= 1 -> SPAWN PILLAR
+      rite.negated when NOT exists(aspect:funds>=9) -> SPAWN PILLAR
+      rite.unmet when count(aspect:funds>=1) >= 9 -> SPAWN PILLAR
+      rite.unmet_exists when exists(aspect:funds>=9) -> SPAWN PILLAR
+      default -> NARRATE \"done.\"
+",
+    );
+    let w = warnings_of(&findings);
+    assert!(w.is_empty(), "{w:?}");
+}
+
+#[test]
+fn a_defaultcard_bearer_warns_with_the_once_served_face_naming_the_card() {
+    // a defaultcard is NOT borne from load — before the deck's first serve
+    // the gate reads false — so the warning carries its own face
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  COIN is resource with funds:5
+
+decks:
+  D1 spec PILLAR defaultcard COIN
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when exists(aspect:funds>=5) -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(
+        w[0].message.contains(
+            "exists(aspect:funds>=5) is always true once the deck serves its default card COIN"
+        ),
+        "{w:?}"
+    );
+    assert!(
+        w[0].message.contains("so the gate can never gate after the deck's first serve"),
+        "{w:?}"
+    );
+    assert!(!w[0].message.contains("borne from load"), "{w:?}");
+}
+
+#[test]
+fn a_defaultcard_bearer_does_not_count_toward_the_load_present_count() {
+    // POT alone meets `>= 1` from load — the warning stands; the
+    // defaultcard COIN adds nothing to the load-present count, so `>= 2`
+    // can genuinely gate before the deck's first serve — silent
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  COIN is resource with funds:5
+
+decks:
+  D1 spec PILLAR defaultcard COIN
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.met when count(aspect:funds>=1) >= 1 -> SPAWN PILLAR
+      rite.unmet when count(aspect:funds>=1) >= 2 -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(w[0].message.contains("rite.met"), "{w:?}");
+}
+
+#[test]
+fn a_kill_of_the_only_bearer_stands_the_always_true_warning_down() {
+    // BANISH destroys POT: the aspect can genuinely leave the world, so
+    // the always-true claim is false and the warning stands down
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when exists(aspect:funds>=1) -> SPAWN PILLAR
+  BANISH:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      banish.pot -> DESTROY POT
+",
+    );
+    assert!(warnings_of(&findings).is_empty(), "{findings:?}");
+}
+
+#[test]
+fn a_surviving_bearer_keeps_the_warning_naming_only_the_survivors() {
+    // PURSE (funds:2) is untouched by BANISH, so the gate remains always
+    // true through it — the finding names PURSE, never the killable POT
+    let script = "
+script: Probe
+player: MARCH
+start: 0:0
+
+entities:
+  MARCH is character
+  POT is resource with funds:3
+  PURSE is resource with funds:2
+
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when exists(aspect:funds>=1) -> SPAWN PILLAR
+  BANISH:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      banish.pot -> DESTROY POT
+";
+    let dict = core_dictionary();
+    let findings = lint_script_findings(script, &dict).unwrap();
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(w[0].message.contains("borne from load by PURSE"), "{w:?}");
+    assert!(!w[0].message.contains("POT,"), "{w:?}");
+}
+
+#[test]
+fn w1_atoms_inside_and_and_or_still_warn() {
+    // an always-true atom stays always-true under AND and under OR — the
+    // walk lifts through the boolean connectives
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  GRAVE is place with winter:1
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.and when count(actors) >= 1 AND exists(aspect:funds>=1) -> SPAWN PILLAR
+      rite.or when exists(aspect:winter>=9) OR exists(aspect:funds>=1) -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 2, "{findings:?}");
+    assert!(
+        w.iter().all(|f| f.message.contains("exists(aspect:funds>=1) is always true")),
+        "{w:?}"
+    );
+    assert!(w.iter().any(|f| f.message.contains("rite.and")), "{w:?}");
+    assert!(w.iter().any(|f| f.message.contains("rite.or")), "{w:?}");
+}
+
+#[test]
+fn a_flipped_operand_count_form_normalizes_before_the_op_check() {
+    // `1 <= count(aspect:funds>=2)` ≡ `count(aspect:funds>=2) >= 1` — the
+    // normalization mirrors the op, then the always-true check runs
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.flipped when 1 <= count(aspect:funds>=2) -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(w[0].message.contains("count(aspect:funds>=2) >= 1 is always true"), "{w:?}");
+}
+
+#[test]
+fn a_multi_term_or_negated_query_and_a_dotted_read_stay_silent() {
+    // a multi-term query can gate on its companions; a negated term can
+    // gate on absence; the dotted read matches no load-present bearer here
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  PURSE is resource with funds:1
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.multi when exists(aspect:funds>=1 kind:resource) -> SPAWN PILLAR
+      rite.negterm when exists(-aspect:funds) -> SPAWN PILLAR
+      rite.alt when exists(aspect:funds>=1 | aspect:winter) -> SPAWN PILLAR
+      rite.dotted when exists(aspect:funds.purse>=1) -> SPAWN PILLAR
+      default -> NARRATE \"done.\"
+",
+    );
+    let w = warnings_of(&findings);
+    assert!(w.is_empty(), "{w:?}");
+}
+
+// ---------------------------------------------------------------------------
+// E1 — SPAWN of a non-prototype (the no-kind refusal, ERROR class)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_spawn_of_a_declared_entity_errors_advertising_the_prototype_twin() {
+    let findings = lint_findings(
+        "
+prototypes:
+  PURSE is resource with funds:1
+
+verbs:
+  MAKE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      make.lamp -> SPAWN PURSE
+      make.vial -> SPAWN POT
+",
+    );
+    let hits: Vec<&LintFinding> =
+        findings.iter().filter(|f| f.message.contains("SPAWN POT")).collect();
+    assert_eq!(hits.len(), 1, "{findings:?}");
+    assert_eq!(hits[0].severity, LintSeverity::Error);
+    assert_eq!(
+        hits[0].message,
+        "recipe make.vial (MAKE): SPAWN POT names a declared entity, not a prototype — the spawn has no kind to mint (prototype or kind:NAME required) and refuses at play every time; declare a prototype (or a `_CARD` twin) and spawn that (§4.2)"
+    );
+    // the prototype spawn beside it stays clean
+    assert!(findings.iter().all(|f| !f.message.contains("SPAWN PURSE")), "{findings:?}");
+}
+
+#[test]
+fn a_spawn_of_an_aspect_less_entity_still_errors_the_refusal_is_identical() {
+    // MARCH declares no aspects, but the SPAWN refuses at play all the
+    // same — there is no bare-mint idiom to protect
+    let findings = lint_findings(
+        "
+verbs:
+  MAKE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      make.token -> SPAWN MARCH
+",
+    );
+    let hits: Vec<&LintFinding> =
+        findings.iter().filter(|f| f.message.contains("SPAWN MARCH")).collect();
+    assert_eq!(hits.len(), 1, "{findings:?}");
+    assert_eq!(hits[0].severity, LintSeverity::Error);
+    assert!(
+        hits[0].message.contains("has no kind to mint (prototype or kind:NAME required)"),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn a_spawn_of_an_entity_inside_an_if_arm_or_a_trigger_is_still_found() {
+    let findings = lint_findings(
+        "
+verbs:
+  MAKE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      make.arm when count(actors) >= 1 -> IF count(actors) >= 1 -> (SPAWN POT)
+
+triggers:
+  t1 at halfhour 1 -> SPAWN POT
+",
+    );
+    let hits: Vec<&str> = findings
+        .iter()
+        .filter_map(|f| f.message.split(':').next())
+        .filter(|o| o.starts_with("recipe ") || o.starts_with("trigger "))
+        .collect();
+    assert_eq!(hits.len(), 2, "{findings:?}");
+    assert!(
+        findings.iter().any(|f| f.message.starts_with("recipe make.arm (MAKE): SPAWN POT")),
+        "{findings:?}"
+    );
+    assert!(
+        findings.iter().any(|f| f.message.starts_with("trigger t1: SPAWN POT")),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn a_spawn_produced_by_an_op_or_function_expansion_is_still_found() {
+    // op and function bodies expand into the recipe outcomes at compile
+    // (§10), so the finding names the CALLING recipe, per owner and name
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+ops:
+  MINT -> SPAWN POT
+
+functions:
+  forge -> SPAWN POT
+
+verbs:
+  MAKE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      make.via_op -> MINT()
+      make.via_fn -> forge()
+",
+    );
+    assert!(
+        findings.iter().any(|f| f.message.starts_with("recipe make.via_op (MAKE): SPAWN POT")),
+        "{findings:?}"
+    );
+    assert!(
+        findings.iter().any(|f| f.message.starts_with("recipe make.via_fn (MAKE): SPAWN POT")),
+        "{findings:?}"
+    );
+    assert_eq!(
+        findings.iter().filter(|f| f.message.contains("SPAWN POT")).count(),
+        2,
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn a_repeated_entity_spawn_in_one_recipe_reports_once() {
+    let findings = lint_findings(
+        "
+verbs:
+  MAKE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      make.many -> SPAWN POT, SPAWN POT, SPAWN POT
+",
+    );
+    let hits: Vec<&LintFinding> =
+        findings.iter().filter(|f| f.message.contains("SPAWN POT")).collect();
+    assert_eq!(hits.len(), 1, "{findings:?}");
+}

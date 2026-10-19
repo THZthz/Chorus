@@ -1204,6 +1204,44 @@ fn a_cross_verb_recipe_body_gate_reads_the_parent_situation() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
+/// C-4's §6.3 scope face — the reach-P1 repro: the candidate verb declares
+/// only `actors`, and its `when` reads the window sum `total(bound,
+/// aspect:a)`. The parent's committed object stands in the MERGED bindings
+/// (a role the candidate does not declare), so the gate pins on the
+/// parent's charged card although the candidate's own declared-slot window
+/// has ceiling 0 for the aspect — and the pinned follow-up mints. The whiff
+/// control commits an aspect-free card: the gate misses and the chain ends
+/// silently.
+#[test]
+fn a_bound_sum_gate_on_an_actors_only_candidate_reads_the_parents_object() {
+    let dict = run_dict();
+    let rig_text = || {
+        rig_full(
+            "  WORK:\n    actors: 1 kind:character\n    object: 1 kind:resource\n    duration: 0m\n    recipes:\n      go when count(actors) >= 1 -> NARRATE \"charged\", RUN \"explore.recipe0\"\n  EXPLORE:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      explore.recipe0 when total(bound, aspect:a) >= 5 -> SPAWN TRINKET",
+            None,
+            Some("  POT is resource with a:5\n  NOPE is resource"),
+        )
+    };
+    let trinkets = |s: &State| {
+        s.entities.values().filter(|e| e.name == "TRINKET" && e.dead_action.is_none()).count()
+    };
+    // the charged card rides the merged bindings: the pin fires, the
+    // follow-up begins and completes, the mint lands
+    let (c, s) = compile(&dict, &rig_text());
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WORK POT", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(begin_recipes(&r), [vec!["go".to_string()], vec!["explore.recipe0".to_string()]]);
+    assert_eq!(kind_spine(&r), ["action", "complete", "action", "complete", "wait"]);
+    assert_eq!(trinkets(&r.state), 1);
+    // the whiff control: no aspect-bearing card in the merged bindings, so
+    // the gate misses and no follow-up opens
+    let (c2, s2) = compile(&dict, &rig_text());
+    let r2 = settle_line(&c2, &dict, s2, "0:0 @ ANA WORK NOPE", 1).unwrap();
+    assert_eq!(r2.rejected, None);
+    assert_eq!(begin_recipes(&r2), [vec!["go".to_string()]]);
+    assert_eq!(trinkets(&r2.state), 0);
+}
+
 /// C-5: the busy check in a recipe body — two clauses in one step (1h each,
 /// same end); the earlier completion's RUN targets the other clause's still
 /// open window: the candidate skips SILENTLY (no follow-up, no refusal),

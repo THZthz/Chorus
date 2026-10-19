@@ -105,6 +105,8 @@ fn val_expr_text(x: &ValExpr) -> String {
         ValExpr::Count { role } => format!("count({role})"),
         ValExpr::CountQuery { query } => format!("count({})", query_text(query)),
         ValExpr::Total { role, path } => format!("total({role}, aspect:{path})"),
+        ValExpr::TotalBound { path } => format!("total(bound, aspect:{path})"),
+        ValExpr::TotalTable { path } => format!("total(table, aspect:{path})"),
         ValExpr::Path { role, field, key } => format!("{role}.{}.{}", field.as_str(), key),
         ValExpr::Param { name } => name.clone(),
         ValExpr::Roll => "roll".to_string(),

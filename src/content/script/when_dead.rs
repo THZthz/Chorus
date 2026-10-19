@@ -219,6 +219,8 @@ fn typed_var(x: &ValExpr) -> Option<WhenVar> {
 /// Deliberately NOT caught (the documented boundary): world reads —
 /// `exists(...)` and the `count(<query>)` pool form — stay `Unknown` (no
 /// world model, so `exists(A) AND NOT exists(A)` passes silently);
+/// the §6.3 sum scopes `total(bound, …)` / `total(table, …)` stay `Unknown`
+/// the same way (no window or world model over the §6.1 domain);
 /// `every(...)` is `Unknown` (vacuously true over an empty role, §6.3);
 /// non-int comparisons (`count(a) > object.attr.seats`) are `Unknown`; and
 /// the E7 RUN corner — a cross-verb RUN candidate re-evaluates its when

@@ -1419,3 +1419,477 @@ fn an_unbounded_pool_keeps_a_count_gate_unknown_never_assumed_false() {
     assert_eq!(rep.verdict, CardVerdict::Unproven);
     assert_eq!(rep.existence, Existence::Candidate);
 }
+
+// ---------- the predicate sum scopes, §6.3 ---------------------------------
+//
+// `total(table, aspect:k)` sums LEVELS over the same distinct-fact world the
+// count form enumerates: an unbounded matching fact lifts the sum's ceiling
+// (its source repeats, so more level-bearing copies only raise it), and a
+// comparison that holds at the floor proves. `total(bound, aspect:k)` sums
+// what the owning verb's slots can bind — the floor is the slots' min
+// fillings at their smallest levels, the ceiling their max fillings at
+// their largest; a gate reading is exact when the window is fully
+// determined.
+
+#[test]
+fn a_table_sum_gate_sums_the_enumerated_levels() {
+    // initial POT (funds 2) + minted PURSE (funds 1): the gate needs the
+    // mint to cross 3
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), proto_with("resource", &[("funds", 1)])),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe_when("total(table, aspect:funds) >= 3", &["SPAWN PILLAR"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN PURSE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    // without the bearer the floor is 0 — the gate is decided FALSE (no
+    // reachable pool ever crosses 3: PURSE mints exactly one copy) and the
+    // honest verdict stays the candidate tier, never a false unobtainable
+    let short =
+        analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default()).unwrap();
+    assert_eq!(short.verdict, CardVerdict::Unproven);
+    assert_eq!(short.existence, Existence::Candidate);
+    // with POT the floor is 2 and the mint raises it to 3 — the gate holds
+    // from the second fixpoint round and the site proves
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana(), ent("POT", "resource", &[("funds", 2)])]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert!(
+        rep.paths[0].guards.contains(&"total(table, aspect:funds) >= 3".to_string()),
+        "{:?}",
+        rep.paths
+    );
+}
+
+#[test]
+fn an_unbounded_table_sum_crosses_its_gate_from_the_floor() {
+    // PURSE mints unconditionally and stacks (funds 10 each): the world sum
+    // is a floor the player can raise without bound — 32 capped copies
+    // already carry it past 40, so the >= 40 gate is TRUE where the
+    // count-form face of the same world stays Unknown
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), {
+                let mut p = proto_with("resource", &[("funds", 10)]);
+                p.stackable = true;
+                p
+            }),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe_when("total(table, aspect:funds) >= 40", &["SPAWN PILLAR"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN PURSE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let rep =
+        analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert_eq!(rep.existence, Existence::Proven);
+}
+
+#[test]
+fn a_bounded_once_source_keeps_a_table_sum_gate_closed_but_candidate() {
+    // the once trigger mints exactly one PURSE (funds 10): the world sum is
+    // exactly 10, the >= 40 gate holds at NO reachable pool — decided False
+    // (never selects), and the verdict is the honest candidate tier
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), {
+                let mut p = proto_with("resource", &[("funds", 10)]);
+                p.stackable = true;
+                p
+            }),
+        ])),
+        verbs: IndexMap::from([(
+            "WORK".to_string(),
+            verb(
+                vec![slot("actors", 1, 1, Some("kind:character"))],
+                0,
+                vec![recipe_when("total(table, aspect:funds) >= 40", &["SPAWN PILLAR"])],
+            ),
+        )]),
+        triggers: Some(vec![slot_trigger("t_fund", 0, &["SPAWN PURSE"])]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    // slot_trigger above carries once: None — make the once-ness explicit
+    // by construction: rewrite through the once form
+    let raw2 = ContentRaw {
+        prototypes: raw.prototypes.clone(),
+        verbs: IndexMap::from([(
+            "WORK".to_string(),
+            verb(
+                vec![slot("actors", 1, 1, Some("kind:character"))],
+                0,
+                vec![recipe_when("total(table, aspect:funds) >= 40", &["SPAWN PILLAR"])],
+            ),
+        )]),
+        triggers: Some(vec![chorus::content::TriggerDef::Slot(chorus::content::SlotTriggerDef {
+            id: "t_fund".to_string(),
+            slot: 0,
+            once: Some(true),
+            out: vec!["SPAWN PURSE".to_string()],
+        })]),
+        ..ContentRaw::default()
+    };
+    let _ = content;
+    let content = compile(&raw2);
+    let rep =
+        analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
+}
+
+#[test]
+fn a_closed_table_sum_below_the_floor_never_selects() {
+    // POT already bears funds 3: `total(table, aspect:funds) < 1` holds at
+    // no reachable pool — False, the recipe never selects, the candidate
+    // tier is the verdict (never a false unobtainable)
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([("PILLAR".to_string(), proto("item"))])),
+        verbs: IndexMap::from([(
+            "WORK".to_string(),
+            verb(
+                vec![slot("actors", 1, 1, Some("kind:character"))],
+                0,
+                vec![recipe_when("total(table, aspect:funds) < 1", &["SPAWN PILLAR"])],
+            ),
+        )]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana(), ent("POT", "resource", &[("funds", 3)])]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
+}
+
+#[test]
+fn a_bound_sum_gate_reads_the_committed_window() {
+    // WORK's object slot MUST bind a resource and PURSE (funds 10) is the
+    // only one — minted by EXPLORE. The window sum is exactly 10 once the
+    // mint lands: the gate proves and PILLAR is obtainable through a path
+    // whose required card's level came from a mint
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), proto_with("resource", &[("funds", 10)])),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![
+                        slot("actors", 1, 1, Some("kind:character")),
+                        slot("object", 1, 1, Some("kind:resource")),
+                    ],
+                    0,
+                    vec![recipe_when("total(bound, aspect:funds) >= 10", &["SPAWN PILLAR"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN PURSE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let rep =
+        analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert_eq!(rep.existence, Existence::Proven);
+    assert!(
+        rep.paths[0].guards.contains(&"total(bound, aspect:funds) >= 10".to_string()),
+        "{:?}",
+        rep.paths
+    );
+}
+
+#[test]
+fn a_bound_sum_gate_over_an_optional_slot_stays_unknown_never_false() {
+    // the object slot is 0..1: the window MAY bind PURSE (funds 10), so the
+    // >= 10 gate cannot be decided False from the min-filling floor — the
+    // ceiling face keeps it Unknown (the candidate tier), never a false
+    // unobtainable
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("PILLAR".to_string(), proto("item")),
+            ("PURSE".to_string(), proto_with("resource", &[("funds", 10)])),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![
+                        slot("actors", 1, 1, Some("kind:character")),
+                        slot("object", 0, 1, Some("kind:resource")),
+                    ],
+                    0,
+                    vec![recipe_when("total(bound, aspect:funds) >= 10", &["SPAWN PILLAR"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN PURSE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let rep =
+        analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
+}
+
+#[test]
+fn a_chain_pinned_candidate_is_never_claimed_unobtainable_off_its_bound_gate() {
+    // The §6.7 chain face: the candidate verb declares only `actors`, so its
+    // declared-slot window has ceiling 0 for aspect:a — but a RUN pin
+    // re-evaluates the `when` at play over the MERGED bindings, where the
+    // parent's committed object stands under a role the candidate does not
+    // declare. The gate can therefore match at play, and the mint's verdict
+    // stays the candidate tier — never a false unobtainable.
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([("P1".to_string(), proto("item"))])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![
+                        slot("actors", 1, 1, Some("kind:character")),
+                        slot("object", 1, 1, Some("kind:resource")),
+                    ],
+                    0,
+                    vec![recipe(&["RUN \"explore.recipe0\""])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe_when("total(bound, aspect:a) >= 5", &["SPAWN P1"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana(), ent("POT", "resource", &[("a", 5)])]),
+        "P1",
+        CardOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
+}
+
+#[test]
+fn a_chain_pinned_candidate_stays_a_completion_window_witness() {
+    // EXPLORE's gated recipe is the FIRST-listed window witness for BERTHA: the
+    // RUN pin re-evaluates its bound-sum `when` over the merged bindings
+    // (the parent's POT stands under the undeclared object role), so the
+    // completion is arrangeable and the completion trigger's support line
+    // names it — a declared-slot False must not strike the pair off the
+    // witness list.
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([("P1".to_string(), proto("item"))])),
+        verbs: IndexMap::from([
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![
+                        slot("actors", 1, 1, Some("kind:character")),
+                        slot("with", 0, 1, Some("kind:character")),
+                    ],
+                    0,
+                    vec![recipe_when("total(bound, aspect:a) >= 5", &["NARRATE \"pinned\""])],
+                ),
+            ),
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![
+                        slot("actors", 1, 1, Some("kind:character")),
+                        slot("object", 1, 1, Some("kind:resource")),
+                        slot("with", 0, 1, Some("kind:character")),
+                    ],
+                    0,
+                    vec![recipe(&["RUN \"explore.recipe0\""])],
+                ),
+            ),
+        ]),
+        triggers: Some(vec![TriggerDef::Complete(chorus::content::CompleteTriggerDef {
+            id: "t_awake".to_string(),
+            home: "BERTHA".to_string(),
+            aspect: None,
+            out: vec!["SPAWN P1".to_string()],
+        })]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![
+            ana(),
+            ent("BERTHA", "character", &[]),
+            ent("POT", "resource", &[("a", 5)]),
+        ]),
+        "P1",
+        CardOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert_eq!(rep.existence, Existence::Proven);
+    let joined = rep.chain.join("\n");
+    assert!(
+        joined.contains(
+            "commit EXPLORE locking 'BERTHA' in its with slot; recipe explore.recipe0 completes the window"
+        ),
+        "{joined}"
+    );
+}
+
+#[test]
+fn an_exact_bound_window_decides_the_point_ops() {
+    // A forced window whose every fit is known is a single-point interval:
+    // `= 5` holds at the only corner (True — the recipe selects and the
+    // mint proves) and `!= 5` holds at none (False — the honest candidate
+    // tier).
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("P_EQ".to_string(), proto("item")),
+            ("P_NE".to_string(), proto("item")),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                verb(
+                    vec![slot("object", 1, 1, Some("kind:resource"))],
+                    0,
+                    vec![recipe_when("total(bound, aspect:a) = 5", &["SPAWN P_EQ"])],
+                ),
+            ),
+            (
+                "EXPLORE".to_string(),
+                verb(
+                    vec![slot("object", 1, 1, Some("kind:resource"))],
+                    0,
+                    vec![recipe_when("total(bound, aspect:a) != 5", &["SPAWN P_NE"])],
+                ),
+            ),
+        ]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let state = state_with(vec![ana(), ent("POT", "resource", &[("a", 5)])]);
+    let eq = analyze_card(&content, &state, "P_EQ", CardOptions::default()).unwrap();
+    assert_eq!(eq.verdict, CardVerdict::Obtainable);
+    assert_eq!(eq.existence, Existence::Proven);
+    let ne = analyze_card(&content, &state, "P_NE", CardOptions::default()).unwrap();
+    assert_eq!(ne.verdict, CardVerdict::Unproven);
+    assert_eq!(ne.existence, Existence::Candidate);
+}
+
+#[test]
+fn a_two_sided_bound_window_decides_eq_ne_at_the_corners() {
+    // An optional slot spans the interval 0..2 (the window may bind nothing,
+    // or one of ELM a:1 / OAK a:2): `!= 4` is disjoint from every reachable
+    // sum (True — proves), `= 4` holds at no reachable sum (False), and the
+    // interior point `= 2` stays Unknown (the honest candidate tier).
+    let gated = |name: &str, when: &str, mint: &str| {
+        (
+            name.to_string(),
+            verb(
+                vec![slot("object", 0, 1, Some("kind:resource"))],
+                0,
+                vec![recipe_when(when, &[&format!("SPAWN {mint}")])],
+            ),
+        )
+    };
+    let (n1, v1) = gated("WORK", "total(bound, aspect:a) != 4", "Q_NE");
+    let (n2, v2) = gated("EXPLORE", "total(bound, aspect:a) = 4", "Q_EQ");
+    let (n3, v3) = gated("TRAVEL_TO", "total(bound, aspect:a) = 2", "Q_MAY");
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("Q_NE".to_string(), proto("item")),
+            ("Q_EQ".to_string(), proto("item")),
+            ("Q_MAY".to_string(), proto("item")),
+        ])),
+        verbs: IndexMap::from([(n1, v1), (n2, v2), (n3, v3)]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let state = state_with(vec![
+        ana(),
+        ent("ELM", "resource", &[("a", 1)]),
+        ent("OAK", "resource", &[("a", 2)]),
+    ]);
+    let ne = analyze_card(&content, &state, "Q_NE", CardOptions::default()).unwrap();
+    assert_eq!(ne.verdict, CardVerdict::Obtainable);
+    assert_eq!(ne.existence, Existence::Proven);
+    let eq4 = analyze_card(&content, &state, "Q_EQ", CardOptions::default()).unwrap();
+    assert_eq!(eq4.verdict, CardVerdict::Unproven);
+    assert_eq!(eq4.existence, Existence::Candidate);
+    let eq2 = analyze_card(&content, &state, "Q_MAY", CardOptions::default()).unwrap();
+    assert_eq!(eq2.verdict, CardVerdict::Unproven);
+    assert_eq!(eq2.existence, Existence::Candidate);
+}

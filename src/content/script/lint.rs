@@ -120,9 +120,10 @@ impl LintFinding {
 /// selection binding — advisory, because a dead `when` is sometimes the
 /// point: the converter emits deliberate dead-marker twins under exactly
 /// such negation whens) and the always-true world-form gate check (an
-/// `exists(aspect:k…)`/`count(aspect:k…) >= v` whose aspect the player
-/// cannot prevent — borne from load, or riding a deck defaultcard after
-/// its first serve — so the gate can never gate).
+/// `exists(aspect:k…)`, a `count(aspect:k…) >= v`, or a
+/// `total(table, aspect:k…) >= v` whose aspect the player cannot prevent —
+/// borne from load, or riding a deck defaultcard after its first serve — so
+/// the gate can never gate).
 pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFinding>> {
     let script = parse_script(text, dict)?;
     // lints run on scripts that already compile — and the compile hands back
@@ -569,15 +570,19 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     }
 
     // W1: the always-true world-form gate (the WARNING class) — the inverse
-    // face of the no-writer check above. An `exists(aspect:k…)` or an
-    // open-ended `count(aspect:k…) >= v` gate whose aspect rides cards the
+    // face of the no-writer check above. An `exists(aspect:k…)`, an
+    // open-ended `count(aspect:k…) >= v` gate, or an open-ended
+    // `total(table, aspect:k…) >= v` sum whose aspect rides cards the
     // player cannot prevent reads true in every relevant world, so the gate
     // can never gate. Two bearer faces: an aspect borne FROM LOAD — a
-    // declared `entities:` line — reads true in every load-present world;
-    // a deck `defaultcard` (whose aspects ride its prototype) reads true
+    // declared `entities:` line — reads true in every load-present world
+    // (the count form counts these cards; the total form sums their
+    // levels); a deck `defaultcard` (whose aspects ride its prototype) reads true
     // once the deck's first serve lands, so its finding carries that face
-    // (before the serve the gate genuinely gates — and the count form never
-    // counts a defaultcard: the load-present pool does not include it).
+    // (before the serve the gate genuinely gates — and the count/total
+    // forms never read a defaultcard: the load-present pool does not include
+    // it). `total(bound, …)` is window-local — the bindings can genuinely
+    // gate — and never warns.
     // Silent on a name-constrained form (`exists(name:X aspect:k)` — the
     // name half can genuinely gate), on a multi-term or negated query, on a
     // closed count comparison (the pool can grow past it), on an aspect
@@ -730,43 +735,69 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                 }
             }
             Pred::Cmp { l, r, op } => {
-                // the count form, operands normalized (the int literal to the
-                // right): only the open-ended comparison warns — the
-                // load-present count is a floor, and a floor already over the
-                // threshold never gates. The count reads LOAD bearers only:
-                // a defaultcard is not on the table before its deck's first
-                // serve, and a killed bearer cannot hold the floor
-                let (query, op, k) = match (l, r) {
-                    (ValExpr::CountQuery { query }, ValExpr::Int { v }) => (query, *op, *v),
-                    (ValExpr::Int { v }, ValExpr::CountQuery { query }) => {
-                        (query, mirror_cmp_op(*op), *v)
-                    }
+                // the count and total(table, …) forms, operands normalized
+                // (the int literal to the right): only the open-ended
+                // comparison warns — the load-present pool (count) and the
+                // load-present sum (total) are floors, and a floor already
+                // over the threshold never gates. Both read LOAD bearers
+                // only: a defaultcard is not on the table before its deck's
+                // first serve, and a killed bearer cannot hold the floor.
+                let (expr, op, k) = match (l, r) {
+                    (e, ValExpr::Int { v }) => (e, *op, *v),
+                    (ValExpr::Int { v }, e) => (e, mirror_cmp_op(*op), *v),
                     _ => return,
                 };
-                let Some((path, aop, level)) = single_aspect_term(query) else {
-                    return;
-                };
-                if !writes.contains(path) || !matches!(op, CmpOp::Ge | CmpOp::Gt) {
+                if !matches!(op, CmpOp::Ge | CmpOp::Gt) {
                     return;
                 }
-                let n = load_bearers
-                    .iter()
-                    .filter(|(name, a)| {
-                        !killed.contains(*name)
-                            && bearer_aspect(a, path).is_some_and(|v| match aop {
-                                None => v >= level,
-                                Some(op) => op.num_cmp(v, level),
+                match expr {
+                    ValExpr::CountQuery { query } => {
+                        let Some((path, aop, level)) = single_aspect_term(query) else {
+                            return;
+                        };
+                        if !writes.contains(path) {
+                            return;
+                        }
+                        let n = load_bearers
+                            .iter()
+                            .filter(|(name, a)| {
+                                !killed.contains(*name)
+                                    && bearer_aspect(a, path).is_some_and(|v| match aop {
+                                        None => v >= level,
+                                        Some(op) => op.num_cmp(v, level),
+                                    })
                             })
-                    })
-                    .count() as i64;
-                if !op.num_cmp(n, k) {
-                    return;
+                            .count() as i64;
+                        if !op.num_cmp(n, k) {
+                            return;
+                        }
+                        out.insert(format!(
+                            "recipe {id} ({verb}): count({}) {} {k} is always true — aspect '{path}' is borne from load by {n} card(s) from load, so the gate can never gate (§6.3)",
+                            aspect_term_text(path, aop, level),
+                            op.as_str(),
+                        ));
+                    }
+                    ValExpr::TotalTable { path } => {
+                        if !writes.contains(path) {
+                            return;
+                        }
+                        // the summed level over the load-present cards
+                        // (missing → 0, the engine's house rule)
+                        let n: i64 = load_bearers
+                            .iter()
+                            .filter(|(name, _)| !killed.contains(*name))
+                            .map(|(_, a)| bearer_aspect(a, path).unwrap_or(0))
+                            .sum();
+                        if !op.num_cmp(n, k) {
+                            return;
+                        }
+                        out.insert(format!(
+                            "recipe {id} ({verb}): total(table, aspect:{path}) {} {k} is always true — aspect '{path}' is borne from load totaling {n}, so the gate can never gate (§6.3)",
+                            op.as_str(),
+                        ));
+                    }
+                    _ => {}
                 }
-                out.insert(format!(
-                    "recipe {id} ({verb}): count({}) {} {k} is always true — aspect '{path}' is borne from load by {n} card(s) from load, so the gate can never gate (§6.3)",
-                    aspect_term_text(path, aop, level),
-                    op.as_str(),
-                ));
             }
             _ => {}
         }

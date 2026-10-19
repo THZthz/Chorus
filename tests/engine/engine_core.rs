@@ -21,7 +21,7 @@
 //! semantic content of those checks (noted at each site, never weakened).
 
 use crate::common::harness::{assert_err_msg, assert_refusal, assert_rejected};
-use crate::common::rig::{kinds, ops, settle_line, tmp_log_path};
+use crate::common::rig::{kinds, ops, said, settle_line, tmp_log_path};
 use crate::common::seed::seed_state;
 use crate::common::snap::snap;
 use crate::rig::{container_attrs, fixture_complete, num_aspect, outcome, plain_card, setup};
@@ -1196,5 +1196,159 @@ mod core_verbs_study_mansus {
         assert_eq!(r2.records.len(), 0);
         assert_eq!(snap(&r2.state), snap(&world()));
         let _ = content;
+    }
+}
+
+/// The §6.3 predicate sum scopes through a real settle: recipe selection
+/// reads `total(bound, aspect:k)` over the window's committed bindings
+/// (per-binding across roles) and `total(table, aspect:k)` over the whole
+/// living world.
+mod predicate_sum_scopes {
+    use chorus::content::script::compile_script;
+
+    use super::*;
+
+    /// A DREAM verb with optional object and with slots and two recipes: the
+    /// dread sum gate and a plain default. The EMBER/LAMP cards each carry
+    /// dread 1.
+    fn sum_script() -> (Dictionary, CompiledContent, State) {
+        let dict = core_dictionary();
+        let text = "
+script: Sum Scope Rig
+player: ANA
+start: 0:0
+
+entities:
+  ANA is character at HOUSE
+  HOUSE is place
+  EMBER is idea with dread:1
+  LAMP is idea with dread:1
+
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    object: 0..1 kind:idea
+    with: 0..1 kind:idea
+    duration: 0m
+    recipes:
+      dread when total(bound, aspect:dread) >= 2 -> NARRATE \"dread\"
+      default -> NARRATE \"plain\"
+  TOIL:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      hot when total(table, aspect:funds) >= 3 -> NARRATE \"hot\"
+      mint when count(actors) >= 1 -> SPAWN COIN
+
+prototypes:
+  COIN is resource stackable with funds:2
+";
+        let compiled = compile_script(text, &dict).unwrap();
+        // the LOAD-EFFECTIVE dictionary — TOIL is script-declared, so the
+        // sentence parser must see the registration
+        (compiled.dict, compiled.content, compiled.state)
+    }
+
+    #[test]
+    fn the_bound_sum_gate_selects_across_two_roles() {
+        let (dict, content, state) = sum_script();
+        // EMBER (object) + LAMP (with): the window sums 2 — the gate selects
+        let r = settle_line(&content, &dict, state, "0:0 @ ANA DREAM EMBER WITH LAMP", 1).unwrap();
+        assert_eq!(r.rejected, None);
+        assert_eq!(act(&r).unwrap().recipes, ["dread"]);
+    }
+
+    #[test]
+    fn the_bound_sum_gate_fails_on_one_card_and_falls_through() {
+        let (dict, content, state) = sum_script();
+        // EMBER alone sums to 1 — the default recipe reads
+        let r = settle_line(&content, &dict, state, "0:0 @ ANA DREAM EMBER", 1).unwrap();
+        assert_eq!(r.rejected, None);
+        assert_eq!(act(&r).unwrap().recipes, ["dream.default"]);
+        assert_eq!(ops(done(&r).unwrap()), ["NARRATE"]);
+    }
+
+    #[test]
+    fn a_card_bound_to_two_roles_counts_twice() {
+        let (dict, content, state) = sum_script();
+        // validate_slots forbids EMBER twice in ONE role; nothing forbids
+        // two roles — and the per-binding bookkeeping sums its dread per
+        // role, so the double-bound EMBER alone crosses the >= 2 gate
+        let r = settle_line(&content, &dict, state, "0:0 @ ANA DREAM EMBER WITH EMBER", 1).unwrap();
+        assert_eq!(r.rejected, None);
+        assert_eq!(act(&r).unwrap().recipes, ["dread"]);
+    }
+
+    #[test]
+    fn the_table_sum_grows_after_a_spawn_and_selects_the_hot_recipe() {
+        let (dict, content, state) = sum_script();
+        // first TOIL: the table carries no funds — the hot gate misses, the
+        // mint recipe spawns COIN (funds 2)
+        let r1 = settle_line(&content, &dict, state, "0:0 @ ANA TOIL", 1).unwrap();
+        assert_eq!(r1.rejected, None);
+        assert_eq!(act(&r1).unwrap().recipes, ["mint"]);
+        assert!(r1.state.by_name.contains_key("COIN"));
+        // second TOIL: the table now sums 2 — still under 3 (the missing
+        // aspects on ANA and the minted COIN's neighbors read 0)
+        let r2 = settle_line(&content, &dict, r1.state, "0:10 @ ANA TOIL", 10).unwrap();
+        assert_eq!(act(&r2).unwrap().recipes, ["mint"]);
+        // a second COIN pushes the world sum to 4 — hot selects
+        let r3 = settle_line(&content, &dict, r2.state, "0:20 @ ANA TOIL", 20).unwrap();
+        assert_eq!(act(&r3).unwrap().recipes, ["hot"]);
+    }
+
+    /// The negative-level face: a runtime SET writes the aspect BELOW zero
+    /// (a delta of -5 on funds 2 lands at -3 — negative results allowed,
+    /// §4.4), and the world sum reads the written level: the `>= 1` gate
+    /// stops matching and the below-zero gate starts. The analyzer's static
+    /// world never sees a SET (its descriptors are the load/mint shapes, and
+    /// `set_writes` only notes the path), so this engine semantics is the
+    /// anchor any static sum model must stay conservative about.
+    #[test]
+    fn a_set_below_zero_flips_the_table_sum_at_play() {
+        let dict = core_dictionary();
+        let text = "
+script: Set Sum Rig
+player: ANA
+start: 0:0
+
+entities:
+  ANA is character at HOUSE
+  HOUSE is place
+  POT is resource with funds:2
+
+verbs:
+  SPEND:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      cut when count(actors) >= 1 -> SET(POT, aspect:funds, -5)
+  TOIL:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      spent when total(table, aspect:funds) < 0 -> NARRATE \"spent past zero\"
+      hot when total(table, aspect:funds) >= 1 -> NARRATE \"hot\"
+";
+        let compiled = compile_script(text, &dict).unwrap();
+        // before the write the table sums 2 — the below-zero gate misses and
+        // hot selects
+        let r1 =
+            settle_line(&compiled.content, &compiled.dict, compiled.state, "0:0 @ ANA TOIL", 1)
+                .unwrap();
+        assert_eq!(r1.rejected, None);
+        assert_eq!(act(&r1).unwrap().recipes, ["hot"]);
+        let r2 = settle_line(&compiled.content, &compiled.dict, r1.state, "0:10 @ ANA SPEND", 10)
+            .unwrap();
+        assert_eq!(r2.rejected, None);
+        // after the write the sum reads -3: hot misses and the below-zero
+        // gate matches (`< 0` is the integer spelling of `<= -1` — predicate
+        // operands take no negative literals)
+        let r3 = settle_line(&compiled.content, &compiled.dict, r2.state, "0:20 @ ANA TOIL", 20)
+            .unwrap();
+        assert_eq!(r3.rejected, None);
+        assert_eq!(act(&r3).unwrap().recipes, ["spent"]);
+        assert_eq!(ops(done(&r3).unwrap()), ["NARRATE"]);
+        assert_eq!(said(&r3), ["spent past zero"]);
     }
 }

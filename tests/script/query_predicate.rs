@@ -11,6 +11,8 @@
 
 use indexmap::IndexMap;
 
+use chorus::content::script::compile_script;
+
 use chorus::core::dict::core_dictionary;
 use chorus::core::predicate::{eval_pred, parse_predicate, Pred, PredCtx, RoleBindings};
 use chorus::core::query::{match_query, parse_query};
@@ -737,4 +739,143 @@ fn a_comparison_inside_a_name_term_is_a_load_error_it_would_silently_bake_the_na
         parse_predicate("total(name:SUSPICION, aspect:weight) >= 1", &dict),
         r"total\(\) pools a bound role",
     );
+}
+
+// ---------- the predicate sum scopes, §6.3 ---------------------------------
+// `total(bound, aspect:k)` sums the WINDOW's bindings across all its roles
+// (per-binding: a card bound to two roles counts twice); `total(table,
+// aspect:k)` sums every ALIVE card on the world projection. Missing aspects
+// read 0 (total()'s unwrap_or(0)), dead-stamped ids drop like every role
+// read.
+
+/// `{ object: EMBER (dread 1), with: LAMP (dread 1) }` over a world holding
+/// both plus a bare character.
+fn sum_scope_state() -> State {
+    let mut s = new_state(0);
+    add_entity(&mut s, ent("ana", "character", "ANA")).unwrap();
+    add_entity(&mut s, with_aspects(ent("ember", "idea", "EMBER"), &[("dread", 1)])).unwrap();
+    add_entity(&mut s, with_aspects(ent("lamp", "idea", "LAMP"), &[("dread", 1)])).unwrap();
+    add_entity(&mut s, with_aspects(ent("coin", "item", "COIN"), &[("funds", 3)])).unwrap();
+    s
+}
+
+#[test]
+fn total_bound_sums_across_two_roles() {
+    let dict = core_dictionary();
+    let s = sum_scope_state();
+    let p = parse_predicate("total(bound, aspect:dread) >= 2", &dict).unwrap();
+    // object EMBER (1) + with LAMP (1) — the window's sum crosses
+    assert!(ev(&p, &bindings(&[(Role::Object, &["ember"]), (Role::With, &["lamp"])]), &s));
+    // either card alone sums to 1 — the gate fails
+    assert!(!ev(&p, &bindings(&[(Role::Object, &["ember"])]), &s));
+    assert!(!ev(&p, &bindings(&[(Role::With, &["lamp"])]), &s));
+}
+
+#[test]
+fn total_bound_counts_a_card_bound_to_two_roles_twice() {
+    let dict = core_dictionary();
+    let s = sum_scope_state();
+    // the engine's per-binding bookkeeping: validate_slots forbids a card
+    // twice in ONE role but nothing forbids two roles, so EMBER in object
+    // and with contributes its dread 1 PER BINDING
+    let p = parse_predicate("total(bound, aspect:dread) >= 2", &dict).unwrap();
+    let both_roles = bindings(&[(Role::Object, &["ember"]), (Role::With, &["ember"])]);
+    assert!(ev(&p, &both_roles, &s));
+    let exact = parse_predicate("total(bound, aspect:dread) = 2", &dict).unwrap();
+    assert!(ev(&exact, &both_roles, &s));
+}
+
+#[test]
+fn total_bound_reads_zero_when_nothing_is_bound() {
+    let dict = core_dictionary();
+    let s = sum_scope_state();
+    let p = parse_predicate("total(bound, aspect:dread) = 0", &dict).unwrap();
+    assert!(ev(&p, &no_binds(), &s));
+    let gte = parse_predicate("total(bound, aspect:dread) >= 1", &dict).unwrap();
+    assert!(!ev(&gte, &no_binds(), &s));
+    // characters bound but aspect-less: still 0 (the missing reads 0)
+    assert!(ev(&p, &bindings(&[(Role::Actors, &["ana"])]), &s));
+}
+
+#[test]
+fn total_bound_drops_dead_bindings_and_missing_aspects_read_zero() {
+    let dict = core_dictionary();
+    let mut s = sum_scope_state();
+    let _ = s.entities.get_mut("ember").map(|e| e.dead_action = Some(3));
+    // the dead EMBER drops; only LAMP's 1 remains
+    let p = parse_predicate("total(bound, aspect:dread) = 1", &dict).unwrap();
+    assert!(ev(&p, &bindings(&[(Role::Object, &["ember"]), (Role::With, &["lamp"])]), &s));
+    // a role nobody bears the aspect on reads 0, not false
+    let zero = parse_predicate("total(bound, aspect:funds) = 0", &dict).unwrap();
+    assert!(ev(&zero, &bindings(&[(Role::Object, &["ember"])]), &s));
+}
+
+#[test]
+fn total_table_sums_the_living_world_and_grows_after_a_mint() {
+    let dict = core_dictionary();
+    let mut s = sum_scope_state();
+    let p3 = parse_predicate("total(table, aspect:funds) >= 3", &dict).unwrap();
+    // COIN alone carries funds 3 — every other card reads its missing as 0
+    assert!(ev(&p3, &no_binds(), &s));
+    let exact = parse_predicate("total(table, aspect:funds) = 3", &dict).unwrap();
+    assert!(ev(&exact, &no_binds(), &s));
+    // a mint lands (the SPAWN face): the world sum grows
+    add_entity(&mut s, with_aspects(ent("purse", "resource", "PURSE"), &[("funds", 2)])).unwrap();
+    let p5 = parse_predicate("total(table, aspect:funds) >= 5", &dict).unwrap();
+    assert!(ev(&p5, &no_binds(), &s));
+    // a dead card drops out of the table sum
+    let _ = s.entities.get_mut("purse").map(|e| e.dead_action = Some(1));
+    assert!(ev(&exact, &no_binds(), &s));
+}
+
+#[test]
+fn the_sum_scopes_render_in_the_authored_spelling() {
+    // the explain-face round-trip: the two scope forms render exactly as
+    // authored
+    let dict = core_dictionary();
+    let p = parse_predicate("total(bound, aspect:dread) >= 2", &dict).unwrap();
+    assert_eq!(chorus::session::explain::pred_text(&p), "total(bound, aspect:dread) >= 2");
+    let p = parse_predicate("total(table, aspect:dread) >= 2", &dict).unwrap();
+    assert_eq!(chorus::session::explain::pred_text(&p), "total(table, aspect:dread) >= 2");
+}
+
+#[test]
+fn total_bound_in_a_slot_trigger_if_is_a_load_error_and_loads_in_an_on_complete_if() {
+    // the compile-level split (§6.3/§6.6): a slot trigger's event bindings
+    // are empty, so the window scope would silently read 0 there — a load
+    // error, the same always-0 rule the role forms wear; a completion
+    // trigger's window bindings are live, so the identical IF loads.
+    let dict = core_dictionary();
+    let slot = "
+script: Split Rig
+player: ANA
+start: 0:0
+
+entities:
+  ANA is character at HOUSE
+  HOUSE is place
+
+triggers:
+  tick at hour 1 -> IF total(bound, aspect:dread) >= 1 -> (NARRATE \"ding\")
+";
+    assert_err_msg(
+        compile_script(slot, &dict).map(|_| ()),
+        r"trigger tick: IF operand total\(bound, aspect:dread\) reads the window's bindings — trigger bindings are empty, it would always be 0",
+    );
+    let complete = "
+script: Split Rig
+player: ANA
+start: 0:0
+
+entities:
+  ANA is character at HOUSE
+  HOUSE is place
+  on complete -> (IF total(bound, aspect:dread) >= 1 -> (NARRATE \"ding\"))
+";
+    let compiled = compile_script(complete, &dict).unwrap();
+    assert_eq!(compiled.content.triggers.len(), 1);
+    assert!(matches!(
+        compiled.content.triggers[0],
+        chorus::content::CompiledTrigger::Complete { .. }
+    ));
 }

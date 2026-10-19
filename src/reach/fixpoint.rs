@@ -28,8 +28,8 @@ use super::census::{
 };
 use super::render::pred_text;
 use super::world::{
-    eval_static_ok, eval_static_truth, path_open_first_failure, pred_static, CardFact, CardWorld,
-    SlotFiller, SlotProof, StaticTruth, WorldFacts, INFINITY,
+    eval_static_ok, eval_static_truth, path_open_first_failure, pred_static, BoundSlot, BoundView,
+    CardFact, CardWorld, SlotFiller, SlotProof, StaticTruth, WorldFacts, INFINITY,
 };
 
 // ---------------------------------------------------------------------------
@@ -94,6 +94,52 @@ struct CandInst {
 }
 
 impl<'c> WorldFacts<'c> {
+    /// The window model of a verb — the `total(bound, …)` scope's face: one
+    /// [`BoundSlot`] per DECLARED slot (`slot_by_role`, the effective
+    /// last-def-per-role set), carrying the descriptors the slot's query
+    /// admits over the available world (stackable facts expanded to their
+    /// capped copy counts) plus the slot's min/max. The interval arithmetic
+    /// lives in `eval_expr_interval`; this is the pure enumeration. The model
+    /// reads `self.avail` and the chain-edge set — both settled before the
+    /// fixpoint runs — so the ladder re-walked post-fixpoint keeps its
+    /// verdicts.
+    ///
+    /// A §6.7 CHAIN candidate (`chain_pinned`) reads no model: the pin gate
+    /// re-evaluates the candidate `when` over MERGED bindings — the parent
+    /// window's committed cards stand under roles this verb does not declare
+    /// — and chain-synthesized follow-ups skip `validate_slots`, so the
+    /// declared-slot view bounds neither face and a False at its ceiling
+    /// would claim never-matches falsely. The scope reads Unknown there
+    /// (which only ever demotes); the view stays for the player-openable
+    /// verbs, whose every window is a player commit through declared slots
+    /// and whose gate the view decides exactly.
+    pub(crate) fn bound_view(&self, vi: usize) -> Option<BoundView<'_>> {
+        if self.chain_pinned.contains(&vi) {
+            return None;
+        }
+        let (_, v) = self.content.verbs.get_index(vi)?;
+        let mut slots: Vec<BoundSlot<'_>> = Vec::new();
+        for slot in v.slot_by_role.values() {
+            let mut cards: Vec<&Entity> = Vec::new();
+            for facts in self.avail.values() {
+                for f in facts {
+                    if slot.query.as_ref().is_none_or(|q| match_query(&f.entity, q)) {
+                        let copies = if f.entity.stackable {
+                            std::cmp::min(f.count, super::world::FLATTEN_WEIGHT_CAP)
+                        } else {
+                            1
+                        };
+                        for _ in 0..copies {
+                            cards.push(&f.entity);
+                        }
+                    }
+                }
+            }
+            slots.push(BoundSlot { cards, min: slot.min, max: slot.max });
+        }
+        Some(BoundView { slots })
+    }
+
     /// The structured committability proof for one
     /// verb. Roles take DISTINCT instances (name#copy), so the same instance
     /// cannot fill two roles and a min:2 slot needs two copies; the first-fit
@@ -445,6 +491,12 @@ impl<'c> WorldFacts<'c> {
     /// caller to record; on a blocker it is always None.
     pub(crate) fn site_ladder(&self, si: usize, world: &CardWorld) -> Ladder {
         let site = &self.census.sites[si];
+        // the window model: recipe-owned sites sum what their verb's slots
+        // can bind (a chain candidate's verb reads no model — see
+        // `bound_view`); trigger-owned sites have no window model (event
+        // bindings are empty, §6.6 — and a complete trigger's live window is
+        // deliberately unmodeled here, the under-claim only demotes)
+        let bound = site.verb.and_then(|vi| self.bound_view(vi));
         if site.fallback {
             return (Err(CardBlocker::Fallback), None); // ELSE runs only when earlier arms are false — unprovable
         }
@@ -479,7 +531,8 @@ impl<'c> WorldFacts<'c> {
         // the internal throws sit behind pred_static
         // guards and are unreachable here; debug-trap if a bug
         // ever reaches one (eval_static_ok's debug_assert)
-        if let Some(cond) = super::world::path_open_first_failure(&site.path, world) {
+        if let Some(cond) = super::world::path_open_first_failure(&site.path, world, bound.as_ref())
+        {
             return (Err(CardBlocker::PathClosed { cond: pred_text(cond) }), None);
         }
         let gated_names = static_gate_names(site);
@@ -529,7 +582,7 @@ impl<'c> WorldFacts<'c> {
         // static-true and the verb committable
         if let Some(vi) = site.verb {
             if let Some(when) = &site.when {
-                let holds = pred_static(when) && eval_static_ok(when, world);
+                let holds = pred_static(when) && eval_static_ok(when, world, bound.as_ref());
                 if !holds {
                     return (Err(CardBlocker::WhenNotStaticTrue), None);
                 }
@@ -1156,7 +1209,8 @@ impl<'c> WorldFacts<'c> {
             if s.owner != owner || s.fallback || s.killed_in_list {
                 continue;
             }
-            if path_open_first_failure(&s.path, world).is_some() {
+            let bound = s.verb.and_then(|vi| self.bound_view(vi));
+            if path_open_first_failure(&s.path, world, bound.as_ref()).is_some() {
                 continue; // roll/role-gated or statically false: not unconditional
             }
             if s.kind == SiteKind::Draw && s.deck.is_some() {
@@ -1204,6 +1258,9 @@ impl<'c> WorldFacts<'c> {
     fn recipe_draft(&self, world: &CardWorld, vi: usize, ri: usize) -> Option<IndexSet<String>> {
         let (_, v) = self.content.verbs.get_index(vi)?;
         let r = v.recipes.get(ri)?;
+        // the window model the recipe's gates sum (what its verb's slots
+        // can bind)
+        let bound = self.bound_view(vi);
         // (a) selectability
         if v.recipes[..ri].iter().any(|rr| rr.when.is_none()) {
             return None; // an earlier when-less recipe shadows permanently
@@ -1217,11 +1274,13 @@ impl<'c> WorldFacts<'c> {
                 // raised, and the window-refuse retry is existential (§6.7).
                 // The invariant: Unknown may only widen toward "candidate"
                 // (a selectable witness), never produce "proven" on its own.
-                if eval_static_truth(w, world).ok()? == StaticTruth::False {
+                if eval_static_truth(w, world, bound.as_ref()).ok()? == StaticTruth::False {
                     return None; // never matches
                 }
                 if v.recipes[..ri].iter().any(|rr| {
-                    rr.when.as_ref().is_some_and(|we| pred_static(we) && eval_static_ok(we, world))
+                    rr.when.as_ref().is_some_and(|we| {
+                        pred_static(we) && eval_static_ok(we, world, bound.as_ref())
+                    })
                 }) {
                     return None; // an earlier static-true when always beats it
                 }
@@ -1235,7 +1294,8 @@ impl<'c> WorldFacts<'c> {
             &root,
             &mut (),
             &mut |_st, o, path| {
-                if !path.iter().all(|p| pred_static(p) && eval_static_ok(p, world)) {
+                if !path.iter().all(|p| pred_static(p) && eval_static_ok(p, world, bound.as_ref()))
+                {
                     return Ok(()); // can fail this application — no decision
                 }
                 if o.op == "REFUSE" {
@@ -1288,7 +1348,8 @@ impl<'c> WorldFacts<'c> {
             if s.owner != owner || s.fallback || s.killed_in_list {
                 continue;
             }
-            if path_open_first_failure(&s.path, world).is_some() {
+            let bound = s.verb.and_then(|vi| self.bound_view(vi));
+            if path_open_first_failure(&s.path, world, bound.as_ref()).is_some() {
                 continue; // roll/role-gated or statically false: not unconditional
             }
             // the site's draft mint: a draw contributes its deterministic
@@ -1675,7 +1736,10 @@ fn expirable_card(
                 })
                 && (match &s.when_pred {
                     None => true,
-                    Some(wp) => pred_static(wp) && eval_static_ok(wp, world),
+                    // no window model here (the arming SET's owner may be a
+                    // trigger) — a `total(bound, …)` gate reads Unknown,
+                    // which only demotes
+                    Some(wp) => pred_static(wp) && eval_static_ok(wp, world, None),
                 })
                 && (s.target_name.as_deref() == Some(card_name)
                     || match (&s.target_role, &d) {

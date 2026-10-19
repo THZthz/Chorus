@@ -528,18 +528,27 @@ fn reach_fuzz_flags_streams_and_exit_zero_when_sound() {
 /// surfaced exactly {37} — a false-UNOBTAINABLE class judged PRE-EXISTING:
 /// the seed-37 scenario fails identically with every recipe `dur` stripped
 /// (a content shape where the per-recipe machinery is inert), so the class
-/// lives in the analyzer's demotion model, not the dur work. The set is the
-/// campaign's open ledger, pinned here exactly like the old {41}: a
-/// different set (a new class, a widened one, or the class closed) breaks
-/// this pin and must be re-judged, never silently absorbed.
+/// lives in the analyzer's demotion model, not the dur work. The v9
+/// generator stream (the §6.3 sum scopes re-drawing every `when`) leaves
+/// this shallow window EMPTY again — the campaign still carries the class
+/// at default bounds (failing seeds 169/236 over seeds 1..=300; seed 169's
+/// failure reproduces identically with every sum-scope `when` stripped,
+/// judged PRE-EXISTING the same way), so the set is the campaign's open
+/// ledger: a non-empty set here (a new class, a widened one, or a class
+/// surfacing inside the window) breaks this pin and must be re-judged,
+/// never silently absorbed.
 #[test]
 fn reach_fuzz_progress_line_every_50_seeds() {
     let (code, stdout, stderr) =
         run("reach-fuzz", &["--seeds", "50", "--from", "1", "--steps", "1", "--states", "20"]);
-    assert_eq!(code, Some(1), "{stdout}{stderr}");
-    assert!(stdout.contains("… 50/50 seeds, 1 failures"), "{stdout}");
-    assert!(stdout.contains("failing seeds: 37\n"), "{stdout}");
-    assert!(stderr.contains("FAIL seed 37: "), "{stderr}");
+    assert_eq!(code, Some(0), "{stdout}{stderr}");
+    assert!(stdout.contains("… 50/50 seeds, 0 failures"), "{stdout}");
+    assert!(
+        stdout.contains("\n50 seeds × ≤1 steps × ≤20 states: 0 failure(s), 0 inconclusive, "),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("failing seeds:"), "{stdout}");
+    assert!(!stderr.contains("FAIL "), "{stderr}");
 }
 
 /// A clean bundled script: exit 0 (warnings advise), the

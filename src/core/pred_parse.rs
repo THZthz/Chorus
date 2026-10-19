@@ -502,13 +502,29 @@ impl<'a> PredParser<'a> {
                     "total() pools a bound role's aspects — total(<query>, …) is not offered; use count(<query>) to count a pool by name (e.g. count(name:X))",
                 ));
             }
-            let role = self.next()?;
+            // §6.3's two scope keywords: `bound` sums the window's bindings
+            // across all its roles; `table` sums the whole living world (the
+            // count(name:X) card set). Neither is a role name, so the keyword
+            // pick cannot shadow the role form.
+            let scope = self.next()?;
+            if scope == "bound" || scope == "table" {
+                self.expect(",")?;
+                self.expect("aspect")?;
+                self.expect(":")?;
+                let path = self.dotted_name()?;
+                self.expect(")")?;
+                return Ok(if scope == "bound" {
+                    ValExpr::TotalBound { path }
+                } else {
+                    ValExpr::TotalTable { path }
+                });
+            }
             self.expect(",")?;
             self.expect("aspect")?;
             self.expect(":")?;
             let path = self.dotted_name()?;
             self.expect(")")?;
-            return Ok(ValExpr::Total { role, path });
+            return Ok(ValExpr::Total { role: scope, path });
         }
         // path operand: role '.' (aspect|attr) '.' dottedKey — the tokenizer
         // may deliver the whole dotted path as one token, so handle both shapes
@@ -696,5 +712,36 @@ mod tests {
             e.msg,
             "total() pools a bound role's aspects — total(<query>, …) is not offered; use count(<query>) to count a pool by name (e.g. count(name:X))"
         );
+    }
+
+    #[test]
+    fn total_scope_keywords_parse_to_their_own_operands() {
+        let dict = core_dictionary();
+        // §6.3: the two scope keywords parse to their own operands, leaving
+        // the role form untouched
+        let p = parse_predicate("total(bound, aspect:dread) >= 2", &dict).unwrap();
+        let Pred::Cmp { l, r, .. } = p else {
+            panic!("expected Cmp, got {p:?}");
+        };
+        assert_eq!(l, ValExpr::TotalBound { path: "dread".to_string() });
+        assert_eq!(r, ValExpr::Int { v: 2 });
+        let p = parse_predicate("total(table, aspect:dread) >= 2", &dict).unwrap();
+        let Pred::Cmp { l, .. } = p else {
+            panic!("expected Cmp, got {p:?}");
+        };
+        assert_eq!(l, ValExpr::TotalTable { path: "dread".to_string() });
+        let p = parse_predicate("total(actors, aspect:dread) >= 2", &dict).unwrap();
+        let Pred::Cmp { l, .. } = p else {
+            panic!("expected Cmp, got {p:?}");
+        };
+        assert_eq!(l, ValExpr::Total { role: "actors".to_string(), path: "dread".to_string() });
+        // the scope word is the WHOLE first argument — a dotted name is a
+        // (never-declared) role like any other, and the load-time arg lint
+        // names it
+        let p = parse_predicate("total(bound.x, aspect:y) >= 1", &dict).unwrap();
+        let Pred::Cmp { l, .. } = p else {
+            panic!("expected Cmp, got {p:?}");
+        };
+        assert_eq!(l, ValExpr::Total { role: "bound.x".to_string(), path: "y".to_string() });
     }
 }

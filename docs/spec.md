@@ -57,6 +57,7 @@ projection of that data, never the source of truth.
 36. **v0.8.2** — the tick: the clock's minimal unit shrinks from the halfhour to 10 minutes (`day:tick`, 144 ticks/day); `at tick N` triggers replace `at halfhour N`; the `halfhour` duration unit is removed (write `30m`); quantization and dead-air semantics re-anchor on the 10-minute tick; pre-0.8.2 logs' `tGame` digits are stale display data (§9.2, no compatibility).
 37. **v0.9.0** — the RUN-semantics cluster: chain candidates resolve against the global recipe table in every home (cross-verb RUN from recipe bodies); the chain slot is earned by a pin (a whiffed list falls through); the `FORK` fan-out op (one window per matching candidate, one branch per station, atomic gate); `RUN`/`FORK` legal in slot/expire trigger bodies (the §6.6 event-chain channel: empty bindings, immediate registration); the actor-less clause form (§5.1); the dead-chain lint warning; the fuzz generator re-banded (v5–v7).
 38. **v0.9.1** — the per-recipe window: the recipe-line `dur <duration>` modifier overrides the verb's `duration:` for that recipe's completions (§6.4 — window ends, the BEGIN row's `advancedMin` sum, chained follow-ups' own lengths); the reach cost/bounded-horizon faces read the same override; the fuzz generator gains the `dur` band (v8).
+39. **v0.9.2** — the predicate sum scopes: `total(bound, aspect:k)` sums the window's bindings across all its roles (per-binding) and `total(table, aspect:k)` sums the whole living world (§6.3); the reach intervals weight the count-world by level (the table scope) and model the verb's bindable window (the bound scope), Unknown only ever widening toward candidate (§13.1); the W1 always-true gate extends to open `total(table, …)` forms (§13.2); the fuzz generator gains the sum-scope `when` forms (v9).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -755,6 +756,8 @@ world        exists(HUNTER)                               # ∃ an ALIVE card wi
              exists(kind:rite aspect:ritual>=1) · exists(-aspect:winter)
              exists(name:SUSPICION)                       # ∃ a living copy of the name (§4.5)
 aggregate    total(actors, aspect:lantern) >= 3 # pooled power of the set
+             total(bound, aspect:lantern) >= 3  # the window's sum, across ALL its roles
+             total(table, aspect:lantern) >= 3  # the whole world's sum (§4.5's card set)
              count(name:SUSPICION) >= 3         # the whole living pool, not a role (§4.5)
 paths        total(actors, aspect:lantern) < object.aspect.demand   # value vs value
              count(actors) > object.attr.seats                      # attr paths too
@@ -802,6 +805,27 @@ lint**: a `count()`/`total()` argument must be a declared role or a
 query-starter — `count(DREAD) >= 3` (the most tempting typo: a NAME where a
 role belongs; it would silently count 0) is a load error naming the valid
 forms. `total(<query>, …)` is not offered: pooled aspects read a bound role.
+
+**`total(...)` — the pooled-power sum, in three scopes.** The first argument
+is a role, or one of the two scope keywords `bound` and `table`; the second
+is always an aspect path (`total(X, aspect:key)`):
+
+- `total(role, aspect:k)` pools one bound role's cards, as always.
+- `total(bound, aspect:k)` sums the current window's bindings across ALL its
+  roles — the bookkeeping is per BINDING, so a card bound to two roles
+  counts twice (`validate_slots` forbids a card twice in ONE role; nothing
+  forbids two roles). An event trigger's bindings are empty (§6.6), so the
+  scope reads 0 there and the trigger lint rejects it in an event IF
+  condition the way it rejects a role read; a completion trigger's window is
+  live and reads its bindings.
+- `total(table, aspect:k)` sums every ALIVE card on the world projection —
+  the same card set `count(name:X)` and `exists(name:X)` see (§4.5).
+
+All three share the reduction rules: cards read alive-only, a MISSING aspect
+contributes 0 (the same house rule `count`/`total` always wore), and the sum
+is saturating (only absurd magnitudes overflow, and no log pins their sums).
+`bound` and `table` are not role names, so the keyword pick cannot shadow
+the role form.
 
 Idiom — a rite that only burns while the coast is clear (no HUNTER card
 exists anywhere in play) and the sealed door still stands:
@@ -2164,7 +2188,24 @@ are the only reach files allowed to):
   treats an undecided gate as may-select — the window-refuse retry is
   existential (§6.7), so the window witness pair survives. The
   invariant: Unknown may only widen toward candidate, never produce
-  proven on its own.
+  proven on its own. The §6.3 sum scopes ride the same intervals:
+  `total(table, aspect:k)` weights the same distinct-fact enumeration by
+  each fact's LEVEL (missing → 0) — an unbounded matching fact with a
+  positive level lifts the ceiling, a negative one sinks the floor, and
+  either face goes full-open (Unknown under every op, the widening-only
+  invariant again); `total(bound, aspect:k)` sums what the owning verb's
+  slots can bind — one face per declared slot, the floor binding the
+  slot's min cards at their smallest levels and the ceiling its max cards
+  at their largest (the engine's cross-role rule applies: slots draw from
+  the pool independently and stay distinct within a slot), an
+  unbounded-max slot with any non-zero level going full-open — so a
+  forced window decides exactly, and an optional one stays Unknown unless
+  even its ceiling corner cannot reach the threshold, where it decides
+  False; a §6.7 chain candidate reads no window model at all (the pin
+  gate re-evaluates the candidate `when` over MERGED bindings no
+  declared-slot view bounds, so its bound scope stays Unknown); a
+  trigger-owned site has no window model and reads the scope Unknown
+  (the under-claim only demotes).
 - **fixpoint** — committability as a NAIVE round-robin re-test (verbs in
   content order, then sites in live order) until nothing changes. The
   schedule is part of the contract: `count(X) <= k` gates make
@@ -2478,7 +2519,7 @@ full 1,566 × 2,084 world) on worker threads — at most
 whole deterministic world — with a `--worker i k P R` child protocol
 dumping per-name JSON stats.
 
-The fuzz generator (`gen_scenario`, v8) builds one random script per
+The fuzz generator (`gen_scenario`, v9) builds one random script per
 seed over the FULL trigger face — slot, expiry and completion triggers
 (the complete form drawing its home and its optional §6.7 aspect gate) —
 plus §6.7 chain candidates (a recipe body draws from the GLOBAL
@@ -2500,10 +2541,12 @@ comparison face visible to the differential campaign; v5 widened the
 recipe-body chain table to the global build prefix; v6 split the chain
 band into RUN [0.22, 0.27) and FORK [0.27, 0.32); v7 turned the chain
 band on in slot/expire trigger bodies; v8 added the recipe `dur` band
-(p=0.15, one ladder literal, drawn after the aspects gate). Scenario streams
-differ across generator versions by design. What stays pinned is purity:
-the generator is a pure function of its seed — the same seed builds the
-same scenario, draw for draw, under ONE version.
+(p=0.15, one ladder literal, drawn after the aspects gate); v9 added the
+two predicate sum scopes (§6.3) to the `when` candidate table
+(`total(bound, aspect:a) >= n`, `total(table, aspect:b) >= n`). Scenario
+streams differ across generator versions by design. What stays pinned is
+purity: the generator is a pure function of its seed — the same seed
+builds the same scenario, draw for draw, under ONE version.
 
 ### 13.2 The script lint
 
@@ -2543,26 +2586,31 @@ same scenario, draw for draw, under ONE version.
 - **WARNING** — a `when` PROVABLY never-matching: a three-valued,
   interval-narrowing evaluation over the §6.1 slot ranges, false for every
   §6.6 selection binding. Conservative at the boundary — staying Unknown is
-  what keeps the warning sound: `exists`/`count(<query>)` world reads,
+  what keeps the warning sound: `exists`/`count(<query>)` world reads, the
+  §6.3 sum scopes (`total(bound, …)`/`total(table, …)`),
   `every`, non-integer comparisons and the cross-verb RUN re-evaluation
   stay Unknown. And a `when` containing an always-true world-form gate —
-  the inverse face of the no-writer check: an `exists(aspect:k…)` or an
-  open-ended `count(aspect:k…) >= v` whose aspect the player cannot
-  prevent reads true in every relevant world, so the gate can never gate.
+  the inverse face of the no-writer check: an `exists(aspect:k…)`, an
+  open-ended `count(aspect:k…) >= v`, or an open-ended
+  `total(table, aspect:k…) >= v` whose aspect the player cannot
+  prevent reads true in every relevant world, so the gate can never gate
+  (the count form counts the load-present pool, the total form sums its
+  levels; `total(bound, …)` is window-local — the bindings can genuinely
+  gate — and never warns).
   Two bearer faces: an aspect borne FROM LOAD (a declared `entities:`
-  line) — the count form counts only these, the load-present pool; and a
+  line) — the count/total forms read only these, the load-present pool; and a
   deck `defaultcard` through its prototype's aspects — NOT borne from
   load, so its finding carries the once-served face (true once the deck
   serves its default card, naming the card) and adds nothing to the
-  count form's pool; the finding names the aspect and the bearer(s). An
+  count/total forms' pool; the finding names the aspect and the bearer(s). An
   authored outcome that kills a bearer (`DESTROY <bearer>` /
   `REPLACE <bearer> WITH …` reaching its name) stands that bearer out of
   the finding — an aspect that can leave the world can genuinely gate;
   a surviving bearer keeps the warning, naming only the survivors. Silent
   on a name-constrained form (`exists(name:X aspect:k)`), a multi-term or
   negated query, a closed count comparison (the pool can grow past it), a
-  threshold the load-present pool does not meet, an aspect with no writer
-  (the no-writer error is that finding), and `state.*` reads.
+  threshold the load-present pool or sum does not meet, an aspect with no
+  writer (the no-writer error is that finding), and `state.*` reads.
   And a chain-op list that can never pin: a `RUN`/`FORK` list whose EVERY
   candidate's target `when` is provably dead — each verdict evaluated over
   the TARGET recipe's verb's slot ranges (the same §6.1 domain), owner the

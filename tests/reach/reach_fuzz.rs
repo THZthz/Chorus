@@ -7,11 +7,12 @@
 //!   obtainable   ⇒ appears in some explored play        (hard; downgraded to
 //!                  inconclusive when the exploration hit its state cap)
 //!
-//! The scenario space (gen_scenario v8) now generates completion triggers
+//! The scenario space (gen_scenario v9) now generates completion triggers
 //! (`on complete [<aspect>]`), §6.7 chain candidates in verb recipes and
 //! trigger bodies (the recipe-body table is the GLOBAL build prefix —
 //! recipe-body RUNs cross verbs; slot/expire bodies chain onto the global
-//! duration>0 table), and recipe-line `aspects` — features whose
+//! duration>0 table), recipe-line `aspects`, recipe-line `dur`, and the two
+//! §6.3 predicate sum scopes in the `when` candidate table — features whose
 //! analyzer
 //! coverage is still being established, and which legitimately surface open
 //! false-`obtainable` gaps (the Wave-3 worklist, triaged by the reach-fuzz
@@ -213,6 +214,20 @@ fn scenario_has_aspect_world_form(seed: u32) -> bool {
     })
 }
 
+// The v9 sum scopes (§6.3): a comparison whose operand is
+// `total(bound, aspect:k)` (the window's per-binding sum) or
+// `total(table, aspect:k)` (the world sum) — the shapes the analyzer's
+// window-model and world-sum intervals decide.
+fn scenario_has_sum_scope_when(seed: u32) -> bool {
+    scenario_pred_has(seed, &|p| {
+        matches!(p, Pred::Cmp { l, r, .. }
+        if [l, r].iter().any(|v| matches!(
+            v,
+            ValExpr::TotalBound { .. } | ValExpr::TotalTable { .. }
+        )))
+    })
+}
+
 /// The v4 closed face: a count-form comparison whose left operand is an
 /// aspect-scoped pool count and whose op is closed (`<` / `<=`) — the
 /// shape the floor-violation rule decides, invisible to the v3 table.
@@ -288,9 +303,14 @@ fn scenario_recipe_run_crosses_verbs(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_2_carries_a_cross_verb_recipe_body_run_and_stays_deterministic() {
-    assert!(scenario_recipe_run_crosses_verbs(2));
-    assert_seed_deterministic(2);
+fn seed_1_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
+    // the v9 sum-scope probe rides this seed too: a `when` whose comparison
+    // names `total(bound, aspect:a)` or `total(table, aspect:b)` — the
+    // analyzer's window-model and world-sum interval faces, exercised by the
+    // same differential sweep
+    assert!(scenario_has_sum_scope_when(1));
+    assert!(scenario_recipe_run_crosses_verbs(1));
+    assert_seed_deterministic(1);
 }
 
 // The v8 recipe `dur` band: a minority of recipes complete under a window of

@@ -1515,3 +1515,109 @@ verbs:
         "trigger dusk: the FORK list can never pin — every candidate's when is dead (§6.7)"
     );
 }
+
+#[test]
+fn an_open_table_sum_gate_already_met_by_load_bearers_warns() {
+    // POT bears funds 3 from load: the world sum is a floor already at 3 —
+    // `total(table, aspect:funds) >= 3` (and the strict `> 2`) can never
+    // gate. `>= 4` the load-present sum does not meet: silent.
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when total(table, aspect:funds) >= 3 -> SPAWN PILLAR
+      rite.strict when total(table, aspect:funds) > 2 -> SPAWN PILLAR
+      rite.unmet when total(table, aspect:funds) >= 4 -> SPAWN PILLAR
+      rite.closed when total(table, aspect:funds) <= 3 -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 2, "{findings:?}");
+    assert!(
+        w.iter().all(|f| f.message.contains(
+            "is always true — aspect 'funds' is borne from load totaling 3, so the gate can never gate (§6.3)"
+        )),
+        "{w:?}"
+    );
+    assert!(w.iter().any(|f| f.message.contains("rite.gate")), "{w:?}");
+    assert!(w.iter().any(|f| f.message.contains("rite.strict")), "{w:?}");
+}
+
+#[test]
+fn a_flipped_operand_table_sum_normalizes_before_the_op_check() {
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.flipped when 3 <= total(table, aspect:funds) -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(w[0].message.contains("total(table, aspect:funds) >= 3 is always true"), "{w:?}");
+}
+
+#[test]
+fn a_killed_bearer_stands_a_table_sum_out_of_the_finding() {
+    // BANISH destroys POT: the world sum can genuinely drop — the warning
+    // stands down
+    let script = "
+script: Probe
+player: MARCH
+start: 0:0
+
+entities:
+  MARCH is character
+  POT is resource with funds:3
+
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when total(table, aspect:funds) >= 3 -> SPAWN PILLAR
+  BANISH:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      banish.pot -> DESTROY POT
+";
+    let dict = core_dictionary();
+    let findings = lint_script_findings(script, &dict).unwrap();
+    assert!(warnings_of(&findings).is_empty(), "{findings:?}");
+}
+
+#[test]
+fn the_bound_sum_scope_is_window_local_and_never_warns() {
+    // total(bound, …) reads the step's bindings — the window can genuinely
+    // gate — so the always-true walk stays silent on it
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when total(bound, aspect:funds) >= 1 -> SPAWN PILLAR
+",
+    );
+    assert!(warnings_of(&findings).is_empty(), "{findings:?}");
+}

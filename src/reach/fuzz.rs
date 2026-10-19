@@ -15,8 +15,10 @@
 //! band into RUN [0.22, 0.27) and FORK [0.27, 0.32) (the FORK fan-out, §6.7);
 //! v7 turned the chain band ON in slot/expire trigger bodies (the §6.6
 //! event-chain channel); v8 added the recipe-line `dur` band (NEW draw,
-//! p=0.15, one ladder literal, after the aspects gate). Every recorded
-//! fuzz run taken before v8 is therefore NOT reproducible
+//! p=0.15, one ladder literal, after the aspects gate); v9 added the §6.3
+//! sum scopes to the `when` table (`total(bound, aspect:a) >= n`,
+//! `total(table, aspect:b) >= n`). Every recorded
+//! fuzz run taken before v9 is therefore NOT reproducible
 //! seed-for-seed; reproduce against the matching generator version. What
 //! stays pinned is that the generator is a pure function of its seed — the
 //! same seed builds the same scenario, draw for draw, under ONE version.
@@ -325,10 +327,10 @@ impl Gen<'_> {
         "NARRATE \"beat\"".to_string()
     }
 
-    /// The `when` candidates. All seven are built EAGERLY — every template
+    /// The `when` candidates. All nine are built EAGERLY — every template
     /// interpolation draws BEFORE the final pick selects one:
     /// t1 one int, t2 one pool pick, t3 none, t4 one proto-name pick,
-    /// ta one int, tb one int, tc one int.
+    /// ta one int, tb one int, tc one int, td one int, te one int.
     fn gen_when(&mut self) -> String {
         let t1 = format!("actors.aspect.a >= {}", 1 + int(self.r, 3) as i64);
         let mut pool = self.others.clone();
@@ -355,7 +357,13 @@ impl Gen<'_> {
         // decide it False (never may-select Unknown), and this form makes
         // that face visible to the differential campaign
         let tc = format!("count(aspect:b>=1) < {}", 1 + int(self.r, 3) as i64);
-        let choices: [&str; 7] = [&t1, &t2, &t3, &t4, &ta, &tb, &tc];
+        // the predicate sum scopes (v9, §6.3): the window-bound sum over
+        // the step's bindings and the world-table sum over every living
+        // card — the analyzer's window-model and world-sum intervals under
+        // the differential campaign
+        let td = format!("total(bound, aspect:a) >= {}", 1 + int(self.r, 3) as i64);
+        let te = format!("total(table, aspect:b) >= {}", 1 + int(self.r, 2) as i64);
+        let choices: [&str; 9] = [&t1, &t2, &t3, &t4, &ta, &tb, &tc, &td, &te];
         pick_str(self.r, &choices)
     }
 }

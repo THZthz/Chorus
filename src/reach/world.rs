@@ -15,12 +15,17 @@ use std::sync::OnceLock;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::content::{CompiledContent, CompiledTrigger, CompiledVerb, PrototypeDef};
+use crate::content::{
+    for_each_authored_outcome_infallible, CompiledContent, CompiledTrigger, CompiledVerb,
+    PrototypeDef,
+};
 use crate::core::clock::{MIN_PER_TICK, TICKS_PER_DAY};
 use crate::core::dict::Dictionary;
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, CmpOp, Query, QueryTerm};
-use crate::core::types::{Aspects, Entity, State};
+use crate::core::r#ref::Ref;
+use crate::core::sentence::{Arg, Outcome};
+use crate::core::types::{aspect_get, Aspects, Entity, State};
 use crate::error::{ChorusError, Result};
 
 use super::census::{
@@ -55,15 +60,27 @@ pub(crate) fn effective_duration(v: &CompiledVerb, ri: Option<usize>) -> i64 {
 // world-static predicate evaluation
 // ---------------------------------------------------------------------------
 
-/// A value expression is world-static when it reads no runtime state.
+/// A value expression is world-static when it reads no runtime state. The
+/// §6.3 sum scopes join the static class: `total(table, …)` is a pure world
+/// read, and `total(bound, …)` is decidable from the analyzer's window
+/// model (the [`BoundView`]) — a missing model reads Unknown, never an
+/// internal throw.
 fn expr_static(v: &ValExpr) -> bool {
-    matches!(v, ValExpr::Int { .. } | ValExpr::CountQuery { .. })
+    matches!(
+        v,
+        ValExpr::Int { .. }
+            | ValExpr::CountQuery { .. }
+            | ValExpr::TotalTable { .. }
+            | ValExpr::TotalBound { .. }
+    )
 }
 
 /// A predicate is world-static when every operand is. The
 /// `Rel`/`Every`/`Any` arms read runtime role state; `Exists` /
 /// `ExistsQuery` are plain world reads (answerable from the card world
-/// alone, evaluated by [`eval_static`]).
+/// alone, evaluated by [`eval_static`]); the §6.3 sum scopes are static
+/// too — `total(table, …)` over the card world, `total(bound, …)` over the
+/// caller's window model (`None` reads Unknown, which only demotes).
 pub(crate) fn pred_static(p: &Pred) -> bool {
     match p {
         Pred::And(a, b) | Pred::Or(a, b) => pred_static(a) && pred_static(b),
@@ -96,12 +113,42 @@ pub(crate) struct DistEntry {
     pub unbounded: bool,
 }
 
+/// The window model the `total(bound, aspect:k)` scope sums, one entry per
+/// DECLARED slot of the owning verb: the descriptors the slot could bind
+/// (its query's fit over the available world, stackable facts expanded to
+/// their capped copy counts), the slot's `min` and its `max` (`None` =
+/// unbounded). The engine's cross-role rule is the model's too: a card may
+/// fill two roles, so the slots draw from the pool independently while
+/// staying distinct WITHIN a slot (`validate_slots`' placed-set).
+pub(crate) struct BoundView<'a> {
+    pub slots: Vec<BoundSlot<'a>>,
+}
+
+/// One declared slot's bindable face (see [`BoundView`]).
+pub(crate) struct BoundSlot<'a> {
+    pub cards: Vec<&'a Entity>,
+    pub min: i64,
+    pub max: Option<i64>,
+}
+
 /// Evaluate a static value expression against the available world, as an
 /// interval: `(lo, hi)` with `hi: None` = unbounded above. The lo face is
 /// exactly the plain capped-weight sum over matching facts); `hi` lifts off only when an UNBOUNDED fact matches the query —
 /// its source repeats unconditionally, so the world count is a floor, never
 /// a ceiling. Bounded operands carry `hi = Some(lo)`.
-fn eval_expr_interval(v: &ValExpr, world: &CardWorld) -> Result<(i64, Option<i64>)> {
+///
+/// The §6.3 sum scopes weight the same enumerations by the descriptors'
+/// LEVEL (missing → 0, the engine's house rule): `total(table, …)` over the
+/// distinct facts, `total(bound, …)` over the [`BoundView`]. An unbounded
+/// matching fact with a POSITIVE level lifts the ceiling (more copies only
+/// raise the sum); a negative level sinks it instead — that face unbounds
+/// the interval both ways (the full-open pair decides Unknown under every
+/// op), which only ever widens toward candidate.
+fn eval_expr_interval(
+    v: &ValExpr,
+    world: &CardWorld,
+    bound: Option<&BoundView<'_>>,
+) -> Result<(i64, Option<i64>)> {
     match v {
         ValExpr::Int { v } => Ok((*v, Some(*v))),
         ValExpr::CountQuery { query } => {
@@ -115,6 +162,75 @@ fn eval_expr_interval(v: &ValExpr, world: &CardWorld) -> Result<(i64, Option<i64
             }
             Ok((sum, if unbounded { None } else { Some(sum) }))
         }
+        ValExpr::TotalTable { path } => {
+            let mut sum: i64 = 0;
+            let mut lift = false;
+            let mut sink = false;
+            for d in &world.distinct {
+                let level = aspect_get(&d.e, path).unwrap_or(0);
+                sum = sum.saturating_add(d.w.saturating_mul(level));
+                if d.unbounded {
+                    lift |= level > 0;
+                    sink |= level < 0;
+                }
+            }
+            if sink {
+                return Ok((i64::MIN, None));
+            }
+            Ok((sum, if lift { None } else { Some(sum) }))
+        }
+        ValExpr::TotalBound { path } => match bound {
+            // no window model: the full-open pair — Unknown under every op
+            None => Ok((i64::MIN, None)),
+            Some(b) => {
+                // the achievable window sums, per slot: the FLOOR binds the
+                // slot's min cards at their SMALLEST levels, the ceiling its
+                // max cards at their LARGEST (the window may always bind
+                // fewer — a comparison must hold at the floor to prove and
+                // at no corner to demote). An unbounded-max slot with a
+                // positive level opens the ceiling (arbitrary many positive
+                // copies) and with a negative one sinks the floor — either
+                // way the interval goes full-open, Unknown under every op,
+                // which only ever widens toward candidate.
+                let mut lo: i64 = 0;
+                let mut hi: i64 = 0;
+                let mut full_open = false;
+                for slot in &b.slots {
+                    let mut levels: Vec<i64> =
+                        slot.cards.iter().map(|e| aspect_get(e, path).unwrap_or(0)).collect();
+                    levels.sort_unstable();
+                    // slots parse non-negative; the clamp is a defensive
+                    // coercion (a negative min casts huge as usize)
+                    let min = slot.min.max(0) as usize;
+                    lo = lo.saturating_add(levels.iter().take(min).sum::<i64>());
+                    match slot.max {
+                        None => {
+                            // an unbounded-max slot: any non-zero level drives
+                            // the sum without bound (positive copies raise
+                            // it, negative ones lower it) — full-open
+                            if levels.iter().any(|&l| l != 0) {
+                                full_open = true;
+                            }
+                        }
+                        Some(mx) => {
+                            let k = std::cmp::min(mx.max(0) as usize, levels.len());
+                            hi = hi.saturating_add(levels[levels.len() - k..].iter().sum::<i64>());
+                            // an extendable slot (more cards may join than
+                            // the min fills) whose smallest level is negative
+                            // drags the floor below the min-filling sum
+                            if mx > slot.min && levels.first().is_some_and(|&l| l < 0) {
+                                full_open = true;
+                            }
+                        }
+                    }
+                }
+                if full_open {
+                    Ok((i64::MIN, None))
+                } else {
+                    Ok((lo, Some(hi)))
+                }
+            }
+        },
         // preserved as Err (catchable upstream)
         _ => Err(ChorusError::new("internal: eval_expr_interval over a non-static operand")),
     }
@@ -167,26 +283,32 @@ impl StaticTruth {
 /// Evaluate a static predicate as a [`StaticTruth`]. The `Exists` /
 /// `ExistsQuery` arms and every bounded count-form comparison are exact
 /// two-valued (a plain bool comparison); Kleene composition lifts the
-/// three-valued count arms through NOT/AND/OR unchanged.
-pub(crate) fn eval_static_truth(p: &Pred, world: &CardWorld) -> Result<StaticTruth> {
+/// three-valued count and sum arms through NOT/AND/OR unchanged. `bound`
+/// is the window model the `total(bound, …)` scope sums — `None` reads that
+/// scope Unknown (which only ever demotes).
+pub(crate) fn eval_static_truth(
+    p: &Pred,
+    world: &CardWorld,
+    bound: Option<&BoundView<'_>>,
+) -> Result<StaticTruth> {
     match p {
         Pred::And(a, b) => {
-            let va = eval_static_truth(a, world)?;
+            let va = eval_static_truth(a, world, bound)?;
             if va == StaticTruth::False {
                 return Ok(StaticTruth::False);
             }
-            Ok(va.and(eval_static_truth(b, world)?))
+            Ok(va.and(eval_static_truth(b, world, bound)?))
         }
         Pred::Or(a, b) => {
-            let va = eval_static_truth(a, world)?;
+            let va = eval_static_truth(a, world, bound)?;
             if va == StaticTruth::True {
                 return Ok(StaticTruth::True);
             }
-            Ok(va.or(eval_static_truth(b, world)?))
+            Ok(va.or(eval_static_truth(b, world, bound)?))
         }
-        Pred::Not(a) => Ok(eval_static_truth(a, world)?.not()),
+        Pred::Not(a) => Ok(eval_static_truth(a, world, bound)?.not()),
         Pred::Cmp { l, op, r } => {
-            // the count-form leaf, decided over the OPERAND INTERVALS: an
+            // the count/sum-form leaf, decided over the OPERAND INTERVALS: an
             // unbounded matching pool opens its side's ceiling (the world
             // sum there is a floor, never a ceiling). The verdict is the
             // interval decision — True when the comparison holds at the
@@ -198,8 +320,8 @@ pub(crate) fn eval_static_truth(p: &Pred, world: &CardWorld) -> Result<StaticTru
             // widen toward "candidate", never produce "proven" on its own.
             // Bounded operands are single-point intervals, where this is
             // exactly the capped-weight comparison.
-            let (lv, lhi) = eval_expr_interval(l, world)?;
-            let (rv, rhi) = eval_expr_interval(r, world)?;
+            let (lv, lhi) = eval_expr_interval(l, world, bound)?;
+            let (rv, rhi) = eval_expr_interval(r, world, bound)?;
             // the open faces: an open ceiling is the floor's infinity
             // stand-in (world counts never reach i64::MAX, so every
             // comparison direction survives the substitution)
@@ -258,8 +380,12 @@ pub(crate) fn eval_static_truth(p: &Pred, world: &CardWorld) -> Result<StaticTru
 /// of [`eval_static_truth`]: Unknown reads false — every caller demotes on
 /// false, so Unknown keeps the site unproven (the honest candidate), never
 /// flips a verdict upward.
-pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
-    Ok(eval_static_truth(p, world)? == StaticTruth::True)
+pub(crate) fn eval_static(
+    p: &Pred,
+    world: &CardWorld,
+    bound: Option<&BoundView<'_>>,
+) -> Result<bool> {
+    Ok(eval_static_truth(p, world, bound)? == StaticTruth::True)
 }
 
 /// The path-open walk, reporting its evidence: the FIRST path
@@ -269,9 +395,13 @@ pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
 /// to the design-time renderer, so the PathClosed blocker and the demotion
 /// verdict come from this ONE pass; there is no second evaluation to drift
 /// away from.
-pub(crate) fn path_open_first_failure<'p>(path: &'p [Pred], world: &CardWorld) -> Option<&'p Pred> {
+pub(crate) fn path_open_first_failure<'p>(
+    path: &'p [Pred],
+    world: &CardWorld,
+    bound: Option<&BoundView<'_>>,
+) -> Option<&'p Pred> {
     for p in path {
-        if pred_static(p) && eval_static_ok(p, world) {
+        if pred_static(p) && eval_static_ok(p, world, bound) {
             continue;
         }
         return Some(p);
@@ -282,8 +412,8 @@ pub(crate) fn path_open_first_failure<'p>(path: &'p [Pred], world: &CardWorld) -
 /// `eval_static` with the internal-throw guard: the non-static operands sit
 /// behind `pred_static` guards and are unreachable; debug-trap if a bug ever
 /// reaches one.
-pub(crate) fn eval_static_ok(p: &Pred, world: &CardWorld) -> bool {
-    match eval_static(p, world) {
+pub(crate) fn eval_static_ok(p: &Pred, world: &CardWorld, bound: Option<&BoundView<'_>>) -> bool {
+    match eval_static(p, world, bound) {
         Ok(b) => b,
         Err(e) => {
             debug_assert!(false, "internal: {e}");
@@ -379,6 +509,11 @@ pub(crate) struct WorldFacts<'c> {
     /// available cards by name, fact lists in push order
     pub avail: IndexMap<String, Vec<CardFact>>,
     pub avail_ver: u64,
+    /// verbs owning a recipe some authored `RUN`/`FORK` targets (the §6.7
+    /// chain edges — [`chain_pinned_verbs`]). Their `when` gates are
+    /// re-evaluated at play over MERGED bindings no declared-slot model
+    /// bounds, so [`WorldFacts::bound_view`] reads no window model for them.
+    pub chain_pinned: IndexSet<usize>,
     /// the flat_cache — exact mechanics preserved including its
     /// version stamp; `Rc` because every [`WorldFacts::cards_of`] call
     /// hands the SAME immutable snapshot to the whole round
@@ -609,6 +744,43 @@ impl<'c> Analyzer<'c> {
 // compute_world_facts — the pre-fixpoint half
 // ---------------------------------------------------------------------------
 
+/// The §6.7 chain edges as a verb set: every verb owning a recipe that some
+/// authored `RUN`/`FORK` targets (recipe bodies and trigger bodies alike, IF
+/// branches included — candidates resolve against the GLOBAL recipe-id
+/// table). A chain-pinned candidate's `when` is re-evaluated at play over
+/// MERGED bindings — the parent window's committed roles stand under roles
+/// the candidate does not declare, and chain-synthesized follow-ups skip
+/// `validate_slots` — so no declared-slot model bounds the gate's domain.
+fn chain_pinned_verbs(content: &CompiledContent) -> IndexSet<usize> {
+    let mut pinned: IndexSet<usize> = IndexSet::new();
+    let mut scan = |out: &[Outcome]| {
+        for_each_authored_outcome_infallible(out, &mut |o| {
+            if o.op != "RUN" && o.op != "FORK" {
+                return;
+            }
+            for a in &o.args {
+                if let Arg::Ref { r#ref: Ref::Name { name, .. } } = a {
+                    let Some(vn) = content.recipe_verbs.get(name.as_str()) else {
+                        continue;
+                    };
+                    if let Some((vi, _, _)) = content.verbs.get_full(vn.as_str()) {
+                        pinned.insert(vi);
+                    }
+                }
+            }
+        });
+    };
+    for (_, v) in &content.verbs {
+        for r in &v.recipes {
+            scan(&r.out);
+        }
+    }
+    for t in &content.triggers {
+        scan(t.out());
+    }
+    pinned
+}
+
 pub(crate) fn compute_world_facts<'c>(
     content: &'c CompiledContent,
     initial: &'c State,
@@ -652,6 +824,7 @@ pub(crate) fn compute_world_facts<'c>(
         census: Census::default(),
         avail: IndexMap::new(),
         avail_ver: 0,
+        chain_pinned: chain_pinned_verbs(content),
         flat_cache: None,
         init_names,
         trigger_mint_names: IndexMap::new(),

@@ -126,6 +126,19 @@ pub enum ValExpr {
         role: String,
         path: String,
     },
+    /// §6.3: `total(bound, aspect:k)` — the summed level over every card
+    /// bound to the current window across ALL its roles (the per-binding
+    /// bookkeeping: a card bound to two roles counts twice; a trigger's
+    /// event bindings are empty, so the scope reads 0 there — §6.6).
+    TotalBound {
+        path: String,
+    },
+    /// §6.3: `total(table, aspect:k)` — the summed level over every ALIVE
+    /// card on the world projection (the same card set `count(name:X)` and
+    /// `exists(name:X)` see, §4.5), missing aspects reading 0.
+    TotalTable {
+        path: String,
+    },
     Path {
         role: String,
         field: PredField,
@@ -357,6 +370,31 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
             // magnitudes overflow, and no log pins their sums
             let sum = role_cards(ctx, role)
                 .iter()
+                .fold(0i64, |sum, e| sum.saturating_add(aspect_get(e, path).unwrap_or(0)));
+            Ok(Some(sum))
+        }
+        ValExpr::TotalBound { path } => {
+            // §6.3: the window's bindings across ALL roles, per-binding — the
+            // same id under two roles contributes twice (the bindings map is
+            // the bookkeeping). Missing aspects read 0 (total()'s
+            // unwrap_or(0)); dead-stamped ids drop like every role read.
+            let sum = ctx
+                .b
+                .values()
+                .flatten()
+                .filter_map(|id| ctx.state.entities.get(id))
+                .filter(|e| e.dead_action.is_none())
+                .fold(0i64, |sum, e| sum.saturating_add(aspect_get(e, path).unwrap_or(0)));
+            Ok(Some(sum))
+        }
+        ValExpr::TotalTable { path } => {
+            // §6.3 world scope, like `CountQuery`: every ALIVE card, missing
+            // aspect reading 0
+            let sum = ctx
+                .state
+                .entities
+                .values()
+                .filter(|e| e.dead_action.is_none())
                 .fold(0i64, |sum, e| sum.saturating_add(aspect_get(e, path).unwrap_or(0)));
             Ok(Some(sum))
         }

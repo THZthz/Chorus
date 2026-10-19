@@ -1341,3 +1341,177 @@ verbs:
         findings.iter().filter(|f| f.message.contains("SPAWN POT")).collect();
     assert_eq!(hits.len(), 1, "{findings:?}");
 }
+
+// ---------------------------------------------------------------------------
+// §6.7 — the dead-chain warning: a chain-op list whose every candidate's
+// target `when` is provably dead can never pin
+// ---------------------------------------------------------------------------
+
+/// The dead-chain needles: the RUN list's own warning, distinct from the E11
+/// never-matching-`when` warnings the dead TARGET recipes carry themselves.
+fn dead_chain_warnings(findings: &[LintFinding]) -> Vec<&LintFinding> {
+    findings
+        .iter()
+        .filter(|f| f.severity == LintSeverity::Warning && f.message.contains("can never pin"))
+        .collect()
+}
+
+/// dead1/dead2: provably false for every §6.6 selection binding over the
+/// 1..1 actors slot (NOT of a slot-always-true atom) — and neither atom is a
+/// count-gate error, so the deadness surfaces only through the E11
+/// never-matching warnings. The deadness RIDES THE BINDING COUNT (the
+/// negation holds over an empty role), so it does not warn as a dead chain:
+/// the gate's actual domain reads fewer bindings than the slot's selection
+/// range (empty from a trigger, dead-ref-dropping from a parent overlay).
+const DEAD_CANDIDATES: &str = "      dead1 when NOT (count(actors) >= 1) -> NARRATE \"dead1\"\n      dead2 when NOT (count(actors) = 1) -> NARRATE \"dead2\"";
+
+/// starved: dead under EVERY binding count — over the 1..1 actors slot AND
+/// over the empty-binding domain (count 0) — the deadness the chain warning
+/// demands of a recipe-owned list, and all it demands of a trigger-owned one.
+const COUNT_DEAD_CANDIDATES: &str = "      starved when count(actors) >= 2 -> NARRATE \"starved\"";
+
+#[test]
+fn a_recipe_chain_whose_deadness_rides_the_binding_count_stays_silent() {
+    // the NOT-count face: dead at the §6.1 selection range, but the gate's
+    // merged bindings can read fewer than the slot's selection count (dead
+    // refs drop, §6.7) — the warning stands down
+    let findings = findings_for(&format!(
+        "
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent when count(actors) >= 1 -> RUN \"dead1\", \"dead2\"
+{DEAD_CANDIDATES}
+"
+    ));
+    assert!(dead_chain_warnings(&findings).is_empty(), "{findings:?}");
+}
+
+#[test]
+fn a_recipe_chain_dead_under_every_binding_count_warns() {
+    // the projected-overlay face: the deadness survives the empty-binding
+    // domain too, so the merged gate can never satisfy it either
+    let findings = findings_for(&format!(
+        "
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent when count(actors) >= 1 -> RUN \"starved\"
+{COUNT_DEAD_CANDIDATES}
+"
+    ));
+    let hits = dead_chain_warnings(&findings);
+    assert_eq!(hits.len(), 1, "{findings:?}");
+    assert_eq!(
+        hits[0].message,
+        "recipe parent: the RUN list can never pin — every candidate's when is dead (§6.7)"
+    );
+}
+
+#[test]
+fn one_live_candidate_silences_the_dead_chain_warning() {
+    // a mixed list stays silent — one live candidate is enough
+    let findings = findings_for(&format!(
+        "
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent when count(actors) >= 1 -> RUN \"dead1\", \"live\"
+      live when count(actors) = 1 -> NARRATE \"live\"
+{DEAD_CANDIDATES}
+"
+    ));
+    assert!(dead_chain_warnings(&findings).is_empty(), "{findings:?}");
+}
+
+#[test]
+fn a_world_gated_candidate_silences_the_dead_chain_warning() {
+    // `exists` is a world read — Unknown at load, never provably dead
+    let findings = findings_for(&format!(
+        "
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent when count(actors) >= 1 -> RUN \"dead1\", \"maybe\"
+      maybe when exists(name:HOUSE) -> NARRATE \"maybe\"
+{DEAD_CANDIDATES}
+"
+    ));
+    assert!(dead_chain_warnings(&findings).is_empty(), "{findings:?}");
+}
+
+#[test]
+fn a_when_less_candidate_and_an_if_hidden_list_are_live() {
+    // a when-less default candidate is always live; a chain op inside an IF
+    // branch is still seen (the compiled walk)
+    let findings = findings_for(&format!(
+        "
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent when count(actors) >= 1 -> IF count(actors) >= 1 -> (RUN \"dead1\", \"fallback\")
+      fallback -> NARRATE \"fallback\"
+{DEAD_CANDIDATES}
+"
+    ));
+    assert!(dead_chain_warnings(&findings).is_empty(), "{findings:?}");
+}
+
+#[test]
+fn a_trigger_chain_list_dead_only_at_the_selection_bindings_stays_silent() {
+    // the NOT-count face from a trigger: the gate reads the EMPTY bindings
+    // (§6.6), count = 0, the negation holds — the candidate PINS at play, so
+    // the warning stands down (the §6.1 selection range is not the gate's
+    // domain here)
+    let findings = findings_for(&format!(
+        "
+triggers:
+  dusk at tick 3 -> FORK \"dead1\", \"dead2\"
+
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent -> NARRATE \"p\"
+{DEAD_CANDIDATES}
+"
+    ));
+    assert!(dead_chain_warnings(&findings).is_empty(), "{findings:?}");
+}
+
+#[test]
+fn a_trigger_chain_list_dead_over_the_empty_bindings_warns() {
+    // the trigger-channel face: the empty-binding domain IS the gate's
+    // domain there — deadness over it is exactly can-never-pin
+    let findings = findings_for(&format!(
+        "
+triggers:
+  dusk at tick 3 -> FORK \"starved\"
+
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent -> NARRATE \"p\"
+{COUNT_DEAD_CANDIDATES}
+"
+    ));
+    let hits = dead_chain_warnings(&findings);
+    assert_eq!(hits.len(), 1, "{findings:?}");
+    assert_eq!(
+        hits[0].message,
+        "trigger dusk: the FORK list can never pin — every candidate's when is dead (§6.7)"
+    );
+}

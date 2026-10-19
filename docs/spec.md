@@ -1,4 +1,4 @@
-# Chorus Text Engine — Spec v0.7
+# Chorus Text Engine — Spec v0.9
 
 A text-only prototype of a Cultist Simulator / Book of Hours-like card game.
 Everything the game *is* — cards, actions, history — is expressed as structured
@@ -55,6 +55,7 @@ projection of that data, never the source of truth.
 34. **v0.8.0** — the bin-interface convergence: `reach` speaks the Commands + Options grammar; `--color`, lint-scripts' Options form and the tutorial land.
 35. **v0.8.1** — chorus gains `save <file>` and `--help`; the deck lint exempts once-served spec entries; same-root-cause findings dedup.
 36. **v0.8.2** — the tick: the clock's minimal unit shrinks from the halfhour to 10 minutes (`day:tick`, 144 ticks/day); `at tick N` triggers replace `at halfhour N`; the `halfhour` duration unit is removed (write `30m`); quantization and dead-air semantics re-anchor on the 10-minute tick; pre-0.8.2 logs' `tGame` digits are stale display data (§9.2, no compatibility).
+37. **v0.9.0** — the RUN-semantics cluster: chain candidates resolve against the global recipe table in every home (cross-verb RUN from recipe bodies); the chain slot is earned by a pin (a whiffed list falls through); the `FORK` fan-out op (one window per matching candidate, one branch per station, atomic gate); `RUN`/`FORK` legal in slot/expire trigger bodies (the §6.6 event-chain channel: empty bindings, immediate registration); the actor-less clause form (§5.1); the dead-chain lint warning; the fuzz generator re-banded (v5–v7).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -298,7 +299,8 @@ contributes no template line; its recipe NARRATEs still speak.
 | `ROLLED`  | total, ctrAfter                 | **engine-written only**: the record of one ROLL — the fold sets `state.rng = ctrAfter` and derives nothing else. Authoring one is a load error |
 | `DRAW`    | deck [, INTO target]            | draw the next card of a `decks:` declaration: paren-less, the deck id is a plain name (a declared-deck check runs at load, over recipes and triggers, IF branches included; an empty spec is a load error); INTO is the SPAWN target grammar, and must RESOLVE — a role over empty event bindings or a dead ref rejects the step rather than materializing the card nowhere. With no INTO the mint reuses SPAWN's default (the step's `at` card, else the first actor's `container`; in triggers, where bindings are empty, the card is minted containerless unless an explicit INTO is authored). The deck entry may name a prototype or a declared entity; repeats in the spec weight the draw; a DRAW inside an untaken IF branch consumes nothing — the cursor rides the draft (§9.2). The log records the engine-written `DRAWN(<DECK>, <name>)` + the concrete `SPAWN … AS #id` pair — no DRAW ever appears in the log |
 | `DRAWN`   | deck, name                      | **engine-written only**: the record of one DRAW — the fold advances that deck's cursor, asserting `name` is exactly what the compiled permutation serves at the cursor (content drift between play and fold fails loud); the recorded name is the SPEC entry, not a derived mint name, so the assertion reads the permutation. Authoring one is a load error |
-| `RUN`     | `"recipe-id"` `, …`             | chain the completion (§6.7): walk the candidates in order, pin the first whose `when:` matches the post-outcome draft (lenient, §6.4) and whose `max` (§6.4) is unspent, and open it as a follow-up window on its verb with the parent's bindings projected onto the candidate verb's declared roles; no match — the chain ends silently; zero-concrete (the follow-up's BEGIN row is the only record). In recipe bodies: same verb, load-checked; in `on complete` bodies: cross-verb legal (global id table), the parent's own station is not busy. A second RUN op in one completion rejects the window |
+| `RUN`     | `"recipe-id"` `, …`             | chain the completion (§6.7): walk the candidates in order, pin the first whose `when:` matches the post-outcome draft (lenient, §6.4) and whose `max` (§6.4) is unspent, and open it as a follow-up window on its verb with the parent's bindings projected onto the candidate verb's declared roles; no match — the chain ends silently; zero-concrete (the follow-up's BEGIN row is the only record). Candidates resolve against the GLOBAL recipe table in every home (recipe bodies, `on complete` bodies, slot/expire trigger bodies — §6.6); the parent's own station is not busy, any other busy station skips the candidate silently. The chain slot is earned by a PIN, not by a reach: a whiffed list spends nothing and a later chain op in the same completion still gets its walk; a second PINNING chain op rejects the window (§6.6: in an event body the chain-op refusals are silent skips — the second op ends its chain there, and a gate-vetoed branch skips alone) |
+| `FORK`    | `"recipe-id"` `, …`             | the multi-continuation chain (§6.7): open ONE follow-up window for EVERY matching candidate, in list order — same resolution, busy, `max` and `when:` gates as `RUN`, plus two fork-local rules: one branch per station (a candidate whose verb already took a branch in this fork skips silently — list order decides) and duplicate ids skip silently (`FORK "a", "a"` opens one window). FORK mutates no state during the walk, so the branches are order-free. The inline gate is ATOMIC: the first pinned branch's top-level REFUSE rejects the parent window with NO branch opening (§6.6: in an event body a vetoed branch skips alone, the remaining branches opening). A fork that pinned nothing consumes no slot (fall-through). Zero-concrete: each pinned branch synthesizes its own BEGIN row (`complete_id + 1 … + n`); nothing is logged of the FORK itself |
 | `REFUSE`  | string                          | abort the whole step (§6.5): draft discarded, attempt still logged |
 
 Shorthand: a bare ref in an outcome list means `SPAWN ref` (a **new** entity,
@@ -455,8 +457,12 @@ event      = "EVENT" trigger-id [ "->" outcomes ] ;
 trigger-id = name { ":" name }                    (* segments reassembled — the
                                                      built-in expiry id is `expire:<NAME>`
                                                      (§6.6); an unsafe segment prints quoted *)
-clause     = actors [ "AT" ref ] verbo [ "TO" ref ] [ objects ] [ "WITH" reflist ] [ "ABOUT" ref ] [ "AT" ref ] ;
-(*          the trailing "AT" is input sugar only (§5.1); canonical output is pre-verbal *)
+clause     = [ actors ] [ "AT" ref ] verbo [ "TO" ref ] [ objects ] [ "WITH" reflist ] [ "ABOUT" ref ] [ "AT" ref ] ;
+(*          the actor-less form (`AT? VERB …`) is the shape the engine synthesizes
+            for §6.6 event-chain follow-ups (event bindings are empty, so the
+            follow-up locks nothing); reserved words cannot name entities, so a
+            leading registered verb is unambiguous. The trailing "AT" is input
+            sugar only (§5.1); canonical output is pre-verbal *)
 actors     = ref { "," ref } ;                   (* 1..n, order-free; canonical = sorted *)
 objects    = ref { "," ref } ;
 reflist    = ref { "," ref } ;
@@ -489,7 +495,8 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
            | "ROLLED" "(" int "," int ")"        (* §4.4: ENGINE-WRITTEN only — the recorded roll; authoring one is a load error *)
            | "DRAW" name [ "INTO" target ]       (* §4.4: paren-less only — the deck id is a plain name ref (declared decks are pinned at load); INTO is the SPAWN target grammar and must resolve *)
            | "DRAWN" "(" name "," name ")"       (* §4.4: ENGINE-WRITTEN only — the recorded draw, `DRAWN(<DECK>, <name>)`; an unsafe name formats re-quoted and re-parses (ref's string form); authoring one is a load error *)
-           | "RUN" string { "," string }         (* §4.4/§6.7: quoted-string recipe refs — ids are lowercase dotted
+           | ( "RUN" | "FORK" ) string { "," string }
+                                                 (* §4.4/§6.7: quoted-string recipe refs — ids are lowercase dotted
                                                     and the NAME class has no dot, so a bare id is unlexable;
                                                     a comma continues the list only when a quoted string follows,
                                                     so a next outcome opening with a string parenthesizes out
@@ -522,7 +529,7 @@ ref        = name | kind ":" name | "#" id | string ;  (* canonical output: name
 Lexical rules:
 
 - `name` = `[A-Za-z_][A-Za-z0-9_]*`. **Reserved words** (`EVENT COMPLETE TO WITH AT
-  ABOUT INTO AS AND OR NOT IF ELSE ROLL ROLLED DRAW DRAWN RUN` + every registered
+  ABOUT INTO AS AND OR NOT IF ELSE ROLL ROLLED DRAW DRAWN RUN FORK` + every registered
   verb lexeme) cannot be used as names; content needing them uses the quoted-string
   ref form (`"PLAN B"`). A script's `verbs:` declarations join the reserved set
   at load (§4.3) — and because that growth would otherwise make name
@@ -1018,6 +1025,38 @@ fired set is written
 by exactly one rule in both paths — one entry per EVENT row's trigger
 (authored id or `expire:<NAME>`).
 
+**Event chains (§6.6).** Slot and expire trigger bodies may author `RUN` and
+`FORK` (§6.7): the crossing arms the chain channel with NO parent window —
+`parent_key` is empty, so the busy exclusion excludes nothing and a trigger
+never hands off onto a busy station — the follow-up BEGINS at the crossing
+minute, and the trigger's bindings are EMPTY: the projection produces a
+clause with no refs (the §5.1 actor-less clause), the follow-up locks
+nothing, its gate merge reduces to the empty bindings — a candidate `when:`
+reading roles never matches (lenient false, exactly the trigger
+discipline), while a world-form `when:` (`exists(...)`, `count(name:X)`)
+works. The chain ops apply inline, in list order (events have no deferral
+phase), and each firing's follow-up BEGINs REGISTER IMMEDIATELY on the
+pass's state — a later firing in the same crossing (the next authored
+trigger, or an expiry) sees the station busy and skips silently — and append
+to the log right after their EVENT row. A chain refusal is a SILENT SKIP in
+an event body — an event has no step to refuse (the §6.6 `REFUSE` ban's
+discipline, and events own no window a refusal could reject): a second
+pinning chain op ends its chain where it stands (the first op's effects
+stay, the body continues), and a pinned branch whose inline gate refuses is
+skipped alone — no marker, no row, the remaining FORK branches still open —
+so no REFUSE marker ever rides an EVENT row (the fold replays every EVENT
+row as ordinary history, `fired` included). The recipe-channel rules (the
+second-op window refusal, the atomic gate) are unchanged in
+recipe/`on complete` bodies. The built-in expiry destroy path
+authors no chain op and carries no channel. The fold replays concrete EVENT
+rows only — the chain ops never reach the log; the follow-up BEGINs replay
+as ordinary rows. The guards: the expiry snapshot is hoisted once per pass,
+so an expiry armed by this pass's outcomes (a trigger chain's mints
+included) resolves at the NEXT advance; a trigger-fed zero-duration
+completion cycle spins inside one pass exactly like a recipe-body cycle and
+trips the 1024 budget (§6.7); a recurring slot trigger chains at most once
+per crossing.
+
 ### 6.7 The processing cycle (begin → lock → ticks → complete → unlock)
 
 Committing cards to a verb station is not the whole action: the action
@@ -1090,12 +1129,12 @@ verb stations are the model.
 trigger outcomes (events have no window). `REFUSE` belongs to verb recipes
 too, for the same reason sharpened: a refusal aborts a *step* or a window,
 and an event has neither — so `REFUSE` in any trigger outcome (all three kinds)
-is a load-time error (§6.6). `RUN` belongs to verb recipes as well: authored
-in a slot/expire trigger's outcomes it is a load-time error — an event has
-no window to chain from (`on complete` bodies fire inside one, so they are
-the exempt kind, above) — and so does `ADVANCE`, which can only stretch the
-pass a completion rides: in the two event kinds it is a load error, in an
-`on complete` body it extends the pass.
+is a load-time error (§6.6). `ADVANCE` belongs to verb recipes as well — in
+the two event kinds it is a load error (an event owns no pass to stretch),
+in an `on complete` body it extends the pass. `RUN` and `FORK` are legal in
+ALL three trigger kinds: `on complete` bodies fire inside a window
+completion (above), and the slot/expire kinds arm the §6.6 event-chain
+channel (no parent window, empty bindings, immediate registration).
 
 `PROGRESS(duration, string)` is journal-only, like `NARRATE`: no state
 effect, no time effect, raw template stored and interpolated at render
@@ -1116,6 +1155,14 @@ follow-up windows — the mechanics:
   step could produce; a card bound only in a dropped role is carried by no
   window and so never locks). The projection happens at synthesis only: the
   parent window's own refs and locks are untouched.
+- *One resolution scope.* Candidates resolve against the GLOBAL recipe-id
+  table in every home — recipe bodies, `on complete` bodies, event-trigger
+  bodies (§6.6) — which is why GLOBAL recipe-id uniqueness is a load error
+  on collision. Any busy station other than the parent's own window skips
+  the candidate silently, in recipe bodies exactly as in trigger bodies (a
+  same-verb hand-off must not see its own station busy; a cross-verb
+  hand-off onto a busy station skips the same way). Under content drift an
+  unresolvable candidate silently continues the walk.
 - *Merged gate bindings.* The candidate `when:` evaluates against the
   post-outcome draft AND the parent window's committed role bindings,
   MERGED with the projected clause's own: where the candidate verb declares
@@ -1130,37 +1177,58 @@ follow-up windows — the mechanics:
   whose bound card the parent's own outcomes replaced or killed reads the
   follow-up's truth. The merge is eval-context only: the BEGIN row carries
   the projected clause alone. No candidate matches: nothing opens — the
-  chain ends, silently (CS's chain ending, not a refusal). Under content
-  drift an unresolvable candidate silently continues the walk.
+  chain ends, silently (CS's chain ending, not a refusal).
+- *The slot is earned by a pin.* A whiffed list — every candidate
+  unresolved, busy, `max`-spent, or gate-missed — spends NOTHING: the
+  completion continues, and a later chain op in the same outcome list (or a
+  later parked one) gets its own walk. A second PINNING chain op — RUN or
+  FORK — reached in one completion rejects the parent window at that
+  outcome (a station holds one window), and the earlier pin's follow-up
+  dies with the draft.
 - *The guard survives.* The pinned recipe's top-level REFUSE still gates,
   inline against the draft at the parent's completion — a scratch trial
-  (PROGRESS skipped, scratch rng/id consumption discarded) whose refusal
-  rejects the PARENT window (the window-refuse above: marker on the COMPLETE
-  row, partial effects discarded).
-- *Zero-concrete.* RUN is the first op that logs nothing of itself — the
-  follow-up's BEGIN row is the record. The fire result grows an
-  extra-records slot; the follow-up window is inserted after the parent
-  window leaves the open table, registered through the ONE registration
-  path play and fold share (the insert and the fold's BEGIN replay cannot
-  drift), and the pass loop picks the new due window up on its next
-  iteration. Content that drops a RUN stops producing follow-up BEGINs in
-  future play; old logs replay untouched.
+  (PROGRESS and the chain ops skipped, IF opaque, scratch rng/id
+  consumption discarded) whose refusal rejects the PARENT window (the
+  window-refuse above: marker on the COMPLETE row, partial effects
+  discarded).
+- *Zero-concrete.* RUN logs nothing of itself — the follow-up's BEGIN row is
+  the record. The fire result grows an extra-records slot; the follow-up
+  window is inserted after the parent window leaves the open table,
+  registered through the ONE registration path play and fold share (the
+  insert and the fold's BEGIN replay cannot drift), and the pass loop picks
+  the new due window up on its next iteration. Content that drops a RUN
+  stops producing follow-up BEGINs in future play; old logs replay
+  untouched.
+- *FORK — the fan-out.* `FORK "a", "b", …` opens ONE follow-up window for
+  EVERY matching candidate, in list order (RUN stays the ordered first-match
+  walk). Per candidate the same gates as RUN — resolution, busy, `max`,
+  merged `when:` — plus two fork-local rules: ONE BRANCH PER STATION (a
+  candidate whose verb already took a branch in THIS fork skips silently —
+  the busy check reads the parent's window table, where the fork's own
+  future windows do not yet exist; duplicate ids skip the same way, so
+  list order is the only decider), and an ATOMIC inline gate (the first
+  pinned branch's refusing REFUSE rejects the parent window with NO branch
+  opening — the completion draft is atomic, and a partial fork is not a
+  state any rule can describe). FORK mutates no state during the walk, so
+  the branches are order-free; each pinned branch synthesizes its own BEGIN
+  row with ids `complete_id + 1 … + n`. A fork that pinned nothing consumes
+  no slot (fall-through), so `FORK "a", "b"` whiffing composes with a
+  following RUN. FORK parks under the deferral phase exactly like RUN, and
+  is legal in `on complete` and event-trigger bodies wherever RUN is.
 - *Livelock guard.* Cycles are legal (needs → discardseason → drawseason →
   needs must stay legal), but a cycle of zero-duration follow-ups would
   generate unbounded due work inside one pass: an advance pass that
   completes more than 1024 windows fails loud — a documented guard with a
-  pinned test.
-- *Load checks.* In a recipe body every candidate must name a recipe of the
-  PARENT verb (unknown or cross-verb id: load error, IF branches included).
-  In an `on complete` body (below) candidates may cross verbs, which
-  requires GLOBAL recipe-id uniqueness: a cross-verb resolution consults a
-  global id table, and a collision across verbs is a load error.
+  pinned test. Fan-out multiplies through the budget (a two-branch fork
+  cycle trips it exponentially fast); the budget stays the one guard, and
+  the failure is a step rejection — nothing logged, never a hang.
+- *Load checks.* In every home each candidate must name a compiled recipe
+  through the global table (an unknown id: load error, IF branches
+  included); cross-verb candidates are legal everywhere.
 - *Chance is authored around it.* Candidates with identical requirements
   author `ROLL` + `IF` in the parent — one RUN per arm (the list walk would
-  always pin the first). A second RUN op reached in one completion rejects
-  the window (a station holds one window); the list is the only
-  multi-candidate shape, and deeper chains author RUN inside the follow-up's
-  own outcomes.
+  always pin the first); FORK is the all-match shape the IF form fakes.
+  Deeper chains author chain ops inside the follow-up's own outcomes.
 - *Reserved (deliberately unmodeled CS surface)*: CS `linked`-entry
   `challenges` (authorable today as ROLL + IF) and the 8 inline recipe
   definitions (compile to ordinary declared recipes);
@@ -1190,8 +1258,8 @@ function). Their bodies see the WINDOW's re-resolved bindings — the
 empty-bindings rule of slot/expire triggers does NOT apply, and the
 role-free load lint does not run on them. A failure inside the body refuses
 the WINDOW (not a whole-step throw); `REFUSE` in the body is a load error.
-RUN inside the body is legal and may cross verbs (the global id table); the
-busy check for such a follow-up EXCLUDES the parent's own window — otherwise
+RUN/FORK inside the body apply through the same chain channel as everywhere
+(§6.7's walk); the busy check EXCLUDES the parent's own window — otherwise
 a same-verb hand-off would see its own station busy and silently skip
 forever (any OTHER busy station skips the candidate silently). This is what
 makes CS's `induces job→needs` expressible: a work completion containing the
@@ -1716,9 +1784,9 @@ Rules:
     window completes binding the card (§6.7), optionally only for
     completions of recipes declaring `aspect`.
   `REFUSE` in any trigger outcome of any kind is a load-time error (§6.6),
-  and so are `RUN` and `ADVANCE` in the two event kinds (an event has no
-  window to chain from and no pass to stretch, §6.6/§6.7; `on complete`
-  bodies fire inside one and are the exempt kind).
+  and so is `ADVANCE` in the two event kinds (an event owns no pass to
+  stretch, §6.6); `RUN` and `FORK` are legal in all three kinds (§6.6's
+  event-chain channel, §6.7).
 - **Function lines**: `NAME(params…) -> OUTCOMES` — parametric
   outcome macros. Params are comma-separated identifiers in parens, bare
   space-separated identifiers without them, or absent (an empty `()` is the
@@ -1845,7 +1913,9 @@ sentence is what gets logged (§9.1). Rules:
 
 - **Canonical passthrough**: input starting `d:u @` or containing `->`
   goes through the strict parser unchanged (clock defaults to the world
-  clock when absent).
+  clock when absent). The strict grammar's actor-less clause (§5.1's EBNF)
+  passes through the same way: a verb whose actors slot allows 0
+  (`actors: 0..`) accepts a bare `d:u @ VERB` line and plays actor-less.
 - Otherwise: optional leading `d:u` clock (default: **begin now** — the
   world clock, minute-precise; windows may begin mid-tick) — an
   out-of-range tick
@@ -2384,23 +2454,27 @@ full 1,566 × 2,084 world) on worker threads — at most
 whole deterministic world — with a `--worker i k P R` child protocol
 dumping per-name JSON stats.
 
-The fuzz generator (`gen_scenario`, v4) builds one random script per
+The fuzz generator (`gen_scenario`, v7) builds one random script per
 seed over the FULL trigger face — slot, expiry and completion triggers
 (the complete form drawing its home and its optional §6.7 aspect gate) —
-plus §6.7 RUN candidates (a recipe body may RUN only the same verb's
-strictly earlier recipes, acyclic by construction; a completion body
-draws from the global table of duration>0 recipes, bounding every
-completion-fed chain to one hop per advance) and §6.4 recipe `aspects`
-presence lists. The generator's draw order is deliberate (every
-short-circuit and evaluation-order choice carries an inline note) but
-VERSIONED, not frozen: the v2 space added the completion/RUN/aspects
-draws, re-banded the outcome-op table (RUN's 0.10 width funded by SET,
-ROLL and NARRATE; every other op keeps its exact v1 width) and moved the
+plus §6.7 chain candidates (a recipe body draws from the GLOBAL
+build-order prefix — strictly earlier recipes across ALL verbs, so a
+recipe-body chain lowers the build index every hop and is acyclic by
+construction; trigger bodies draw from the global table of duration>0
+recipes, bounding every trigger-fed chain to one hop per advance) and
+§6.4 recipe `aspects` presence lists. The generator's draw order is
+deliberate (every short-circuit and evaluation-order choice carries an
+inline note) but VERSIONED, not frozen: the v2 space added the
+completion/RUN/aspects draws, re-banded the outcome-op table (the chain
+band's 0.10 width funded by SET, ROLL and NARRATE) and moved the
 trigger-kind roll ahead of the body draws; v3 added the two
 aspect-scoped world forms (`exists(aspect:a>=m)`, `count(aspect:b>=1) >= v`)
-to the `when` candidate table; and v4 added a closed form
+to the `when` candidate table; v4 added a closed form
 (`count(aspect:b>=1) < n`) to the same table, making the closed
-comparison face visible to the differential campaign. Scenario streams
+comparison face visible to the differential campaign; v5 widened the
+recipe-body chain table to the global build prefix; v6 split the chain
+band into RUN [0.22, 0.27) and FORK [0.27, 0.32); v7 turned the chain
+band on in slot/expire trigger bodies. Scenario streams
 differ across generator versions by design. What stays pinned is purity:
 the generator is a pure function of its seed — the same seed builds the
 same scenario, draw for draw, under ONE version.
@@ -2463,6 +2537,14 @@ same scenario, draw for draw, under ONE version.
   negated query, a closed count comparison (the pool can grow past it), a
   threshold the load-present pool does not meet, an aspect with no writer
   (the no-writer error is that finding), and `state.*` reads.
+  And a chain-op list that can never pin: a `RUN`/`FORK` list whose EVERY
+  candidate's target `when` is provably dead — each verdict evaluated over
+  the TARGET recipe's verb's slot ranges (the same §6.1 domain), owner the
+  carrying recipe, IF branches and expanded op/function bodies included.
+  Conservative at the same boundary: world reads stay Unknown, a when-less
+  default candidate is always live, and ONE live candidate silences the
+  whole list; the walk runs on the compiled outcomes, so trigger lists are
+  seen through the same pass (owner `trigger {id}`).
 - **WARNING (the reach bridge)** — `--reach` appends the reach analyzer's
   global-dynamic findings (§13.1's `bridge` module) to the same stream,
   each line `[reach]`-prefixed so the two layers read apart and the
@@ -2519,7 +2601,12 @@ the bins and the test suite import one implementation. `lcg` (crate root)
 is the deterministic campaign-side RNG those modules draw from —
 deliberately NOT the engine's randomness, which is §4.4's counter alone.
 Recorded campaign runs are reproducible only against the generator
-version that produced them. The bins freeze exactly five dependency
+version that produced them. The scenario generator is itself VERSIONED
+(draw-order deliberately re-banded per feature): v5 widened the recipe-body
+chain-candidate table to the global build prefix (cross-verb chains, §6.7),
+v6 split the chain band into RUN [0.22, 0.27) and FORK [0.27, 0.32), and
+v7 turned the chain band on in slot/expire trigger bodies (§6.6's
+event-chain channel). The bins freeze exactly five dependency
 crates (`Cargo.toml`: indexmap, serde, serde_json, regex, crossterm —
 the last only for the ANSI writer behind `cli`, riding with
 `default-features = false`; `Cargo.lock` is committed).

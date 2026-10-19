@@ -36,10 +36,10 @@ pub const CORE_VERBS: [&str; 12] = [
 pub const CORE_KINDS: [&str; 8] =
     ["character", "place", "item", "text", "idea", "state", "rite", "resource"];
 
-/// The reserved list: 18 keywords + every
+/// The reserved list: 19 keywords + every
 /// CORE_VERB appended (spelled out; a unit test below pins the tail equal to
 /// CORE_VERBS so the double-write cannot drift).
-pub const RESERVED_WORDS: [&str; 30] = [
+pub const RESERVED_WORDS: [&str; 31] = [
     "EVENT",
     "TO",
     "WITH",
@@ -57,6 +57,7 @@ pub const RESERVED_WORDS: [&str; 30] = [
     "DRAW",
     "DRAWN",    // §4.4: the deck-draw op, and the engine-written record of one (v0.3.5)
     "RUN", // §4.4: the recipe-chain op — authored, zero-concrete (the follow-up's BEGIN row is the record)
+    "FORK", // §4.4: the multi-continuation chain op — every candidate opens, all-or-refuse
     "COMPLETE", // v0.5: the engine-written completion row of a processing window
     "READ",
     "STUDY",
@@ -77,7 +78,7 @@ pub const RESERVED_WORDS: [&str; 30] = [
 /// array as the single membership/append-order
 /// source. Declaration order is load-bearing: the unknown-call error message
 /// (fn_expand) joins it in this order.
-pub const OUTCOME_OPS: [&str; 18] = [
+pub const OUTCOME_OPS: [&str; 19] = [
     "SPAWN", "DESTROY", "REPLACE", "SET", "MOVE", "REVEAL", "ADVANCE", "NARRATE", "PROGRESS",
     "RELATE", "UNRELATE", "REFUSE", "ENDING",
     "ROLL",   // authored: ROLL(count, sides[, bonus]) — concretizes to ROLLED (§4.4)
@@ -85,6 +86,7 @@ pub const OUTCOME_OPS: [&str; 18] = [
     "DRAW",   // authored: DRAW <DECK> [INTO target] — concretizes to DRAWN+SPAWN (§4.4)
     "DRAWN",  // engine-written ONLY: DRAWN(<DECK>, <name>) — the fold's cursor row (§4.4)
     "RUN", // authored: RUN "recipe-id" [, …] — zero-concrete; the follow-up's BEGIN row is the record (§4.4)
+    "FORK", // authored: FORK "recipe-id" [, …] — zero-concrete; one follow-up BEGIN per pinned branch (§4.4)
 ];
 
 /// Definition of a relation type: whether its edges are symmetric.

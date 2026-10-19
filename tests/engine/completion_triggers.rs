@@ -543,6 +543,39 @@ fn a_parked_run_refuses_through_its_candidates_guard() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
+/// F-6 (the pin-earned slot, cross-phase): a trigger-body RUN pins during
+/// the trigger phase, then the parked recipe-body RUN replays — the second
+/// chain op refuses (the slot was earned by the trigger's pin).
+#[test]
+fn a_trigger_pinned_run_refuses_a_later_deferred_run() {
+    let dict = core_dictionary();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            "  ANA is character at HOUSE
+  HOUSE is place
+  HEALTH is resource
+  on complete -> (RUN \"trig\")",
+            &dream(
+                "    object: 0..1 kind:resource\n",
+                "      runner when count(actors) >= 1 -> NARRATE \"ran\", RUN \"late\"\n      trig when count(actors) >= 1 -> NARRATE \"trig\"\n      late when count(actors) >= 1 -> NARRATE \"late\"",
+            ),
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(
+        refusal(&r),
+        Some("a second RUN in one completion — a station holds one window (§6.7)".to_string())
+    );
+    assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no follow-up survived");
+    let ops: Vec<&str> = r.records[1].outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["NARRATE", "REFUSE"]);
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
 /// A card the recipe's own outcomes destroy is dead by the trigger phase and
 /// fires nothing — the gate skips dead locked cards the way bindings drop
 /// dead refs.
@@ -742,7 +775,7 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             &two_verbs("      collide when count(actors) >= 1 -> NARRATE \"work collide\""),
             &dict,
         ),
-        "recipe id 'collide' is declared by both verb WORK and verb DREAM — on-complete RUN resolution needs globally unique recipe ids \\(§6\\.7\\)",
+        "recipe id 'collide' is declared by both verb WORK and verb DREAM — chain-op resolution needs globally unique recipe ids \\(§6\\.7\\)",
     );
     // an unknown candidate resolves nowhere — load error
     assert_err_msg(
@@ -756,7 +789,7 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             ),
             &dict,
         ),
-        "trigger complete:HEALTH: RUN 'nope' does not name a compiled recipe — on-complete candidates resolve against the global recipe table \\(§6\\.7\\)",
+        "trigger complete:HEALTH: RUN 'nope' does not name a compiled recipe — candidates resolve against the global recipe table \\(§6\\.7\\)",
     );
     // both positional orders parse: `max` before `aspects` and after
     compile(
@@ -908,4 +941,37 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
         ),
         "'on complete' needs a preceding entity declaration \\(§10\\)",
     );
+}
+
+/// F2-10: a parked recipe-body FORK replays after the trigger phase — a
+/// trigger-body RUN that pins earns the slot, and the replayed fork refuses
+/// with the chain-op message; the turn still folds identically.
+#[test]
+fn a_trigger_pinned_run_refuses_a_replayed_fork() {
+    let dict = core_dictionary();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            "  ANA is character at HOUSE
+  HOUSE is place
+  HEALTH is resource
+  on complete -> (RUN \"trig\")",
+            &dream(
+                "    object: 0..1 kind:resource\n",
+                "      runner when count(actors) >= 1 -> NARRATE \"ran\", FORK \"trig\"\n      trig when count(actors) >= 1 -> NARRATE \"trig\"",
+            ),
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(
+        refusal(&r),
+        Some("a second chain op in one completion — a station holds one window (§6.7)".to_string())
+    );
+    assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no branch opened");
+    let ops: Vec<&str> = r.records[1].outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["NARRATE", "REFUSE"]);
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
 }

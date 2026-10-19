@@ -665,7 +665,7 @@ mod tests {
         let err = parse_outcomes("count(actors)", &d, Some(&fns2)).unwrap_err();
         assert_eq!(
             err.msg,
-            "unknown 'count(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN; no ops declared; declared functions: alpha, zeta (a condition wants the IF keyword: IF …count(…) -> ( outcomes )) (bare names spawn — an op's parens are part of its grammar; calls need a declared function or op)"
+            "unknown 'count(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN, FORK; no ops declared; declared functions: alpha, zeta (a condition wants the IF keyword: IF …count(…) -> ( outcomes )) (bare names spawn — an op's parens are part of its grammar; calls need a declared function or op)"
         );
     }
 

@@ -12,7 +12,8 @@ use super::parse::parse_script;
 use super::types::declared_entities;
 use super::when_dead::{when_verdict, WhenCx, WhenRange, WhenVerdict};
 use crate::content::{
-    collect_stackable, for_each_authored_outcome, mint_recipe_id, RecipeDef, SlotDef,
+    collect_stackable, for_each_authored_outcome_infallible, mint_recipe_id, CompiledTrigger,
+    RecipeDef, SlotDef,
 };
 use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
@@ -256,6 +257,96 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                 }
             }
         }
+    }
+
+    // The dead-chain warning (§6.7): a chain-op list whose EVERY candidate's
+    // target `when` is PROVABLY dead can never pin. Verdicts evaluate in the
+    // gate's ACTUAL binding domain (§6.7's merged walk): slot/expire trigger
+    // lists gate over the EMPTY bindings (§6.6 — event bindings are empty,
+    // so the projection produces no refs and every role's count is 0), so a
+    // verdict over the empty-binding domain is exactly can-never-pin there;
+    // recipe and `on complete` lists gate over merged LIVE bindings (the
+    // parent overlay, dead refs dropping — the static model pins no single
+    // interval per role), so the warning demands deadness under BOTH the
+    // §6.1 selection domain AND the empty-binding domain — deadness
+    // independent of the binding counts. Conservative at the documented
+    // boundary: world reads (`exists`, `count(<query>)`) are Unknown, a
+    // when-less default candidate is always live, ONE live candidate
+    // silences the whole list. The owner is the carrying recipe or trigger;
+    // the walk runs on the compiled outcomes, so a chain op inside an IF
+    // branch or an expanded op/function call is still seen.
+    let dead_chain_check = |findings: &mut Vec<LintFinding>,
+                            owner: &str,
+                            outs: &[Outcome],
+                            empty_bindings: bool| {
+        for_each_authored_outcome_infallible(outs, &mut |o| {
+            if o.op != "RUN" && o.op != "FORK" {
+                return;
+            }
+            let candidates: Vec<&str> = o
+                .args
+                .iter()
+                .filter_map(|a| match a {
+                    Arg::Ref { r#ref: Ref::Name { name, .. } } => Some(name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            if candidates.is_empty() {
+                return;
+            }
+            let all_dead = candidates.iter().all(|id| {
+                let Some(tv_name) = compiled.content.recipe_verbs.get(*id) else {
+                    return false;
+                };
+                let Some(tv) = compiled.content.verbs.get(tv_name) else {
+                    return false;
+                };
+                let Some(tr) = tv.recipes.iter().find(|cr| cr.id == *id) else {
+                    return false;
+                };
+                // a when-less candidate is the default recipe — always live
+                let Some(w) = &tr.when else { return false };
+                let selection_ranges: IndexMap<String, WhenRange> = tv
+                    .slot_by_role
+                    .iter()
+                    .map(|(role, s)| (role.clone(), (s.min, s.max)))
+                    .collect();
+                // the empty-binding domain: every declared role's count is
+                // 0 (an undeclared role binds nothing either way, §6.6)
+                let empty_ranges: IndexMap<String, WhenRange> =
+                    tv.slot_by_role.keys().map(|role| (role.clone(), (0, Some(0)))).collect();
+                let dead_over = |ranges: &IndexMap<String, WhenRange>| {
+                    let mut cx = WhenCx::new(ranges);
+                    matches!(when_verdict(w, false, &mut cx), WhenVerdict::Dead(_))
+                };
+                if empty_bindings {
+                    dead_over(&empty_ranges)
+                } else {
+                    dead_over(&selection_ranges) && dead_over(&empty_ranges)
+                }
+            });
+            if all_dead {
+                findings.push(LintFinding {
+                        severity: LintSeverity::Warning,
+                        message: format!(
+                            "{owner}: the {} list can never pin — every candidate's when is dead (§6.7)",
+                            o.op
+                        ),
+                    });
+            }
+        });
+    };
+    for v in compiled.content.verbs.values() {
+        for r in &v.recipes {
+            dead_chain_check(&mut findings, &format!("recipe {}", r.id), &r.out, false);
+        }
+    }
+    for t in &compiled.content.triggers {
+        // §6.6: slot/expire bodies gate over the EMPTY bindings; an `on
+        // complete` body sees the window's re-resolved bindings (§6.7) — the
+        // recipe-body demand
+        let empty_bindings = !matches!(t, CompiledTrigger::Complete { .. });
+        dead_chain_check(&mut findings, &format!("trigger {}", t.id()), t.out(), empty_bindings);
     }
 
     // template tokens: {actors} {object} {with} {at} {about} {to} {roll} — a
@@ -512,14 +603,13 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     // reaches, walked on the compiled outcomes — the same walk E1 uses
     let mut killed: IndexSet<String> = IndexSet::new();
     let scan_kills = |killed: &mut IndexSet<String>, outs: &[Outcome]| {
-        let _ = for_each_authored_outcome(outs, &mut |o| {
+        for_each_authored_outcome_infallible(outs, &mut |o| {
             if o.op != "DESTROY" && o.op != "REPLACE" {
-                return Ok(());
+                return;
             }
             if let Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) = o.args.first() {
                 killed.insert(name.clone());
             }
-            Ok(())
         });
     };
     for (_, v) in &compiled.content.verbs {
@@ -720,30 +810,29 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     // (§10), so a SPAWN inside a call site is still seen.
     let mut spawn_seen: IndexSet<String> = IndexSet::new();
     let mut scan_spawns = |findings: &mut Vec<LintFinding>, owner: &str, outs: &[Outcome]| {
-        let _ = for_each_authored_outcome(outs, &mut |o| {
+        for_each_authored_outcome_infallible(outs, &mut |o| {
             if o.op != "SPAWN" {
-                return Ok(());
+                return;
             }
             let Some(Arg::Ref { r#ref: Ref::Name { name, kind, .. } }) = o.args.first() else {
-                return Ok(());
+                return;
             };
             // a kinded ref carries its kind — the spawn mints (aspectless,
             // but nothing refuses)
             if kind.is_some() {
-                return Ok(());
+                return;
             }
             if compiled.content.prototypes.contains_key(name) {
-                return Ok(());
+                return;
             }
             if !script.entities.iter().any(|e| &e.name == name) {
-                return Ok(()); // neither table — names no declared entity
+                return; // neither table — names no declared entity
             }
             if spawn_seen.insert(format!("{owner}\u{0}{name}")) {
                 findings.push(LintFinding::error(format!(
                     "{owner}: SPAWN {name} names a declared entity, not a prototype — the spawn has no kind to mint (prototype or kind:NAME required) and refuses at play every time; declare a prototype (or a `_CARD` twin) and spawn that (§4.2)"
                 )));
             }
-            Ok(())
         });
     };
     for (vname, v) in &compiled.content.verbs {

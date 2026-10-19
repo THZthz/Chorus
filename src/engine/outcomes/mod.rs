@@ -1,5 +1,5 @@
 //! Outcome application (spec §4.4): the [`ApplyCtx`] borrow face, the
-//! 19-op dispatch, and the small ops. The SPAWN/REPLACE mint rules live in
+//! 20-op dispatch, and the small ops. The SPAWN/REPLACE mint rules live in
 //! `mint`; the §6.7 RUN chain in `chain`.
 //!
 //! Ownership model: [`ApplyCtx`] holds `&mut State`; bindings hold entity
@@ -29,7 +29,7 @@ use crate::error::{ChorusError, Result};
 mod chain;
 mod mint;
 
-use self::chain::apply_run;
+use self::chain::{apply_fork, apply_run};
 use self::mint::{apply_replace, apply_spawn};
 use super::record::{checked_step, ActionRecord};
 use super::validate::resolve_ref;
@@ -98,46 +98,49 @@ pub(super) struct ApplyCtx<'a> {
     /// binding naturally.
     pub(super) roll: Option<i64>,
     /// §6.7: the completion-time chain channel — the parent window's
-    /// identity plus the sink for the follow-up BEGIN. Some exactly inside
-    /// fire_window's outcome loop; None at every other application site
-    /// (events, the fold, the Phase-3 table trial — RUN never applies there:
-    /// triggers reject it at load, the trial skips it as completion-owned,
-    /// and the log never carries one for the fold to replay).
+    /// identity plus the sink for the follow-up BEGINs. Some inside
+    /// fire_window's outcome loop and inside event bodies (`make_event_ctx`'s
+    /// `chained` face, the §6.6 event-chain channel); None at every other
+    /// application site (the fold, the Phase-3 table trial — the chain ops
+    /// never apply there: the trial skips them as completion-owned, and the
+    /// log never carries one for the fold to replay).
     pub(super) chain: Option<ChainCtx>,
 }
 
 /// The §6.7 chain channel (see [`ApplyCtx::chain`]): the parent window's
-/// identity the RUN arm needs (its verb names the candidate list, its end
-/// clock is the follow-up's begin, its authored refs become the follow-up
-/// clause), the one-RUN-per-completion detector, and the sink the synthesized
-/// follow-up BEGIN rides to fire_window.
+/// identity the chain arms need (its end clock is the follow-ups' begin, its
+/// authored refs become the follow-up clauses), the one-chain-slot detector,
+/// and the sink the synthesized follow-up BEGINs ride to fire_window.
 ///
 /// §6.7 extends the channel for completion triggers: `parent_key` excludes
 /// the parent's own window from the follow-up busy check, `deferring` parks
-/// recipe-body RUN ops (a completion fires `on complete` triggers AFTER the
-/// recipe's own outcomes and BEFORE any RUN), `in_complete` marks the
-/// completion-trigger phase (cross-verb candidates through the global table,
-/// other busy stations skip silently), and `deferred` holds the parked ops in
-/// list order.
+/// recipe-body chain ops (a completion fires `on complete` triggers AFTER
+/// the recipe's own outcomes and BEFORE any chain op), and `deferred` holds
+/// the parked ops in list order.
 pub(super) struct ChainCtx {
-    pub(super) parent_verb: String,
     pub(super) parent_key: String,
     pub(super) parent_end: i64,
     pub(super) parent_refs: IndexMap<Role, Vec<Ref>>,
-    /// the follow-up BEGIN's record id — the COMPLETE row's id + 1
+    /// the next follow-up BEGIN's record id — the COMPLETE row's id + 1
+    /// (a FORK's branches consume one each, in list order)
     pub(super) next_record_id: i64,
-    /// a second RUN op reached in one completion refuses the parent window
-    /// (§6.7: a station holds one window)
+    /// the chain slot is earned by a PIN, not by a reach (§6.7): a second
+    /// PINNING chain op in one completion refuses the parent window (a
+    /// station holds one window) — silently skipped on the `event` channel
+    /// (§6.6, see [`ChainCtx::event`]); a whiffed list spends nothing
     pub(super) run_taken: bool,
     pub(super) extra_records: Vec<ActionRecord>,
     /// §6.7: recipe-body RUN ops park here (in outcome order) while the
     /// completion's `on complete` triggers fire, then replay
     pub(super) deferring: bool,
     pub(super) deferred: Vec<Outcome>,
-    /// §6.7: inside the completion-trigger phase — candidates resolve
-    /// against the global recipe table (cross-verb legal) and any busy
-    /// station other than the parent's own window skips the candidate
-    pub(super) in_complete: bool,
+    /// §6.6: the event-channel flag — slot/expire trigger bodies arm the
+    /// channel through `make_event_ctx` (no parent window, empty bindings);
+    /// there a chain-op refusal is a SILENT SKIP (an event has no step to
+    /// refuse, §6.6): the second pinning chain op ends the chain where it
+    /// stands and an inline-gate veto skips its branch. The completion
+    /// channel (`fire_window`) keeps the window refusals.
+    pub(super) event: bool,
 }
 
 /// What one outcome application produced.
@@ -198,7 +201,7 @@ fn rewrite_roll_prose(o: &Outcome, ctx: &ApplyCtx) -> Outcome {
     Outcome::concrete(o.op.clone(), vec![Arg::Str { v: s.replace("{roll}", &roll.to_string()) }])
 }
 
-/// The op dispatch (19 ops — the §4.4 vocabulary). The match arms follow
+/// The op dispatch (20 ops — the §4.4 vocabulary). The match arms follow
 /// the authored op list in order; the bigger cases are pulled into helper
 /// fns, one arm each — the SPAWN/REPLACE mint rules in `mint`, the §6.7
 /// RUN chain in `chain`, the rest here.
@@ -207,6 +210,7 @@ pub(super) fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResu
     match o.op.as_str() {
         "IF" => apply_if(o, ctx),
         "RUN" => apply_run(o, ctx),
+        "FORK" => apply_fork(o, ctx),
         "SPAWN" => apply_spawn(args, ctx),
         "DESTROY" => {
             let concrete_args = concretize(args, ctx);

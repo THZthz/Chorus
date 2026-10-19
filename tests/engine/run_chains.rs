@@ -886,10 +886,149 @@ fn a_zero_duration_run_cycle_trips_the_livelock_budget() {
     assert_eq!(snap(&r.state), snap(&original), "the original state rides back");
 }
 
-/// The load checks (§6.7): candidates must name recipes of the PARENT verb
-/// (unknown and cross-verb ids are load errors), IF branches included; RUN
-/// is a load error inside slot and expire triggers (events have no window);
-/// the bare/dotted id and the empty list are parse errors.
+// ----------------------------------------------------------- fall-through ----
+// The F-series: the chain slot is earned by a PIN, not by a reach (§6.7) —
+// a whiffed RUN list spends nothing, so a later chain op in the same
+// completion gets its walk.
+
+/// F-1: fall-through on a whiff — `RUN "gone", RUN "here"` with gone's `when`
+/// dead: `here` pins, no refusal, one follow-up; the whole turn folds
+/// identically from the log and from JSONL.
+#[test]
+fn a_whiffed_run_list_falls_through_to_a_later_run() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      parent when count(actors) >= 1 -> RUN \"gone\", RUN \"here\"\n      gone when actors.aspect.mood >= 99 -> NARRATE \"gone\"\n      here when count(actors) >= 1 -> NARRATE \"here\"",
+            ),
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), None, "a whiffed list spends nothing, refuses nothing");
+    assert_eq!(kind_spine(&r), ["action", "complete", "action", "complete", "wait"]);
+    assert_eq!(begin_recipes(&r), [vec!["parent".to_string()], vec!["here".to_string()]]);
+    let ops: Vec<&str> = r.records[3].outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["NARRATE"]);
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+    let path = tmp_log_path("run-chains-fallthrough-jsonl");
+    save_log(&path, &r.records).unwrap();
+    let loaded = load_log(&path).unwrap();
+    assert_eq!(loaded, r.records);
+    let refolded = fold(&loaded, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&refolded), snap(&r.state));
+}
+
+/// F-2: fall-through on exhaustion — `spent max 1` already counted by a prior
+/// turn's clean chain; then `RUN "spent", RUN "fresh"`: the whiffed list
+/// spends nothing and `fresh` pins (was: parent-window refusal).
+#[test]
+fn an_exhausted_run_list_falls_through_to_a_later_run() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      starter max 1 when count(actors) >= 1 -> RUN \"spent\"\n      parent when count(actors) >= 1 -> RUN \"spent\", RUN \"fresh\"\n      spent max 1 when count(actors) >= 1 -> NARRATE \"spent\"\n      fresh when count(actors) >= 1 -> NARRATE \"fresh\"",
+            ),
+            None,
+        ),
+    );
+    // play 1: the starter pins `spent` cleanly — its window registers and
+    // the §6.4 count lands
+    let r1 = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r1.rejected, None);
+    assert_eq!(refusal(&r1), None);
+    assert_eq!(begin_recipes(&r1), [vec!["starter".to_string()], vec!["spent".to_string()]]);
+    // play 2: `spent` is exhausted — the first list whiffs, the slot goes
+    // unspent and the second RUN gets its walk (previously a refusal here)
+    let r2 = settle_line(&c, &dict, r1.state, "0:0 @ ANA DREAM", 100).unwrap();
+    assert_eq!(r2.rejected, None);
+    assert_eq!(refusal(&r2), None);
+    assert_eq!(begin_recipes(&r2), [vec!["parent".to_string()], vec!["fresh".to_string()]]);
+    assert_eq!(
+        executed_entries(&r2.state),
+        vec![
+            ("starter".to_string(), 1),
+            ("spent".to_string(), 1),
+            ("parent".to_string(), 1),
+            ("fresh".to_string(), 1),
+        ]
+    );
+}
+
+/// F-4: fall-through composes with the inline gate — the first RUN whiffs,
+/// the second pins a gated candidate whose REFUSE fires: the PARENT window
+/// refuses, no follow-up opens, and the trial's rng/mint consumption stays
+/// scratch-only.
+#[test]
+fn a_fallthrough_pins_second_run_whose_gate_refuses_the_parent() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      parent when count(actors) >= 1 -> RUN \"gone\", RUN \"gated\"\n      gone when actors.aspect.mood >= 99 -> NARRATE \"gone\"\n      gated when count(actors) >= 1 -> ROLL(2, 6), SPAWN TRINKET, REFUSE(\"the gate says no\")",
+            ),
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    assert_eq!(s.rng, 0);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), Some("the gate says no".to_string()));
+    assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no follow-up opened");
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["REFUSE"]);
+    assert_eq!(executed_entries(&r.state), vec![("parent".to_string(), 1)]);
+    assert!(r.state.windows.is_empty());
+    assert_eq!(r.state.rng, 0, "the trial's ROLL never touched the real counter");
+    assert!(!r.state.entities.values().any(|e| e.name == "TRINKET"));
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// F-5: deferred order across a fall-through — `RUN "whiff", NARRATE "mid",
+/// RUN "here"`: "mid" logs in the first pass, the parked lists replay in
+/// order, the whiff spends nothing and `here` pins after it.
+#[test]
+fn a_whiff_between_narrate_and_a_pinning_run_falls_through_in_order() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      parent when count(actors) >= 1 -> RUN \"whiff\", NARRATE \"mid\", RUN \"here\"\n      whiff when actors.aspect.mood >= 99 -> NARRATE \"whiff\"\n      here when count(actors) >= 1 -> NARRATE \"here\"",
+            ),
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), None);
+    // "mid" is the only concrete outcome on the COMPLETE row (the whiff and
+    // the pin log nothing of themselves); the follow-up BEGIN follows it
+    let ops: Vec<&str> = r.records[1].outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["NARRATE"]);
+    assert_eq!(r.records[1].outcomes[0].args[0], Arg::Str { v: "mid".to_string() });
+    assert_eq!(kind_spine(&r), ["action", "complete", "action", "complete", "wait"]);
+    assert_eq!(begin_recipes(&r), [vec!["parent".to_string()], vec!["here".to_string()]]);
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// The load checks (§6.7): candidates must name compiled recipes through the
+/// GLOBAL table — cross-verb ids legal (an unknown id is the load error), IF
+/// branches included; chain ops are legal in slot and expire triggers (§6.6,
+/// the event-chain channel); the bare/dotted id and the empty list are parse
+/// errors.
 #[test]
 fn the_load_checks_pin_homes_candidates_and_arg_form() {
     let dict = run_dict();
@@ -904,13 +1043,11 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
     // unknown id, top level
     assert_err_msg(
         compile_script(&dream_verb("      a when count(actors) >= 1 -> RUN \"nope\""), &dict),
-        "recipe a: RUN 'nope' does not name a recipe of verb DREAM — unknown and cross-verb ids are load errors \\(§6\\.7\\)",
+        "recipe a: RUN 'nope' does not name a compiled recipe — candidates resolve against the global recipe table \\(§6\\.7\\)",
     );
-    // cross-verb id: wait.default belongs to WAIT, not DREAM
-    assert_err_msg(
-        compile_script(&dream_verb("      a when count(actors) >= 1 -> RUN \"wait.default\""), &dict),
-        "recipe a: RUN 'wait.default' does not name a recipe of verb DREAM — unknown and cross-verb ids are load errors \\(§6\\.7\\)",
-    );
+    // cross-verb id: wait.default belongs to WAIT — the global table owns it,
+    // so the chain loads
+    compile(&dict, &dream_verb("      a when count(actors) >= 1 -> RUN \"wait.default\""));
     // IF branches included — an untaken branch hides nothing at load
     assert_err_msg(
         compile_script(
@@ -919,34 +1056,21 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
             ),
             &dict,
         ),
-        "recipe a: RUN 'nope' does not name a recipe of verb DREAM",
+        "recipe a: RUN 'nope' does not name a compiled recipe",
     );
     // a legal chain loads (the same-verb candidate resolves)
     compile(
         &dict,
         &dream_verb("      a when count(actors) >= 1 -> RUN \"b\"\n      b when count(actors) >= 1 -> NARRATE \"b\""),
     );
-    // slot trigger: events have no window to chain from
-    assert_err_msg(
-        compile_script(
-            &rig(
-                &dream("      a when count(actors) >= 1 -> NARRATE \"a\""),
-                Some("  tick at hour 6 -> RUN \"a\""),
-            ),
-            &dict,
+    // slot + expire trigger bodies chain too (§6.6): the trigger's own
+    // candidate resolves through the global table
+    compile(
+        &dict,
+        &rig(
+            &dream("      a when count(actors) >= 1 -> NARRATE \"a\""),
+            Some("  tick at hour 6 -> RUN \"a\"\n  boom on expire of THING -> FORK \"a\""),
         ),
-        "trigger tick: RUN belongs to verb recipes — events have no window to chain from",
-    );
-    // expire trigger: the same home rule
-    assert_err_msg(
-        compile_script(
-            &rig(
-                &dream("      a when count(actors) >= 1 -> NARRATE \"a\""),
-                Some("  boom on expire of THING -> RUN \"a\""),
-            ),
-            &dict,
-        ),
-        "trigger boom: RUN belongs to verb recipes — events have no window to chain from",
     );
     // the bare (dotted) id is unlexable — the parse error names the syntax
     assert_err_msg(
@@ -988,8 +1112,152 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
     };
     assert_err_msg(
         compile_content(&raw, &dict, &[]),
-        "recipe a: RUN 'ghost' does not name a recipe of verb DREAM",
+        "recipe a: RUN 'ghost' does not name a compiled recipe",
     );
+}
+
+// ----------------------------------------------------- cross-verb chains -----
+// The C-series: a recipe body may RUN any compiled recipe, same verb or not —
+// the global `recipe_verbs` table is the ONE resolution scope (§6.7), and the
+// busy check applies in recipe bodies too (the parent's own window excluded).
+
+/// C-3: a recipe-body cross-verb hand-off — DREAM completes, WAIT's recipe
+/// begins at the completion clock; the whole turn folds identically from the
+/// log directly and from JSONL.
+#[test]
+fn a_recipe_body_chains_across_verbs() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            "  DREAM:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      a when count(actors) >= 1 -> NARRATE \"a done\", RUN \"wait.rest\"\n  WAIT:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      wait.rest when count(actors) >= 1 -> NARRATE \"waited\"",
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(kind_spine(&r), ["action", "complete", "action", "complete", "wait"]);
+    assert_eq!(begin_recipes(&r), [vec!["a".to_string()], vec!["wait.rest".to_string()]]);
+    // the follow-up begins AT THE COMPLETION CLOCK on the CANDIDATE's verb
+    let begin_rest = &r.records[2];
+    assert_eq!(begin_rest.verb, "WAIT");
+    assert_eq!(begin_rest.start_min, Some(0));
+    assert_eq!(begin_rest.t_game, "0:0");
+    assert_eq!(begin_rest.actors.len(), 1, "the parent's bindings ride along");
+    let ops: Vec<&str> = r.records[3].outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["NARRATE"]);
+    assert_eq!(
+        executed_entries(&r.state),
+        vec![("a".to_string(), 1), ("wait.rest".to_string(), 1)]
+    );
+    assert!(r.state.windows.is_empty());
+    assert_eq!(refusal(&r), None);
+    // fold from the log, and from JSONL: identical state both ways
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
+    assert_eq!(snap(&replayed), snap(&r.state));
+    let path = tmp_log_path("run-chains-cross-verb-jsonl");
+    save_log(&path, &r.records).unwrap();
+    let loaded = load_log(&path).unwrap();
+    assert_eq!(loaded, r.records);
+    let refolded = fold(&loaded, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&refolded), snap(&r.state));
+}
+
+/// C-4: a cross-verb RECIPE-BODY candidate whose `when:` reads a role the
+/// candidate verb does not declare — the parent-situation merge (E8) fires
+/// from a recipe body: the gate reads the parent's bound with-card through
+/// the committed binding, while the synthesized BEGIN carries the projected
+/// clause alone (the dropped card never locks).
+#[test]
+fn a_cross_verb_recipe_body_gate_reads_the_parent_situation() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig_full(
+            "  DREAM:\n    actors: 1 kind:character\n    with: 0..1 kind:resource\n    duration: 0m\n    recipes:\n      router when count(actors) >= 1 -> NARRATE \"route\", RUN \"rest_hot\", \"rest_plain\"\n  WAIT:\n    actors: 1 kind:character\n    duration: 1h\n    recipes:\n      rest_hot when total(with, aspect:hot) >= 1 -> NARRATE \"hot rest\"\n      rest_plain when count(actors) >= 1 -> NARRATE \"plain rest\"",
+            None,
+            Some("  EMBER is resource with hot:1 at ANA"),
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM WITH EMBER", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    // rest_hot's when reads `with` — a role WAIT does not declare and the
+    // projection drops — and still matches on the parent's EMBER
+    assert_eq!(begin_recipes(&r), [vec!["router".to_string()], vec!["rest_hot".to_string()]]);
+    // the BEGIN carries the projected clause alone: the actor role only
+    let begin = &r.records[2];
+    assert_eq!(begin.verb, "WAIT");
+    assert_eq!(begin.actors.len(), 1);
+    assert!(begin.instruments.is_empty(), "with is projected away");
+    // the 1h follow-up is still open: play-inserted vs fold-replayed windows
+    // land identical
+    assert_eq!(r.state.windows.len(), 1);
+    let w = r.state.windows.values().next().unwrap();
+    assert_eq!(w.recipe, "rest_hot");
+    assert!(w.locked.is_empty(), "the dropped card is not locked");
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// C-5: the busy check in a recipe body — two clauses in one step (1h each,
+/// same end); the earlier completion's RUN targets the other clause's still
+/// open window: the candidate skips SILENTLY (no follow-up, no refusal),
+/// exactly like a completion-trigger hand-off onto a busy station.
+#[test]
+fn a_recipe_body_run_onto_a_busy_station_skips_silently() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            "  DREAM:\n    actors: 1 kind:character\n    duration: 1h\n    recipes:\n      a when count(actors) >= 1 -> NARRATE \"a\", RUN \"study.s\"\n  STUDY:\n    actors: 1 kind:character\n    duration: 1h\n    recipes:\n      study.s when count(actors) >= 1 -> NARRATE \"s\"",
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM ; ANA STUDY", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), None, "a busy station skips, it does not refuse");
+    // both windows complete; the DREAM completion (begin_id 1) fires first,
+    // finds STUDY's window open and skips the candidate
+    assert_eq!(kind_spine(&r), ["action", "complete", "complete", "wait"]);
+    assert_eq!(begin_recipes(&r), [vec!["a".to_string(), "study.s".to_string()]]);
+    assert_eq!(r.state.executed.get("study.s"), Some(&1), "no follow-up registered");
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// C-6: the cross-verb livelock — a zero-duration cycle ACROSS verbs (DREAM
+/// RUNs WAIT's recipe, WAIT RUNs DREAM's) spins inside one pass exactly like
+/// a same-verb cycle: the pass fails loud at the 1024 budget, the step is
+/// rejected with nothing logged, the original state rides back.
+#[test]
+fn a_cross_verb_zero_duration_run_cycle_trips_the_livelock_budget() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            "  DREAM:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      dream.ping when count(actors) >= 1 -> NARRATE \"ping\", RUN \"wait.pong\"\n  WAIT:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      wait.pong when count(actors) >= 1 -> NARRATE \"pong\", RUN \"dream.ping\"",
+            None,
+        ),
+    );
+    let original = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    let rejected = r
+        .rejected
+        .clone()
+        .unwrap_or_else(|| panic!("expected the livelock rejection, got {:?}", r.rejected));
+    assert!(
+        rejected.contains("livelock guard")
+            && rejected.contains("1024")
+            && rejected.contains("§6.7"),
+        "{rejected}"
+    );
+    assert!(r.records.is_empty(), "the rejected pass logs nothing");
+    assert_eq!(snap(&r.state), snap(&original), "the original state rides back");
 }
 
 /// The deep chain a→b→c — RUN inside the follow-up — resolves ACROSS passes
@@ -1036,4 +1304,422 @@ fn the_deep_chain_resolves_across_passes_and_counts_every_begin() {
         executed_entries(&replayed),
         vec![("a".to_string(), 1), ("b".to_string(), 1), ("c".to_string(), 1)]
     );
+}
+
+// -------------------------------------------------------------------- FORK ---
+// The F2-series: FORK "id", … opens ONE follow-up window for EVERY matching
+// candidate, in list order — the fan-out beside RUN's first-match walk (§6.7).
+
+/// F2-1: parse/round-trip — `FORK "a", "b"` parses to two candidates, the
+/// canonical shell `FORK("a", "b")` re-parses identically, the op composes
+/// in an outcome list, and the arg-form errors are byte-pinned.
+#[test]
+fn fork_parses_round_trips_and_composes_in_a_list() {
+    let dict = run_dict();
+    let s = parse_sentence(
+        "0:0 @ ANA DREAM -> NARRATE \"a\", FORK \"study.recipe0\", \"study.recipe1\", NARRATE \"z\"",
+        &dict,
+    )
+    .unwrap();
+    let [narr_a, fork, narr_z] = s.outcomes.as_slice() else {
+        panic!("three outcomes");
+    };
+    assert_eq!(narr_a.op, "NARRATE");
+    assert_eq!(fork.op, "FORK");
+    assert_eq!(fork.args.len(), 2, "both quoted candidates belong to the FORK");
+    assert_eq!(narr_z.op, "NARRATE");
+    // the canonical shell renders re-quoted and re-parses identically
+    let out = format_sentence(&s, &dict).unwrap();
+    assert_eq!(
+        out,
+        "0:0 @ ANA DREAM -> NARRATE \"a\", FORK(\"study.recipe0\", \"study.recipe1\"), NARRATE \"z\""
+    );
+    let s2 = parse_sentence(&out, &dict).unwrap();
+    assert_eq!(s2.outcomes, s.outcomes);
+    assert_eq!(format_sentence(&s2, &dict).unwrap(), out);
+    // the arg-form pins, at the parse layer
+    let outs = parse_outcomes("FORK \"a.b\"", &dict, None).unwrap();
+    assert_eq!(outs[0].op, "FORK");
+    assert_eq!(
+        parse_outcomes("FORK a.b", &dict, None).unwrap_err().msg,
+        "FORK takes quoted-string recipe ids: FORK \"id\" [, \"id\" …] — got a"
+    );
+    assert_eq!(
+        parse_outcomes("FORK", &dict, None).unwrap_err().msg,
+        "FORK takes quoted-string recipe ids: FORK \"id\" [, \"id\" …] — got none"
+    );
+    assert_eq!(
+        parse_outcomes("FORK(\"a\",)", &dict, None).unwrap_err().msg,
+        "FORK takes quoted-string recipe ids: FORK \"id\" [, \"id\" …] — got )"
+    );
+}
+
+/// F2-2: the load checks — an unknown id names the shared global-table
+/// message (IF branches included), the hand-built raw face errors just as
+/// loud, and FORK is a load error in a slot trigger body (events have no
+/// window to chain from).
+#[test]
+fn the_fork_load_checks_pin_homes_and_arg_form() {
+    let dict = run_dict();
+    let dream_verb = |recipes: &str| {
+        rig(
+            &format!(
+                "  DREAM:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n{recipes}\n  WAIT:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      default -> NARRATE \"w\""
+            ),
+            None,
+        )
+    };
+    // unknown id, top level
+    assert_err_msg(
+        compile_script(&dream_verb("      a when count(actors) >= 1 -> FORK \"nope\""), &dict),
+        "recipe a: FORK 'nope' does not name a compiled recipe — candidates resolve against the global recipe table \\(§6\\.7\\)",
+    );
+    // cross-verb id: the global table owns it, the chain loads
+    compile(&dict, &dream_verb("      a when count(actors) >= 1 -> FORK \"wait.default\""));
+    // IF branches included — an untaken branch hides nothing at load
+    assert_err_msg(
+        compile_script(
+            &dream_verb(
+                "      a when count(actors) >= 1 -> IF count(actors) >= 1 -> (FORK \"nope\")",
+            ),
+            &dict,
+        ),
+        "recipe a: FORK 'nope' does not name a compiled recipe",
+    );
+    // a legal fork loads
+    compile(
+        &dict,
+        &dream_verb("      a when count(actors) >= 1 -> FORK \"b\"\n      b when count(actors) >= 1 -> NARRATE \"b\""),
+    );
+    // slot trigger: the event-chain channel owns FORK too (§6.6)
+    compile(
+        &dict,
+        &rig(
+            &dream("      a when count(actors) >= 1 -> NARRATE \"a\""),
+            Some("  tick at hour 6 -> FORK \"a\""),
+        ),
+    );
+    // the hand-built content face fails just as loud
+    let raw = ContentRaw {
+        verbs: [(
+            "DREAM".to_string(),
+            VerbContent {
+                slots: vec![SlotDef {
+                    role: "actors".into(),
+                    min: 1,
+                    max: Some(1),
+                    query: Some("kind:character".into()),
+                    shown: None,
+                }],
+                duration: 0,
+                recipes: vec![RecipeDef {
+                    id: Some("a".into()),
+                    when: Some("count(actors) >= 1".into()),
+                    shown: None,
+                    hint: None,
+                    max: None,
+                    aspects: Vec::new(),
+                    out: vec!["FORK \"ghost\"".to_string()],
+                }],
+            },
+        )]
+        .into_iter()
+        .collect(),
+        ..ContentRaw::default()
+    };
+    assert_err_msg(
+        compile_content(&raw, &dict, &[]),
+        "recipe a: FORK 'ghost' does not name a compiled recipe",
+    );
+}
+
+/// F2-3: the fan-out — `FORK "left", "right"` on distinct zero-duration verbs
+/// opens BOTH follow-ups: spine `action, complete, action, action, complete,
+/// complete, wait`, sequential BEGIN ids, both §6.4 counts ride, the whole
+/// turn folds identically (from the log and from JSONL), and a second run of
+/// the same turn from the same state is byte-identical.
+#[test]
+fn a_fork_fans_out_one_window_per_branch() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            "  DREAM:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      parent when count(actors) >= 1 -> NARRATE \"parent\", FORK \"wait.left\", \"study.right\"\n  WAIT:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      wait.left when count(actors) >= 1 -> NARRATE \"left\"\n  STUDY:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      study.right when count(actors) >= 1 -> NARRATE \"right\"",
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), None);
+    assert_eq!(
+        kind_spine(&r),
+        ["action", "complete", "action", "action", "complete", "complete", "wait"]
+    );
+    assert_eq!(
+        begin_recipes(&r),
+        [
+            vec!["parent".to_string()],
+            vec!["wait.left".to_string()],
+            vec!["study.right".to_string()]
+        ]
+    );
+    // sequential BEGIN ids: the two branches own complete_id+1 and +2
+    assert_eq!(r.records[2].id, r.records[1].id + 1);
+    assert_eq!(r.records[3].id, r.records[1].id + 2);
+    // the branch BEGINs carry their own verbs and the parent's bindings
+    assert_eq!(r.records[2].verb, "WAIT");
+    assert_eq!(r.records[3].verb, "STUDY");
+    assert_eq!(r.records[2].actors.len(), 1);
+    assert_eq!(r.records[3].actors.len(), 1);
+    assert_eq!(
+        executed_entries(&r.state),
+        vec![
+            ("parent".to_string(), 1),
+            ("wait.left".to_string(), 1),
+            ("study.right".to_string(), 1),
+        ]
+    );
+    // fold from the log, and from JSONL: identical state both ways
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
+    assert_eq!(snap(&replayed), snap(&r.state));
+    let path = tmp_log_path("fork-fanout-jsonl");
+    save_log(&path, &r.records).unwrap();
+    let loaded = load_log(&path).unwrap();
+    assert_eq!(loaded, r.records);
+    let refolded = fold(&loaded, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&refolded), snap(&r.state));
+    // determinism: the same turn from the same state is byte-identical
+    let r2 = settle_line(&c, &dict, clone_state(&base), "0:0 @ ANA DREAM", 1).unwrap();
+    let path2 = tmp_log_path("fork-fanout-jsonl-2");
+    save_log(&path2, &r2.records).unwrap();
+    let a = std::fs::read_to_string(&path).unwrap();
+    let b = std::fs::read_to_string(&path2).unwrap();
+    assert_eq!(a, b, "byte-identical double run");
+    assert_eq!(snap(&r2.state), snap(&r.state));
+}
+
+/// F2-4: one branch per station — `FORK "a", "b"` with same-verb candidates:
+/// only the first opens (list order decides), one window.
+#[test]
+fn a_fork_opens_one_branch_per_station() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      parent when count(actors) >= 1 -> FORK \"a\", \"b\"\n      a when count(actors) >= 1 -> NARRATE \"a\"\n      b when count(actors) >= 1 -> NARRATE \"b\"",
+            ),
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), None, "the second branch skips silently");
+    assert_eq!(kind_spine(&r), ["action", "complete", "action", "complete", "wait"]);
+    assert_eq!(begin_recipes(&r), [vec!["parent".to_string()], vec!["a".to_string()]]);
+    assert_eq!(executed_entries(&r.state), vec![("parent".to_string(), 1), ("a".to_string(), 1)]);
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// F2-5: duplicate ids — `FORK "a", "a"` opens one window.
+#[test]
+fn a_fork_with_duplicate_ids_opens_one_window() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      parent when count(actors) >= 1 -> FORK \"a\", \"a\"\n      a when count(actors) >= 1 -> NARRATE \"a\"",
+            ),
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), None);
+    assert_eq!(kind_spine(&r), ["action", "complete", "action", "complete", "wait"]);
+    assert_eq!(begin_recipes(&r), [vec!["parent".to_string()], vec!["a".to_string()]]);
+    assert_eq!(r.records[1].id + 1, r.records[2].id, "exactly one BEGIN follows");
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// F2-6: the busy check per branch — one branch's verb holds a foreign open
+/// window (committed in the same step's other clause): that branch skips,
+/// the other opens.
+#[test]
+fn a_fork_skips_a_busy_branch_and_opens_the_free_one() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig_full(
+            "  DREAM:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      parent when count(actors) >= 1 -> FORK \"study.busy\", \"wait.free\"\n  STUDY:\n    actors: 1 kind:character\n    duration: 1h\n    recipes:\n      study.busy when count(actors) >= 1 -> NARRATE \"busy\"\n  WAIT:\n    actors: 1 kind:character\n    duration: 1h\n    recipes:\n      wait.free when count(actors) >= 1 -> NARRATE \"free\"",
+            None,
+            Some("  BERTHA is character at HOUSE"),
+        ),
+    );
+    let base = clone_state(&s);
+    // ANA cannot fill both clauses; BERTHA holds STUDY while ANA dreams —
+    // the STUDY branch skips (foreign window), the WAIT branch opens
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM ; BERTHA STUDY", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), None);
+    assert_eq!(
+        begin_recipes(&r),
+        [vec!["parent".to_string(), "study.busy".to_string()], vec!["wait.free".to_string()]]
+    );
+    assert_eq!(r.state.executed.get("study.busy"), Some(&1), "no second STUDY window");
+    assert_eq!(r.state.executed.get("wait.free"), Some(&1));
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// F2-7: the partial fork — `FORK "spent", "fresh"` with `spent max 1` spent
+/// (counted by a prior turn): `fresh` opens alone; the all-whiff variant
+/// opens nothing, refuses nothing, and the slot stays free (a following RUN
+/// pins — fall-through composition).
+#[test]
+fn a_fork_partially_pins_and_an_all_whiff_fork_composes_with_a_run() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      starter max 1 when count(actors) >= 1 -> RUN \"spent\"\n      parent when count(actors) >= 1 -> FORK \"spent\", \"fresh\"\n      spent max 1 when count(actors) >= 1 -> NARRATE \"spent\"\n      fresh when count(actors) >= 1 -> NARRATE \"fresh\"",
+            ),
+            None,
+        ),
+    );
+    // play 1: the starter pins `spent` cleanly (its count lands)
+    let r1 = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r1.rejected, None);
+    assert_eq!(begin_recipes(&r1), [vec!["starter".to_string()], vec!["spent".to_string()]]);
+    // play 2: `spent` is exhausted — the fork's branch skips, `fresh` opens
+    let r2 = settle_line(&c, &dict, r1.state, "0:0 @ ANA DREAM", 100).unwrap();
+    assert_eq!(r2.rejected, None);
+    assert_eq!(refusal(&r2), None);
+    assert_eq!(begin_recipes(&r2), [vec!["parent".to_string()], vec!["fresh".to_string()]]);
+    // the all-whiff variant: both candidates gated off — nothing opens, no
+    // refusal, and a following RUN composes (the slot stayed free)
+    let (c2, s2) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      parent when count(actors) >= 1 -> FORK \"whiff1\", \"whiff2\", RUN \"here\"\n      whiff1 when actors.aspect.mood >= 99 -> NARRATE \"w1\"\n      whiff2 when actors.aspect.mood >= 98 -> NARRATE \"w2\"\n      here when count(actors) >= 1 -> NARRATE \"here\"",
+            ),
+            None,
+        ),
+    );
+    let base2 = clone_state(&s2);
+    let p1 = settle_line(&c2, &dict, s2, "0:0 @ ANA DREAM", 300).unwrap();
+    assert_eq!(p1.rejected, None);
+    assert_eq!(refusal(&p1), None);
+    assert_eq!(kind_spine(&p1), ["action", "complete", "action", "complete", "wait"]);
+    assert_eq!(begin_recipes(&p1), [vec!["parent".to_string()], vec!["here".to_string()]]);
+    let replayed = fold(&p1.records, &base2, &dict, &c2).unwrap();
+    assert_eq!(snap(&replayed), snap(&p1.state));
+}
+
+/// F2-8: the atomic inline gate — the FIRST pinned branch's top-level REFUSE
+/// rejects the PARENT window and NO branch opens; the trials' rng/mint
+/// consumption stays scratch-only.
+#[test]
+fn a_fork_whose_first_branch_gate_refuses_opens_nothing() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            &dream(
+                "      parent when count(actors) >= 1 -> FORK \"gated\", \"innocent\"\n      gated when count(actors) >= 1 -> ROLL(2, 6), SPAWN TRINKET, REFUSE(\"the gate says no\")\n      innocent when count(actors) >= 1 -> NARRATE \"innocent\"",
+            ),
+            None,
+        ),
+    );
+    let base = clone_state(&s);
+    assert_eq!(s.rng, 0);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), Some("the gate says no".to_string()));
+    assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no branch opened");
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["REFUSE"]);
+    assert_eq!(executed_entries(&r.state), vec![("parent".to_string(), 1)]);
+    assert!(r.state.windows.is_empty());
+    assert_eq!(r.state.rng, 0, "the trial's ROLL never touched the real counter");
+    assert!(!r.state.entities.values().any(|e| e.name == "TRINKET"));
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// F2-9: the livelock fan-out — a mutual zero-duration fork cycle multiplies
+/// through the 1024 budget exponentially and trips it: the step is rejected
+/// loud, nothing logs, the original state rides back.
+#[test]
+fn a_zero_duration_fork_cycle_trips_the_livelock_budget() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig(
+            "  DREAM:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      dream.ping when count(actors) >= 1 -> NARRATE \"ping\", FORK \"wait.pong_a\", \"wait.pong_b\"\n  WAIT:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      wait.pong_a when count(actors) >= 1 -> FORK \"dream.ping\"\n      wait.pong_b when count(actors) >= 1 -> FORK \"dream.ping\"",
+            None,
+        ),
+    );
+    let original = clone_state(&s);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
+    let rejected = r
+        .rejected
+        .clone()
+        .unwrap_or_else(|| panic!("expected the livelock rejection, got {:?}", r.rejected));
+    assert!(
+        rejected.contains("livelock guard")
+            && rejected.contains("1024")
+            && rejected.contains("§6.7"),
+        "{rejected}"
+    );
+    assert!(r.records.is_empty(), "the rejected pass logs nothing");
+    assert_eq!(snap(&r.state), snap(&original), "the original state rides back");
+}
+
+/// F2-11: the multi-role projection per branch — object/with/at bound, both
+/// branches carry the projected clause, and the play-inserted and
+/// fold-replayed windows land identical `OpenWindow`s.
+#[test]
+fn a_fork_projects_the_parent_refs_onto_every_branch() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig_full(
+            "  DREAM:\n    actors: 1 kind:character\n    object: 1 kind:text\n    with: 1 kind:item\n    at: 1 kind:place\n    duration: 1h\n    recipes:\n      parent when count(actors) >= 1 -> NARRATE \"parent\", FORK \"wait.child\", \"study.child\"\n  WAIT:\n    actors: 1 kind:character\n    object: 0..1 kind:text\n    duration: 2h\n    recipes:\n      wait.child when count(actors) >= 1 AND count(object) >= 1 -> NARRATE \"wait child\"\n  STUDY:\n    actors: 1 kind:character\n    object: 0..1 kind:text\n    duration: 2h\n    recipes:\n      study.child when count(actors) >= 1 AND count(object) >= 1 -> NARRATE \"study child\"",
+            None,
+            Some("  MAGICK_BOOK is text at HOUSE\n  CHARM is item at HOUSE"),
+        ),
+    );
+    let base = clone_state(&s);
+    let r =
+        settle_line(&c, &dict, s, "0:0 @ ANA AT HOUSE DREAM MAGICK_BOOK WITH CHARM", 1).unwrap();
+    assert_eq!(r.rejected, None);
+    assert_eq!(
+        begin_recipes(&r),
+        [
+            vec!["parent".to_string()],
+            vec!["wait.child".to_string()],
+            vec!["study.child".to_string()]
+        ]
+    );
+    // both branch BEGINs carry the projected object role (and the actor)
+    for i in [2usize, 3] {
+        assert_eq!(r.records[i].objects.len(), 1, "object rides branch {i}");
+        assert_eq!(r.records[i].actors.len(), 1);
+        assert!(r.records[i].instruments.is_empty(), "with is projected away");
+    }
+    // the two branch windows stay open (2h) — structurally equal on fold
+    assert_eq!(r.state.windows.len(), 2);
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
+    assert_eq!(snap(&replayed), snap(&r.state));
 }

@@ -13,3 +13,4 @@ mod ordering;
 mod rig;
 mod run_chains;
 mod set_ops;
+mod trigger_chains;

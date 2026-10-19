@@ -476,17 +476,24 @@ fn ending_and_run_checks_see_through_op_bodies() {
         ),
         r"recipe touch\.default: ENDING 'NOPE' is not in the endings table",
     );
-    // RUN's parent-verb rule: the spliced body's candidates resolve against
-    // the CALL SITE's verb — another verb's recipe is a load error ...
+    // RUN's membership rule: the spliced body's candidates resolve against
+    // the GLOBAL recipe table, so a cross-verb id through an op call loads
+    // (the call site's own check sees the expanded list)
+    compile_script(
+        "verbs:\n  TOUCH:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      default -> CHAIN()\n  READ:\n    actors: 1 kind:character\n    object: 1 kind:text\n    duration: 0m\n    recipes:\n      read.default -> NARRATE \"read.\"\nops:\n  CHAIN -> RUN \"read.default\"\n",
+        &dict,
+    )
+    .unwrap();
+    // an unknown candidate through the same op is the call site's own load
+    // error
     assert_err_msg(
         compile_script(
-            "verbs:\n  TOUCH:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      default -> CHAIN()\n  READ:\n    actors: 1 kind:character\n    object: 1 kind:text\n    duration: 0m\n    recipes:\n      read.default -> NARRATE \"read.\"\nops:\n  CHAIN -> RUN \"read.default\"\n",
+            "verbs:\n  TOUCH:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      default -> CHAIN()\nops:\n  CHAIN -> RUN \"nope\"\n",
             &dict,
         ),
-        r"recipe touch\.default: RUN 'read\.default' does not name a recipe of verb TOUCH — unknown and cross-verb ids are load errors \(§6\.7\)",
+        r"recipe touch\.default: RUN 'nope' does not name a compiled recipe — candidates resolve against the global recipe table \(§6\.7\)",
     );
-    // ... while the same op, called from an `on complete` body, resolves
-    // against the GLOBAL recipe table and loads fine (§6.7's exempt kind)
+    // and an `on complete` body resolves through the same global table (§6.7)
     compile_script(
         "entities:\n  HOUSE is place\n  ROWAN is character at HOUSE on complete -> ( CHAIN() )\nverbs:\n  READ:\n    actors: 1 kind:character\n    object: 1 kind:text\n    duration: 0m\n    recipes:\n      read.default -> NARRATE \"read.\"\nops:\n  CHAIN -> RUN \"read.default\"\n",
         &dict,
@@ -541,7 +548,7 @@ fn an_unknown_call_lists_declared_ops_in_the_vocabulary() {
             "ops:\n  PRESS(who) -> NARRATE \"{who}\"\n  BUMP -> NARRATE \"b\"\nverbs:\n  TOUCH:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      default -> MYSTERY(1)\n",
             &dict,
         ),
-        r"unknown 'MYSTERY\(\.\.\.\)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN; declared ops: PRESS, BUMP; no functions declared \(bare names spawn — an op's parens are part of its grammar; calls need a declared function or op\)",
+        r"unknown 'MYSTERY\(\.\.\.\)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN, FORK; declared ops: PRESS, BUMP; no functions declared \(bare names spawn — an op's parens are part of its grammar; calls need a declared function or op\)",
     );
 }
 

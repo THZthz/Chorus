@@ -367,10 +367,10 @@ pub struct CompiledContent {
     /// §4.4 the deck table: id → compiled deck (permutation + exhaustion)
     pub decks: IndexMap<String, CompiledDeck>,
     /// §6.7 the GLOBAL recipe-id table: recipe id → owning verb name.
-    /// Recipe-body RUN candidates resolve against their parent verb (the
-    /// per-verb §6.7 check); `on complete` bodies may cross verbs and resolve
-    /// through this table instead — which is why it demands GLOBAL id
-    /// uniqueness: the build below is where a cross-verb collision fails loud.
+    /// Chain-op candidates (RUN/FORK) resolve against it in every home —
+    /// recipe bodies and trigger bodies alike — which is why it demands
+    /// GLOBAL id uniqueness: the build is where a cross-verb collision
+    /// fails loud.
     pub recipe_verbs: IndexMap<String, String>,
 }
 

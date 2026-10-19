@@ -7,9 +7,12 @@
 //!   obtainable   ⇒ appears in some explored play        (hard; downgraded to
 //!                  inconclusive when the exploration hit its state cap)
 //!
-//! The scenario space (gen_scenario v4) now generates completion triggers
-//! (`on complete [<aspect>]`), §6.7 RUN candidates in verb recipes and
-//! completion bodies, and recipe-line `aspects` — features whose analyzer
+//! The scenario space (gen_scenario v7) now generates completion triggers
+//! (`on complete [<aspect>]`), §6.7 chain candidates in verb recipes and
+//! trigger bodies (the recipe-body table is the GLOBAL build prefix —
+//! recipe-body RUNs cross verbs; slot/expire bodies chain onto the global
+//! duration>0 table), and recipe-line `aspects` — features whose
+//! analyzer
 //! coverage is still being established, and which legitimately surface open
 //! false-`obtainable` gaps (the Wave-3 worklist, triaged by the reach-fuzz
 //! campaign: `cargo run --bin reach-fuzz -- --seeds 200`). Pinning "these
@@ -22,7 +25,7 @@
 //! verdict change. Failures still print to the test output so a red
 //! campaign seed is visible from the test log.
 //!
-//! Bounds rationale (2026-10 audit, v4 scenarios): the default 8 steps ×
+//! Bounds rationale (2026-10 audit, v7 scenarios): the default 8 steps ×
 //! 500 states per run, twice per seed; complete-trigger worlds explore
 //! noticeably wider than v1's (complete triggers fire on EVERY completion —
 //! no once), but the base cap still bounds each run, and the deep phase
@@ -33,8 +36,11 @@
 
 use crate::common::snap::snap;
 use chorus::content::compile_content;
+use chorus::core::dict::core_dictionary;
 use chorus::core::predicate::{Pred, ValExpr};
 use chorus::core::query::{CmpOp, QueryTerm};
+use chorus::core::r#ref::Ref;
+use chorus::core::sentence::Arg;
 use chorus::engine::fold::fold;
 use chorus::reach::fuzz::{drive_fuzz_seed, gen_scenario, run_fuzz_seed, FuzzOutcome};
 
@@ -252,4 +258,61 @@ fn seed_13_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deter
 fn seed_22_emits_an_aspect_scoped_world_form_when_and_stays_deterministic() {
     assert!(scenario_has_aspect_world_form(22));
     assert_seed_deterministic(22);
+}
+
+// The v5 recipe-body chain table: the GLOBAL build prefix, so a recipe-body
+// RUN may target another verb's recipe (§6.7 cross-verb chains). The probe
+// pins a seed whose scenario verifiably carries one — and that the loaded
+// scenario explores and stays differential-clean on it.
+fn scenario_recipe_run_crosses_verbs(seed: u32) -> bool {
+    let sc = gen_scenario(seed);
+    let mut dict = core_dictionary();
+    for v in sc.raw.verbs.keys() {
+        let _ = dict.register_verb(v);
+    }
+    let content =
+        compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the generated scenario compiles");
+    content.verbs.values().any(|v| {
+        v.recipes.iter().any(|r| {
+            r.out.iter().any(|o| {
+                o.op == "RUN"
+                    && o.args.iter().any(|a| match a {
+                        Arg::Ref { r#ref: Ref::Name { name, .. } } => {
+                            content.recipe_verbs.get(name).is_some_and(|owner| owner != &v.name)
+                        }
+                        _ => false,
+                    })
+            })
+        })
+    })
+}
+
+#[test]
+fn seed_1_carries_a_cross_verb_recipe_body_run_and_stays_deterministic() {
+    assert!(scenario_recipe_run_crosses_verbs(1));
+    assert_seed_deterministic(1);
+}
+
+// The v7 event-body chain band: slot/expire bodies draw RUN/FORK onto the
+// global duration>0 table (§6.6's event-chain channel). The probe pins a
+// seed whose scenario verifiably carries one.
+fn scenario_event_body_chains(seed: u32) -> bool {
+    use chorus::content::CompiledTrigger;
+    let sc = gen_scenario(seed);
+    let mut dict = core_dictionary();
+    for v in sc.raw.verbs.keys() {
+        let _ = dict.register_verb(v);
+    }
+    let content =
+        compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the generated scenario compiles");
+    content.triggers.iter().any(|t| {
+        matches!(t, CompiledTrigger::Slot { .. } | CompiledTrigger::Expire { .. })
+            && t.out().iter().any(|o| o.op == "RUN" || o.op == "FORK")
+    })
+}
+
+#[test]
+fn seed_3_carries_an_event_body_chain_op_and_stays_deterministic() {
+    assert!(scenario_event_body_chains(3));
+    assert_seed_deterministic(3);
 }

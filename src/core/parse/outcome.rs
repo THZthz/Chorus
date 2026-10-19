@@ -119,13 +119,14 @@ impl Parser<'_> {
             // DRAW is paren-less only (§4.4): the deck id is a plain ref; the
             // INTO target is the SPAWN grammar
             "DRAW" => self.draw_outcome(),
-            // RUN is the recipe-chain op (§4.4): `RUN "id" [, "id" …]` — the
+            // RUN/FORK are the chain ops (§4.4): `OP "id" [, "id" …]` — the
             // args are QUOTED-STRING refs only (recipe ids are lowercase and
             // dotted; the lexer's NAME class has no dot, so a bare id is
             // unlexable — the DRAWN precedent). The paren'd canonical shell
             // that format renders is accepted too, so the canonical spelling
             // re-parses (§5.2).
-            "RUN" => self.run_outcome(),
+            "RUN" => self.chain_outcome("RUN"),
+            "FORK" => self.chain_outcome("FORK"),
             // the generic paren'd arg grammar — every op not intercepted
             // above takes its paren'd form here
             _ if self.at_punct("(", 0) => {
@@ -379,18 +380,18 @@ impl Parser<'_> {
         Ok(Outcome::concrete("ROLL", args))
     }
 
-    /// RUN "id" [, "id" …] (§4.4): every
+    /// The chain ops' shared grammar (§4.4): `OP "id" [, "id" …]` — every
     /// candidate is a quoted string — coerced to a name ref (the DRAWN
     /// coercion, so the arg shape matches the log-ref rule); a bare or dotted
     /// id is a parse error naming the syntax, and an empty list is one too.
-    /// The paren'd canonical shell `RUN("id", …)` format renders parses to
+    /// The paren'd canonical shell `OP("id", …)` format renders parses to
     /// the identical outcome, so the §5.2 round-trip holds.
-    fn run_outcome(&mut self) -> Result<Outcome> {
+    fn chain_outcome(&mut self, op: &str) -> Result<Outcome> {
         let paren = self.at_punct("(", 0);
         if paren {
             self.next()?;
         }
-        let syntax = "RUN takes quoted-string recipe ids: RUN \"id\" [, \"id\" …]";
+        let syntax = format!("{op} takes quoted-string recipe ids: {op} \"id\" [, \"id\" …]");
         let mut args: Vec<Arg> = Vec::new();
         loop {
             if self.peek(0).is_none() {
@@ -421,7 +422,7 @@ impl Parser<'_> {
         if paren {
             self.expect_punct(")")?;
         }
-        Ok(Outcome::concrete("RUN", args))
+        Ok(Outcome::concrete(op.to_string(), args))
     }
 
     /// One balanced ROLL argument: Toks up to the

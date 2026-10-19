@@ -126,7 +126,7 @@ pub fn apply_record(
             id_gen: &mut gen,
             extra_advance_min: 0,
             roll: None,
-            chain: None, // events have no window to chain from (RUN is a load error there anyway)
+            chain: None, // the fold replays concrete outcomes only — the chain ops never log
         };
         for o in &record.outcomes {
             apply_outcome(o, &mut ctx)?;

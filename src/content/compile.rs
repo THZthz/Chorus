@@ -125,10 +125,10 @@ pub fn compile_content(
     }
     // §4.4: an ENDING outcome must name a declared ending — recipe or
     // trigger, checked once at load. §4.4: the same walk pins DRAW to a
-    // declared deck. §6.7: a RUN candidate must name a recipe of the
-    // PARENT verb — recipe bodies only (triggers were rejected above),
+    // declared deck. §6.7: a RUN candidate must name a compiled recipe —
+    // the GLOBAL table, recipe bodies and completion triggers alike —
     // checked after every verb is compiled so a candidate may name any
-    // recipe of its own verb, position notwithstanding.
+    // verb's recipe, position notwithstanding.
     for v in verbs.values() {
         for r in &v.recipes {
             let where_ = format!("recipe {}", r.id);
@@ -138,7 +138,8 @@ pub fn compile_content(
             check_named_ref("DRAW", &where_, &r.out, &decks, |where_, shown| {
                 format!("{where_}: DRAW '{shown}' is not a declared deck (decks:)")
             })?;
-            check_run_refs(&where_, &r.out, v)?;
+            check_run_scope("RUN", &where_, &r.out, &recipe_verbs)?;
+            check_run_scope("FORK", &where_, &r.out, &recipe_verbs)?;
         }
     }
     for t in &triggers {
@@ -289,13 +290,10 @@ fn compile_verb(
     Ok(CompiledVerb { name: name.to_string(), slots, slot_by_role, duration: v.duration, recipes })
 }
 
-/// The global recipe-id table: recipe id → owning verb name.
-/// Recipe-body RUN candidates resolve against their parent verb (the
-/// per-verb §6.7 check); `on complete` bodies may cross verbs and resolve
-/// through this table instead — which is why it demands GLOBAL id
-/// uniqueness: the build is where a cross-verb collision fails loud.
-/// (Recipe-body RUN candidates stay per-parent-verb — the §6.7 check — and
-/// same-verb duplicates remain first-match selection, §6.4.)
+/// The global recipe-id table: recipe id → owning verb name. RUN/FORK
+/// candidates resolve against it in EVERY home — recipe bodies and trigger
+/// bodies alike — so the build is where a cross-verb collision fails loud.
+/// Same-verb duplicates within one verb remain first-match selection (§6.4).
 fn build_recipe_verbs(verbs: &IndexMap<String, CompiledVerb>) -> Result<IndexMap<String, String>> {
     let mut recipe_verbs: IndexMap<String, String> = IndexMap::new();
     for v in verbs.values() {
@@ -303,7 +301,7 @@ fn build_recipe_verbs(verbs: &IndexMap<String, CompiledVerb>) -> Result<IndexMap
             match recipe_verbs.get(&r.id) {
                 Some(prev) if prev != &v.name => {
                     return Err(ChorusError::new(format!(
-                        "recipe id '{}' is declared by both verb {prev} and verb {} — on-complete RUN resolution needs globally unique recipe ids (§6.7)",
+                        "recipe id '{}' is declared by both verb {prev} and verb {} — chain-op resolution needs globally unique recipe ids (§6.7)",
                         r.id, v.name
                     )));
                 }
@@ -317,10 +315,9 @@ fn build_recipe_verbs(verbs: &IndexMap<String, CompiledVerb>) -> Result<IndexMap
 }
 
 /// Compile one trigger: the body parses and expands (§10), then the guards —
-/// completion triggers (§6.7) run under a different regime than the event
-/// kinds (§6.6), the §6.3 role-free lint applies to events only, the dice
-/// lint everywhere, and the completion side resolves RUN against the global
-/// recipe table.
+/// completion triggers (§6.7) run under a different role-free-lint regime
+/// than the event kinds (§6.6), the dice lint applies everywhere, and every
+/// kind's chain candidates resolve against the global recipe table.
 fn compile_trigger(
     t: &TriggerDef,
     dict: &Dictionary,
@@ -335,9 +332,11 @@ fn compile_trigger(
     }
     let tid = t.id().to_string();
     // completion triggers (§6.7) run under a different guard regime than
-    // the event kinds: RUN is LEGAL (their home is a window completion)
-    // and the role-free lint does not run — the window's bindings are
-    // live there. REFUSE stays banned in every home (§6.6).
+    // the event kinds: the role-free lint does not run on them — the
+    // window's bindings are live there. REFUSE stays banned in every home
+    // (§6.6); the chain ops are legal in ALL three kinds since the §6.6
+    // event-chain ruling (their candidates resolve against the global
+    // table below).
     let is_complete = matches!(t, TriggerDef::Complete(_));
     // §6.7/§6.6 guards — recursive over IF branch bodies (§6.8)
     for_each_authored_outcome(&out, &mut |o| {
@@ -364,14 +363,6 @@ fn compile_trigger(
                     "trigger {tid}: REFUSE belongs to verb recipes — events have no step to refuse"
                 )
             }));
-        }
-        // §6.7: RUN chains a window completion; events have no window
-        // to chain from — but a completion trigger fires INSIDE one, so
-        // its candidates resolve below against the global table instead
-        if o.op == "RUN" && !is_complete {
-            return Err(ChorusError::new(format!(
-                "trigger {tid}: RUN belongs to verb recipes — events have no window to chain from"
-            )));
         }
         // §6.6/§6.7: ADVANCE stretches the advance pass a window
         // completion rides (the completion ctx's extra_advance_min feeds
@@ -410,20 +401,14 @@ fn compile_trigger(
         Ok(())
     })?;
     lint_dice(&format!("trigger {tid}"), &out)?;
-    // §6.7: a completion trigger's RUN candidates resolve against the
-    // GLOBAL recipe table (cross-verb legal; a collision already failed
-    // loud in the table build above) — an unknown id is a load error, IF
-    // branches included (the §4.4 walk)
-    if is_complete {
-        check_run_candidates(&format!("trigger {tid}"), &out, &mut |id| {
-            if !recipe_verbs.contains_key(id) {
-                return Err(ChorusError::new(format!(
-                    "trigger {tid}: RUN '{id}' does not name a compiled recipe — on-complete candidates resolve against the global recipe table (§6.7)"
-                )));
-            }
-            Ok(())
-        })?;
-    }
+    // §6.7/§6.6: a trigger's chain candidates resolve against the GLOBAL
+    // recipe table in all three kinds (cross-verb legal; a collision already
+    // failed loud in the table build above) — an unknown id is a load error,
+    // IF branches included (the §4.4 walk). Event-trigger bodies see the
+    // empty-bindings vocabulary: their follow-ups lock nothing, and a
+    // candidate `when:` reading roles never matches (§6.6).
+    check_run_scope("RUN", &format!("trigger {tid}"), &out, recipe_verbs)?;
+    check_run_scope("FORK", &format!("trigger {tid}"), &out, recipe_verbs)?;
     match t {
         TriggerDef::Expire(e) => Ok(CompiledTrigger::Expire {
             id: e.id.clone(),
@@ -505,6 +490,16 @@ pub fn for_each_authored_outcome(
         &mut |_state, _arm, ()| (),
         &mut |_state, ()| (),
     )
+}
+
+/// Visit every outcome in an authored list, RECURSING into IF branch bodies
+/// (§6.8) — the INFALLIBLE face of [`for_each_authored_outcome`], for the
+/// read-only scans (the lint's) whose visitor cannot fail.
+pub fn for_each_authored_outcome_infallible(out: &[Outcome], visit: &mut dyn FnMut(&Outcome)) {
+    let _ = for_each_authored_outcome(out, &mut |o| {
+        visit(o);
+        Ok(())
+    });
 }
 
 /// Visit every IF condition in an authored list
@@ -592,18 +587,18 @@ fn check_named_ref<V>(
     })
 }
 
-/// The RUN candidate walk shared by both RUN checks (the recipe-side §6.7
-/// parent-verb check and the completion-trigger global-table check): every
+/// The chain-candidate walk shared by every chain-op load check: every
 /// candidate must be a quoted-string ref, IF branch bodies included (the
 /// §4.4 walk). The arg-shape error is byte-pinned; `check` receives one
 /// candidate id and renders each site's membership error.
 fn check_run_candidates(
+    op: &str,
     where_: &str,
     out: &[Outcome],
     check: &mut dyn FnMut(&str) -> Result<()>,
 ) -> Result<()> {
     for_each_authored_outcome(out, &mut |o| {
-        if o.op != "RUN" {
+        if o.op != op {
             return Ok(());
         }
         for a in &o.args {
@@ -611,7 +606,7 @@ fn check_run_candidates(
                 Arg::Ref { r#ref: Ref::Name { name, .. } } => name.as_str(),
                 _ => {
                     return Err(ChorusError::new(format!(
-                        "{where_}: RUN takes quoted-string recipe ids: RUN \"id\" [, \"id\" …]"
+                        "{where_}: {op} takes quoted-string recipe ids: {op} \"id\" [, \"id\" …]"
                     )))
                 }
             };
@@ -621,18 +616,23 @@ fn check_run_candidates(
     })
 }
 
-/// §6.7: a RUN's candidates must each name a
-/// compiled recipe of the PARENT verb — an unknown or cross-verb id is a
-/// load error, IF branch bodies included (the §4.4 walk; function expansion
-/// happened before this guard, so expanded bodies check like literal ones).
-/// The runtime walk resolves candidates against this same list, so a loaded
-/// content never hits a RUN candidate it cannot resolve.
-fn check_run_refs(where_: &str, out: &[Outcome], verb: &CompiledVerb) -> Result<()> {
-    check_run_candidates(where_, out, &mut |id| {
-        if !verb.recipes.iter().any(|r| r.id == id) {
+/// §6.7: a chain op's candidates must each name a compiled recipe — the
+/// GLOBAL id table, in every home (recipe bodies and trigger bodies alike;
+/// a cross-verb collision already failed loud in the table build), IF
+/// branch bodies included (the §4.4 walk; function expansion happened
+/// before this guard, so expanded bodies check like literal ones). The
+/// runtime walk resolves candidates against this same table, so loaded
+/// content never hits a chain candidate it cannot resolve.
+fn check_run_scope(
+    op: &str,
+    where_: &str,
+    out: &[Outcome],
+    recipe_verbs: &IndexMap<String, String>,
+) -> Result<()> {
+    check_run_candidates(op, where_, out, &mut |id| {
+        if !recipe_verbs.contains_key(id) {
             return Err(ChorusError::new(format!(
-                "{where_}: RUN '{id}' does not name a recipe of verb {} — unknown and cross-verb ids are load errors (§6.7)",
-                verb.name
+                "{where_}: {op} '{id}' does not name a compiled recipe — candidates resolve against the global recipe table (§6.7)"
             )));
         }
         Ok(())

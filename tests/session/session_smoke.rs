@@ -673,3 +673,95 @@ templates:
   DREAM says \"{actors} dream.\"
   USE_ON says \"{actors} use {object}.\"
 ";
+
+// ------------------------------ chain undo (§6.7) --------------------------
+
+/// A turn whose completion FELL THROUGH (a whiffed RUN list, then a pinning
+/// one) undoes whole: the truncation re-folds to the pre-turn state, byte
+/// for byte (§7 — state = fold of the surviving log).
+#[test]
+fn undo_takes_back_a_fell_through_chain_turn() {
+    use crate::common::snap::snap;
+    use chorus::core::types::clone_state;
+
+    const CHAIN_SCRIPT: &str = "
+script: The Fall Through
+player: ANA
+start: 0:0
+
+entities:
+  HOUSE is place
+  ANA is character at HOUSE
+
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent when count(actors) >= 1 -> RUN \"gone\", RUN \"here\"
+      gone when NOT (count(actors) >= 1) -> NARRATE \"gone\"
+      here when count(actors) >= 1 -> NARRATE \"here\"
+";
+    let dict = core_dictionary();
+    let mut game = Game::from_script(CHAIN_SCRIPT, dict).unwrap();
+    let before = clone_state(&game.state);
+    let turn = auto_settle_line(&mut game, "dream").unwrap();
+    assert_eq!(turn.kind, TurnKind::Action);
+    // the chain fell through and pinned: the journal carries both completions
+    let journal = game.journal().join("\n");
+    assert!(journal.contains("gone") || turn.lines.iter().any(|l| l.contains("here")));
+    assert!(game.log.records.iter().any(|r| r.recipes.contains(&"here".to_string())));
+    assert_eq!(game.state.executed.get("here"), Some(&1));
+    // undo truncates the settle wait and the action, re-folding to the
+    // pre-turn state
+    game.undo().unwrap();
+    game.undo().unwrap();
+    assert_eq!(snap(&game.state), snap(&before), "the pre-turn state rides back");
+}
+
+/// F2-12: undo across a forked turn — the fork's two branch windows and both
+/// branch counts ride the truncation: undo (the settle wait, then the action)
+/// re-folds to the pre-turn state, byte for byte.
+#[test]
+fn undo_takes_back_a_forked_turn() {
+    use crate::common::snap::snap;
+    use chorus::core::types::clone_state;
+
+    const FORK_SCRIPT: &str = "
+script: The Fork Turn
+player: ANA
+start: 0:0
+
+entities:
+  HOUSE is place
+  ANA is character at HOUSE
+
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      parent when count(actors) >= 1 -> FORK \"wait.left\", \"study.right\"
+  WAIT:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      wait.left when count(actors) >= 1 -> NARRATE \"left\"
+  STUDY:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      study.right when count(actors) >= 1 -> NARRATE \"right\"
+";
+    let dict = core_dictionary();
+    let mut game = Game::from_script(FORK_SCRIPT, dict).unwrap();
+    let before = clone_state(&game.state);
+    let turn = auto_settle_line(&mut game, "dream").unwrap();
+    assert_eq!(turn.kind, TurnKind::Action);
+    assert_eq!(game.state.executed.get("wait.left"), Some(&1));
+    assert_eq!(game.state.executed.get("study.right"), Some(&1));
+    assert_eq!(game.state.windows.len(), 2, "both branches still processing");
+    game.undo().unwrap();
+    game.undo().unwrap();
+    assert_eq!(snap(&game.state), snap(&before), "the pre-turn state rides back");
+}

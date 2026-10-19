@@ -256,11 +256,11 @@ fn table_gate_trial(
                     // an IF is opaque to the gate check: its branches —
                     // including any REFUSE inside them — belong to the
                     // completion, where the world the window imagined actually
-                    // exists (§6.8 v0.5). RUN likewise belongs to the
-                    // completion: its candidate walk and inline guard run
+                    // exists (§6.8 v0.5). The chain ops likewise belong to the
+                    // completion: their candidate walks and inline guards run
                     // there (§6.7), and a no-match chain ends silently, so
                     // there is nothing to gate at the table.
-                    if outcome.op == "IF" || outcome.op == "RUN" {
+                    if outcome.op == "IF" || outcome.op == "RUN" || outcome.op == "FORK" {
                         continue;
                     }
                     let res = apply_outcome(outcome, &mut sctx)?;

@@ -7,6 +7,8 @@
 
 use std::collections::HashSet;
 
+use indexmap::IndexMap;
+
 use crate::content::{CompiledContent, CompiledRecipe, CompiledTrigger};
 use crate::core::clock::{MIN_PER_TICK, TICKS_PER_DAY};
 use crate::core::dict::Dictionary;
@@ -221,9 +223,10 @@ struct FireWindowResult {
     state: State,
     record: ActionRecord,
     advance_extra: i64,
-    /// §6.7: the synthesized follow-up BEGIN rows (at most one — a second
-    /// RUN op refuses the window), logged AFTER the parent's COMPLETE row;
-    /// their windows are already inserted into `state`.
+    /// §6.7: the synthesized follow-up BEGIN rows (one per pinned chain
+    /// branch — a second pinning chain op refuses the window), logged AFTER
+    /// the parent's COMPLETE row; their windows are already inserted into
+    /// `state`.
     extra_records: Vec<ActionRecord>,
 }
 
@@ -266,13 +269,11 @@ fn fire_window(
         extra_advance_min: 0,
         roll: None,
         // §6.7: the chain channel — the parent-window identity the RUN arm
-        // walks against (its verb names the candidate list, its end clock is
-        // the follow-up's begin, its authored refs become the follow-up
-        // clause). §6.7: recipe-body RUN ops DEFER while the completion's
-        // `on complete` triggers fire — a completion applies the recipe's own
-        // outcomes, then the triggers, then any RUN.
+        // walks against (its end clock is the follow-up's begin, its authored
+        // refs become the follow-up clause). §6.7: recipe-body RUN ops DEFER
+        // while the completion's `on complete` triggers fire — a completion
+        // applies the recipe's own outcomes, then the triggers, then any RUN.
         chain: Some(ChainCtx {
-            parent_verb: w.verb.clone(),
             parent_key: w.key.clone(),
             parent_end: w.end,
             parent_refs: w.refs.clone(),
@@ -281,7 +282,7 @@ fn fire_window(
             extra_records: Vec::new(),
             deferring: true,
             deferred: Vec::new(),
-            in_complete: false,
+            event: false,
         }),
     };
     let mut concrete: Vec<Outcome> = Vec::new();
@@ -346,8 +347,8 @@ fn fire_window(
 /// EVENT row, no state.fired (the fold replays the appended list without
 /// recomputing gates). A failure inside a body refuses the WINDOW (the
 /// §6.7 parent-window path), never a whole-step throw. RUN inside a body
-/// applies through the chain channel: cross-verb candidates via the
-/// global table, the parent's own window excluded from the busy check.
+/// applies through the chain channel like every RUN: global-table
+/// candidates, the parent's own window excluded from the busy check.
 /// Returns true when a trigger body refused the window.
 fn fire_completion_triggers(
     content: &CompiledContent,
@@ -358,7 +359,6 @@ fn fire_completion_triggers(
 ) -> bool {
     if let Some(c) = ctx.chain.as_mut() {
         c.deferring = false;
-        c.in_complete = true;
     }
     let mut refused = false;
     'complete_phase: {
@@ -399,9 +399,6 @@ fn fire_completion_triggers(
             }
         }
     }
-    if let Some(c) = ctx.chain.as_mut() {
-        c.in_complete = false;
-    }
     refused
 }
 
@@ -430,7 +427,7 @@ fn fire_slot(
             continue; // §6.6: once means once
         }
         let mut outcomes: Vec<Outcome> = Vec::new();
-        {
+        let chain = {
             let mut ctx = make_event_ctx(
                 state,
                 dict,
@@ -438,14 +435,30 @@ fn fire_slot(
                 abs_slot,
                 first_event_id + records.len() as i64,
                 id_gen,
+                true,
             );
             for o in out {
                 outcomes.extend(apply_outcome(o, &mut ctx)?.concrete);
             }
+            ctx.chain.take()
+        };
+        // §6.6/§6.7: the chain ops' follow-up BEGINs REGISTER IMMEDIATELY on
+        // the pass's state — a later firing in the same crossing (the next
+        // authored trigger, or an expiry) sees the station busy and skips
+        // silently — and append to the record list right after their EVENT
+        // row (the ids run event_id + 1 … + n; resolve_due's
+        // `id += slot_records.len()` keeps every later id correct).
+        let mut chain_extra: Vec<ActionRecord> = Vec::new();
+        if let Some(chain) = chain {
+            for rec in &chain.extra_records {
+                register_windows(rec, state, dict, content)?;
+            }
+            chain_extra = chain.extra_records;
         }
         state.fired.insert(trig_id.clone()); // on the draft: a later rejection discards it
         let rid = first_event_id + records.len() as i64;
         records.push(make_event_record(rid, trig_id, abs_slot, outcomes, dict)?);
+        records.extend(chain_extra);
     }
     // expiries from the hoisted snapshot, in
     // snapshot order (= entities insertion order)
@@ -473,7 +486,7 @@ fn fire_slot(
         let (trigger_id, outcomes) = match authored {
             Some(a) => {
                 let mut outcomes: Vec<Outcome> = Vec::new();
-                {
+                let chain = {
                     let mut ctx = make_event_ctx(
                         state,
                         dict,
@@ -481,12 +494,27 @@ fn fire_slot(
                         abs_slot,
                         first_event_id + records.len() as i64,
                         id_gen,
+                        true,
                     );
                     for o in a.out() {
                         outcomes.extend(apply_outcome(o, &mut ctx)?.concrete);
                     }
+                    ctx.chain.take()
+                };
+                // §6.6/§6.7: the expiry hand-off registers immediately, like
+                // the slot path above
+                let mut chain_extra: Vec<ActionRecord> = Vec::new();
+                if let Some(chain) = chain {
+                    for rec in &chain.extra_records {
+                        register_windows(rec, state, dict, content)?;
+                    }
+                    chain_extra = chain.extra_records;
                 }
-                (a.id().to_string(), outcomes)
+                state.fired.insert(a.id().to_string());
+                let rid = first_event_id + records.len() as i64;
+                records.push(make_event_record(rid, a.id(), abs_slot, outcomes, dict)?);
+                records.extend(chain_extra);
+                continue;
             }
             None => {
                 // engine-written destroys are keyed
@@ -504,6 +532,7 @@ fn fire_slot(
                         abs_slot,
                         first_event_id + records.len() as i64,
                         id_gen,
+                        false, // the built-in path authors no chain op
                     );
                     outcomes.extend(apply_outcome(&destroy, &mut ctx)?.concrete);
                 }
@@ -522,7 +551,17 @@ fn fire_slot(
 
 /// Event bindings are EMPTY ({}), and
 /// `now` is the crossed boundary in absolute minutes
-/// (abs_slot * MIN_PER_TICK).
+/// (abs_slot * MIN_PER_TICK). `chained` arms the §6.6 event-chain channel
+/// for the authored slot/expire bodies (the built-in expiry destroy authors
+/// no chain op and keeps the channel None): `parent_key` is "" (no parent
+/// window — the busy exclusion excludes nothing, so a trigger never hands
+/// off onto a busy station), `parent_end` is the crossing minute (the
+/// follow-up BEGINS at the boundary), `parent_refs` is the empty map (the
+/// projection produces a clause with NO refs — the follow-up locks nothing,
+/// and its gate merge reduces to the empty bindings, so a role-reading
+/// `when:` never matches while a world-form one works), and `deferring` is
+/// false — event bodies have no deferral phase; chain ops apply inline, in
+/// list order.
 fn make_event_ctx<'a>(
     state: &'a mut State,
     dict: &'a Dictionary,
@@ -530,7 +569,19 @@ fn make_event_ctx<'a>(
     abs_slot: i64,
     record_id: i64,
     id_gen: &'a mut dyn FnMut() -> String,
+    chained: bool,
 ) -> ApplyCtx<'a> {
+    let chain = chained.then(|| ChainCtx {
+        parent_key: String::new(),
+        parent_end: abs_slot * MIN_PER_TICK,
+        parent_refs: IndexMap::new(),
+        next_record_id: record_id + 1,
+        run_taken: false,
+        extra_records: Vec::new(),
+        deferring: false,
+        deferred: Vec::new(),
+        event: true,
+    });
     ApplyCtx {
         state,
         dict,
@@ -541,6 +592,6 @@ fn make_event_ctx<'a>(
         id_gen,
         extra_advance_min: 0,
         roll: None,
-        chain: None, // events have no window to chain from (RUN is a load error there anyway)
+        chain,
     }
 }

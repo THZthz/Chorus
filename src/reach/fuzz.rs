@@ -9,8 +9,13 @@
 //! candidates and recipe `aspects` bands, re-banding several thresholds and
 //! reordering the trigger-kind roll ahead of the body draws; v3 added the
 //! two aspect-scoped world forms to the `when` candidate table; v4 added a
-//! closed (strict `<`) aspect-count form to the same table. Every recorded
-//! fuzz run taken before v4 is therefore NOT reproducible
+//! closed (strict `<`) aspect-count form to the same table; v5 widened the
+//! recipe-body chain-candidate table from the same verb's built prefix to
+//! the GLOBAL build prefix (cross-verb chains, §6.7); v6 split the chain
+//! band into RUN [0.22, 0.27) and FORK [0.27, 0.32) (the FORK fan-out, §6.7);
+//! v7 turned the chain band ON in slot/expire trigger bodies (the §6.6
+//! event-chain channel). Every recorded
+//! fuzz run taken before v7 is therefore NOT reproducible
 //! seed-for-seed; reproduce against the matching generator version. What
 //! stays pinned is that the generator is a pure function of its seed — the
 //! same seed builds the same scenario, draw for draw, under ONE version.
@@ -158,11 +163,12 @@ fn ent(name: &str, kind: &str, aspects: IndexMap<String, i64>) -> Entity {
 
 /// The scenario's mutable build context — the rng handle plus the local
 /// tables every generator step draws against, threaded explicitly.
-/// `run_targets` is the §6.7 RUN candidate table for the op currently being
-/// built: inside the recipe loop it holds the SAME verb's already-built
-/// recipe ids (strictly earlier — a recipe-body RUN chain lowers the index
-/// every hop, so it is acyclic by construction), and for completion-trigger
-/// bodies the global duration>0 table (see the trigger loop).
+/// `run_targets` is the §6.7 chain-candidate table for the op currently
+/// being built: inside the recipe loop it holds the recipes built SO FAR
+/// across ALL verbs (the growing build-order prefix — a recipe-body RUN
+/// chain lowers the build index every hop, so it is acyclic by
+/// construction), and for trigger bodies the global duration>0 table (see
+/// the trigger loop).
 struct Gen<'a> {
     r: &'a mut Lcg,
     others: Vec<String>,
@@ -178,34 +184,36 @@ impl Gen<'_> {
         int(self.r, 4) as i64
     }
 
-    /// The outcome-op generator (v2 bands). The RUN band's insertion
-    /// re-banded every later threshold — the widths below, with the funding
-    /// called out; the pre-v2 recorded streams do not line up against this
-    /// table:
+    /// The outcome-op generator (v2 bands, re-banded since). The chain
+    /// band's insertion re-banded every later threshold — the widths below,
+    /// with the funding called out; the pre-v2 recorded streams do not line
+    /// up against this table, and the v6 split re-versioned the streams
+    /// again:
     ///
-    /// | op      | v2 band         | v1 band         |
-    /// |---------|-----------------|-----------------|
-    /// | SPAWN   | [0.00, 0.22)    | [0.00, 0.22)    |
-    /// | RUN     | [0.22, 0.32)    | —               |
-    /// | REPLACE | [0.32, 0.42)    | [0.22, 0.32)    |
-    /// | DRAW    | [0.42, 0.52)    | [0.32, 0.42)    |
-    /// | SET     | [0.52, 0.64)    | [0.42, 0.56) −0.02 |
-    /// | DESTROY | [0.64, 0.70)    | [0.56, 0.62)    |
-    /// | MOVE    | [0.70, 0.78)    | [0.62, 0.70)    |
-    /// | IF      | [0.78, 0.86)    | [0.70, 0.78)    |
-    /// | ROLL    | [0.86, 0.94)    | [0.78, 0.90) −0.04 |
-    /// | REFUSE  | [0.94, 0.98)    | [0.90, 0.94)    |
-    /// | NARRATE | [0.98, 1.00]    | [0.94, 1.00) −0.04 |
+    /// | op      | v6 band          | v2–v5 band       |
+    /// |---------|------------------|------------------|
+    /// | SPAWN   | [0.00, 0.22)     | [0.00, 0.22)     |
+    /// | RUN     | [0.22, 0.27)     | [0.22, 0.32)     |
+    /// | FORK    | [0.27, 0.32) NEW | —                |
+    /// | REPLACE | [0.32, 0.42)     | [0.32, 0.42)     |
+    /// | DRAW    | [0.42, 0.52)     | [0.42, 0.52)     |
+    /// | SET     | [0.52, 0.64)     | [0.52, 0.64)     |
+    /// | DESTROY | [0.64, 0.70)     | [0.64, 0.70)     |
+    /// | MOVE    | [0.70, 0.78)     | [0.70, 0.78)     |
+    /// | IF      | [0.78, 0.86)     | [0.78, 0.86)     |
+    /// | ROLL    | [0.86, 0.94)     | [0.86, 0.94)     |
+    /// | REFUSE  | [0.94, 0.98)     | [0.94, 0.98)     |
+    /// | NARRATE | [0.98, 1.00]     | [0.98, 1.00]     |
     ///
-    /// The 0.10 RUN band is funded by SET −0.02, ROLL −0.04, NARRATE −0.04;
-    /// every other op keeps its exact v1 width. `allow_run` gates the RUN
-    /// band: verb recipes and completion-trigger bodies are the RUN-legal
-    /// homes — a slot/expire body's RUN is a load error (§6.7,
+    /// The 0.10 chain band funds both chain ops (RUN 0.05 + FORK 0.05;
+    /// every other op keeps its exact v2 width). `allow_chain` gates both
+    /// bands: verb recipes and completion-trigger bodies are the chain-legal
+    /// homes — a slot/expire body's chain op is a load error (§6.7,
     /// compile.rs's event guard) — and `allow_refuse` keeps doing duty for
     /// the REFUSE band. Every branch guard's draw happens EXACTLY where the
     /// guard evaluates it (short-circuits included) — the draw order is
     /// deliberate and the generator is a pure function of its seed.
-    fn op(&mut self, allow_refuse: bool, allow_run: bool) -> String {
+    fn op(&mut self, allow_refuse: bool, allow_chain: bool) -> String {
         let roll = self.r.next_f64();
         if roll < 0.22 {
             let pn = pick_of(self.r, &self.proto_names);
@@ -222,14 +230,20 @@ impl Gen<'_> {
             };
             return format!("SPAWN {kind_override}{pn}{into}");
         }
-        // RUN (§6.7): the candidates live in run_targets — the same verb's
-        // earlier recipes inside the recipe loop, the global duration>0
-        // table for completion bodies. Falls through DRAW-FREE when the
-        // home is not RUN-legal or no candidate exists yet (the empty-table
-        // check is the (free) right operand of the &&).
-        if roll < 0.32 && allow_run && !self.run_targets.is_empty() {
+        // RUN (§6.7): the candidates live in run_targets — the recipes built
+        // so far across ALL verbs inside the recipe loop, the global
+        // duration>0 table for trigger bodies. Falls through DRAW-FREE when
+        // the home is not chain-legal or no candidate exists yet (the
+        // empty-table check is the (free) right operand of the &&).
+        if roll < 0.27 && allow_chain && !self.run_targets.is_empty() {
             let target = pick_of(self.r, &self.run_targets);
             return format!("RUN \"{target}\"");
+        }
+        // FORK (§6.7): the fan-out — the same target tables, the same
+        // legality gate, one band over.
+        if roll < 0.32 && allow_chain && !self.run_targets.is_empty() {
+            let target = pick_of(self.r, &self.run_targets);
+            return format!("FORK \"{target}\"");
         }
         if roll < 0.42 && !self.others.is_empty() {
             let a = pick_of(self.r, &self.others);
@@ -469,9 +483,14 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             }],
         },
     );
-    // the global §6.7 completion-side RUN candidate table — every recipe id
+    // the global §6.7 trigger-side chain-candidate table — every recipe id
     // of the duration>0 verbs, collected as the build loop finishes each verb
     let mut global_run_targets: Vec<String> = Vec::new();
+    // §6.7 recipe-body chain candidates: the recipes built SO FAR across ALL
+    // verbs — the growing prefix of the build loop, threaded exactly like a
+    // per-verb prefix (strictly earlier in build order, so a recipe-body RUN
+    // chain lowers the build index every hop and cannot cycle)
+    let mut recipe_prefix: Vec<String> = Vec::new();
     for v in &verbs {
         let mut slots: Vec<SlotDef> = vec![SlotDef {
             role: "actors".to_string(),
@@ -513,15 +532,15 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             // when gate → aspects gate → n_outs.
             let aspects =
                 if ctx.r.next_f64() < 0.15 { vec![pick_str(ctx.r, &ASPECTS)] } else { Vec::new() };
-            // §6.7 RUN candidates: the same verb's recipes built SO FAR —
-            // strictly earlier ids only, so a recipe-body RUN chain lowers
-            // the recipe index every hop and cannot cycle (r0 sees an empty
-            // table and cannot carry RUN). This threading is the
-            // minimal-perturbation option: the RUN band draws its target
-            // from the prefix the build loop already produced, with no
-            // post-hoc pass over the finished verbs and no extra draws
-            // outside op's own band.
-            ctx.run_targets = recipes.iter().filter_map(|r| r.id.clone()).collect();
+            // §6.7 chain candidates: the recipes built SO FAR across ALL
+            // verbs — strictly earlier in build order only, so a recipe-body
+            // RUN chain lowers the build index every hop and cannot cycle
+            // (the very first recipe sees an empty table and cannot carry
+            // RUN). This threading is the minimal-perturbation option: the
+            // chain band draws its target from the prefix the build loop
+            // already produced, with no post-hoc pass over the finished
+            // verbs and no extra draws outside op's own band.
+            ctx.run_targets = recipe_prefix.clone();
             let n_outs = 1 + int(ctx.r, 4);
             let mut outs: Vec<String> = Vec::new();
             for _ in 0..n_outs {
@@ -536,24 +555,25 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 aspects,
                 out: outs,
             });
+            recipe_prefix.push(format!("{}.r{}", v.to_lowercase(), i));
         }
         let duration: i64 = pick_str(ctx.r, &["0", "30", "60"])
             .parse()
             .unwrap_or_else(|e| panic!("duration literal: {e}"));
-        // §6.7 completion-side RUN candidates: only recipes of duration>0
-        // verbs join the global table. A complete-trigger RUN onto a
+        // §6.7/§6.6 trigger-side chain candidates: only recipes of
+        // duration>0 verbs join the global table. A trigger chain onto a
         // zero-duration recipe whose windows lock the trigger's home card
         // re-fires the gate forever INSIDE one advance pass and trips the
         // engine's §6.7 livelock budget (a hard ChorusError, which would
         // abort the oracle run instead of reporting a differential) — the
-        // duration>0 filter bounds every completion-fed chain to one hop
-        // per 30-minute advance, far under the 1024-completion budget.
+        // duration>0 filter bounds every trigger-fed chain to one hop
+        // per advance, far under the 1024-completion budget.
         if duration > 0 {
             global_run_targets.extend(recipes.iter().filter_map(|r| r.id.clone()));
         }
         verbs_raw.insert(v.clone(), VerbContent { slots, duration, recipes });
     }
-    // from here the RUN-legal bodies are the completion triggers; the table
+    // from here the chain-legal bodies are the completion triggers; the table
     // switches to the global duration>0 candidates (the §6.7 global recipe
     // resolution)
     ctx.run_targets = global_run_targets;
@@ -574,7 +594,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             // name, which is how a prototype's trigger reaches its mints.
             // The aspect gate draws 0.5 (draw order: home pick → aspect
             // gate → aspect pick → n_out → ops); the body is drawn
-            // RUN-legal, REFUSE stays banned (§6.6/§6.7).
+            // chain-legal (RUN and FORK), REFUSE stays banned (§6.6/§6.7).
             let mut pool = ctx.others.clone();
             pool.extend(ctx.proto_names.iter().cloned());
             let home = pick_of(ctx.r, &pool);
@@ -590,9 +610,10 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             let n_out = 1 + int(ctx.r, 2);
             let mut out: Vec<String> = Vec::new();
             for _ in 0..n_out {
-                // events cannot REFUSE (§6.7) and cannot RUN (the event
-                // guard is a load error) — both bands fall through draw-free
-                out.push(ctx.op(false, false));
+                // events cannot REFUSE (§6.7); the chain band is ON since
+                // v7 (the §6.6 event-chain channel — the global duration>0
+                // table)
+                out.push(ctx.op(false, true));
             }
             if kind < 0.45 {
                 let mut pool = vec!["ANA".to_string()];

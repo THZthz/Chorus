@@ -16,4 +16,4 @@ pub use compile::{compile_content, for_each_authored_outcome, walk_outcomes};
 pub use deck::{draw_from, permute_positions};
 pub use model::*;
 
-pub(crate) use compile::{collect_stackable, mint_recipe_id};
+pub(crate) use compile::{collect_stackable, for_each_authored_outcome_infallible, mint_recipe_id};

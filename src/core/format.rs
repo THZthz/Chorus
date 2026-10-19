@@ -55,12 +55,16 @@ pub fn format_sentence(s: &Sentence, dict: &Dictionary) -> Result<String> {
 }
 
 /// One clause in canonical order: actors (sorted), pre-verbal AT, verb,
-/// TO, objects (sorted), WITH (sorted), ABOUT.
+/// TO, objects (sorted), WITH (sorted), ABOUT. An actor-less clause (the
+/// §6.6 event-chain shape) renders verb-first with no actor slot.
 fn format_clause(c: &Clause, dict: &Dictionary) -> Result<String> {
     let mut parts: Vec<String> = Vec::new();
     let actors =
         sort_refs(&c.actors).iter().map(|r| format_ref(r, dict)).collect::<Result<Vec<_>>>()?;
-    parts.push(actors.join(", "));
+    let actors = actors.join(", ");
+    if !actors.is_empty() {
+        parts.push(actors);
+    }
     if let Some(at) = &c.at {
         parts.push("AT".to_string());
         parts.push(format_ref(at, dict)?);
@@ -117,22 +121,26 @@ fn format_outcome(o: &Outcome, dict: &Dictionary) -> Result<String> {
     // ROLLED (§4.4) and DRAWN (§4.4) ride the generic paren'd fallback on
     // purpose: their args format and re-parse — `ROLLED(14, 3)` is two plain
     // ints, `DRAWN(RUMOURS, HEARSAY)` two plain name refs
-    if o.op == "RUN" {
+    if o.op == "RUN" || o.op == "FORK" {
         // §4.4: the ids render RE-QUOTED in the paren'd shell — recipe ids
         // are dotted (`study.recipe0`), and a bare dotted spelling would
         // re-parse as a SET key (the generic name path), never back into a
-        // RUN candidate. RUN is zero-concrete (the follow-up's BEGIN row is
-        // the record), so the log never carries one; the arm exists so the
-        // §5.2 round-trip holds for the authored form wherever it formats.
+        // chain candidate. The chain ops are zero-concrete (the follow-ups'
+        // BEGIN rows are the record), so the log never carries one; the arm
+        // exists so the §5.2 round-trip holds for the authored form wherever
+        // it formats.
         let parts = o
             .args
             .iter()
             .map(|a| match a {
                 Arg::Ref { r#ref: Ref::Name { name, .. } } => Ok(quote(name)),
-                _ => Err(ChorusError::new("a RUN candidate is a quoted-string recipe id (§4.4)")),
+                _ => Err(ChorusError::new(format!(
+                    "a {} candidate is a quoted-string recipe id (§4.4)",
+                    o.op
+                ))),
             })
             .collect::<Result<Vec<_>>>()?;
-        return Ok(format!("RUN({})", parts.join(", ")));
+        return Ok(format!("{}({})", o.op, parts.join(", ")));
     }
     if o.op == "SPAWN" {
         // pretty form: SPAWN X [INTO Y] [AS #id] [expires <duration>]

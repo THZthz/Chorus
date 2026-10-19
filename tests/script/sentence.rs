@@ -227,7 +227,12 @@ fn unregistered_verbs_are_rejected_at_the_actors_verb_boundary() {
 #[test]
 fn names_colliding_with_verbs_must_be_quoted() {
     let dict = core_dictionary();
-    assert_err_msg(parse_sentence("0:0 @ READ TALK ABOUT X", &dict), "reserved");
+    // an unquoted verb lexeme cannot open a clause as an actor name — it
+    // starts the actor-less (bare-verb) clause instead, stranding the rest
+    assert_err_msg(
+        parse_sentence("0:0 @ READ TALK ABOUT X", &dict),
+        "unexpected trailing token 'TALK'",
+    );
     assert_eq!(canonical("0:0 @ \"READ\" TALK ABOUT X", &dict), "0:0 @ \"READ\" TALK ABOUT X");
 }
 
@@ -260,7 +265,7 @@ fn study_and_mansus_register_and_are_reserved_like_every_verb_lexeme() {
     );
     assert!(dict.is_verb("STUDY"));
     assert!(dict.is_verb("MANSUS"));
-    assert_err_msg(parse_sentence("0:0 @ STUDY READ X", &dict), "reserved");
+    assert_err_msg(parse_sentence("0:0 @ STUDY READ X", &dict), "unexpected trailing token 'READ'");
     assert_err_msg(parse_sentence("0:0 @ ANA WAIT -> SPAWN MANSUS", &dict), "reserved");
 }
 

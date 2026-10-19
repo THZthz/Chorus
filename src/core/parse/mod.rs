@@ -283,12 +283,24 @@ impl<'a> Parser<'a> {
     }
 
     /// clause = ref ("," ref)* [AT ref] VERB [TO ref] [objects] [WITH refs]
-    /// [ABOUT ref] [AT ref].
+    /// [ABOUT ref] [AT ref] — or the actor-less form `AT? VERB …`: a leading
+    /// registered verb lexeme (or a pre-verbal AT) starts a BARE clause, the
+    /// shape the engine synthesizes for §6.6 event-chain follow-ups (event
+    /// bindings are empty, so the follow-up locks nothing). Reserved words
+    /// cannot name entities (§5.1), so a leading registered verb is never an
+    /// actor ref and the shape is unambiguous.
     fn clause(&mut self) -> Result<Clause> {
-        let mut actors = vec![self.ref_()?];
-        while self.at_punct(",", 0) {
-            self.next()?;
+        let bare = match self.peek(0) {
+            Some(t) if t.t() == "name" && self.dict.is_verb(&t.v_str()) => true,
+            _ => self.at_keyword("AT"),
+        };
+        let mut actors = Vec::new();
+        if !bare {
             actors.push(self.ref_()?);
+            while self.at_punct(",", 0) {
+                self.next()?;
+                actors.push(self.ref_()?);
+            }
         }
 
         let mut at: Option<Ref> = None;
@@ -573,7 +585,7 @@ mod tests {
         let err = p.outcome().unwrap_err();
         assert_eq!(
             err.msg,
-            "unknown 'GIVE(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN; no ops declared; no functions declared (bare names spawn — an op's parens are part of its grammar; calls need a declared function or op)"
+            "unknown 'GIVE(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN, FORK; no ops declared; no functions declared (bare names spawn — an op's parens are part of its grammar; calls need a declared function or op)"
         );
     }
 
@@ -581,10 +593,10 @@ mod tests {
     fn wait_row_requires_a_dur_and_draw_is_parenless_only() {
         let d = dict();
         let mut p = Parser::new(lex("0:42 @ WAIT READ").unwrap(), &d, None, None, true);
-        // WAIT followed by a non-dur falls through to the action grammar,
-        // whose ref() refuses the reserved token
+        // WAIT leads the actor-less (bare-verb) clause now; the non-dur
+        // READ strands behind the clause as a trailing token
         let err = p.sentence().unwrap_err();
-        assert_eq!(err.msg, "'WAIT' is reserved and cannot be a name (quote it)");
+        assert_eq!(err.msg, "unexpected trailing token 'READ'");
         let mut p2 = Parser::new(lex("DRAW(RUMOURS)").unwrap(), &d, None, None, true);
         let err2 = p2.outcome().unwrap_err();
         assert_eq!(err2.msg, "DRAW takes the paren-less form: DRAW <DECK> [INTO target]");

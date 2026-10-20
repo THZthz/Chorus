@@ -61,7 +61,8 @@ projection of that data, never the source of truth.
 40. **v0.9.3** — the held slot: a verb may declare one extra role slot `held: 0..1 <query>` (§6.1 — held is the seventh role, §4.3); a player `hold <card>` step (§11) binds a fitting card into the open held-capable station as a logged HOLD row (§5.1, §6.7, §7); verbs with a held slot DEFER recipe selection to window completion (§6.4 — the BEGIN row records the deferral, the COMPLETE row the selected id), recipes read `held.…`/`count(held)` like any role and outcomes consume it like any role; the held card locks like other committed cards for the window's remainder; the lint gains the held faces (§13.2) and the reach model treats the hold as an arrangeable player step — `count(held)` decides over the held slot's fit, chain-pinned verbs stay Unknown (§13.1).
 41. **v0.9.4** — card descriptions: an entity or prototype line may carry one `desc "…"` attribute — single-line quoted display text under the §5.1 escape rules (§4.2), copied onto every card minted from the name by the mint's resolved name and rendered under the `inspect` face (§11); display only — no engine semantics, nothing logged, the fold recomputes it from the same name-keyed table.
 42. **v0.9.5** — ambient verbs: the bare `ambient` verb-block line makes the station self-starting — the advance pass opens its windows at the two deterministic check points (after every completion, at every crossed tick) through the ONE begin/registration path, over empty bindings, in verb declaration order (§6.9 — the unattended pump, §12.5 resolved); a player commit refuses, slots (held included) are a load error, a top-level REFUSE in an ambient recipe is a load error, a zero-duration self-chain trips the §6.7 livelock budget; the ambient BEGIN row's `trigger` field reads `ambient`; the try row never suggests one and the verb lists/explain mark it `runs on its own` (§11); the analyzer's empty-scope gate model decides the ambient `when` both ways — decided-False demotes, True/Unknown keeps the mint available (§13.1) — and the fuzz generator draws ambient verbs (v10).
-43. **v0.9.6** — unique cards: a prototype line may carry `unique` (§4.2 — `unique` + `stackable` on one line is a load error, an entity line rejects `unique`); a unique mint whose name has a LIVING copy (locked included) is skipped — no new copy, the incumbent stays (CS B9's retire-the-incumbent deliberately not copied), the concrete SPAWN row still logs and the fold replays it through the same living-check, and the name records PERMANENTLY in the manifested set (a fold-rebuilt projection, §7); the deck draw filters lazily — a manifested-unique position and any later occurrence of a unique name are consumed within the serving draw, `reset`'s reshuffle skips them too, true exhaustion falls to `defaultcard`/exhaustion per the deck's own config, and the cursor counts consumed positions (§4.4); the deck livelock advisory exempts unique entries (§13.2); the analyzer models the skip — dead positions, live-position reach, the one-living-copy count clamp (§13.1; in-play mints do not mark manifested in its world — §13.3's ledgered under-claim); the fuzz generator draws unique prototypes (v11).
+43. **v0.9.6** — unique cards: a prototype line may carry `unique` (§4.2 — `unique` + `stackable` on one line is a load error, an entity line rejects `unique`); a unique mint whose name has a LIVING copy (locked included) is skipped — no new copy, the incumbent stays (CS B9's retire-the-incumbent deliberately not copied), the concrete SPAWN row still logs and the fold replays it through the same living-check, and the name records PERMANENTLY in the manifested set (a fold-rebuilt projection, §7); the deck draw filters lazily — a manifested-unique position and any later occurrence of a unique name are consumed within the serving draw, `reset`'s reshuffle skips them too, true exhaustion falls to `defaultcard`/exhaustion per the deck's own config, and the cursor counts consumed positions (§4.4); the deck livelock advisory exempts unique entries (§13.2); the analyzer models the skip — dead positions, live-position reach, the one-living-copy count clamp (§13.1; in-play mints mark manifested from v0.9.7, §13.1); the fuzz generator draws unique prototypes (v11).
+44. **v0.9.7** — the reach analyzer's chain model closes its five ledgered gaps (§13.3): the completing-recipe selection rule demands EVERY earlier `when` decidably False (§13.1); the dead-verb demotion exempts chain-pinned verbs — the §6.7 follow-up path skips `validate_slots` (§13.1); the census records a list-level chain-slot refusal — a pin-capable RUN/FORK followed by another chain op, event channels exempt — demoted at the ladder's `ChainPinRefusal` rung (§13.1); a proven in-play SPAWN/REPLACE of a unique name marks it manifested (`minted_manifested`), and the once-draw + in-play-mint composition agrees with play (§13.1); two Wave-4 residual classes are triaged (§13.3).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -2432,7 +2433,12 @@ are the only reach files allowed to):
   discipline: sites live in segments, and an authored REFUSE kills exactly
   the sites whose ancestor chain contains its segment — its own arm and
   anything nested inside it (an untaken arm never mints). Throwing
-  ops (MOVE/RELATE/UNRELATE/REPLACE) demote their whole outcome list.
+  ops (MOVE/RELATE/UNRELATE/REPLACE) demote their whole outcome list, and
+  so does a §6.7 chain-slot refusal: a pin-capable RUN/FORK followed by
+  another chain op — the second op hits the taken chain slot FIRST and
+  refuses the parent window, discarding the whole draft (event-channel
+  lists — slot/expire trigger bodies — are exempt: the second pinning op
+  is a silent skip there, §6.6).
   Unbounded counts carry the `MANY` sentinel; derive-mints behind
   object-mandatory verbs carry a name-blind sentinel.
 - **world** — the weighted, distinct-fact card-world the predicates
@@ -2524,12 +2530,14 @@ are the only reach files allowed to):
   (the committed roles lock; actors never do — no duration condition, the
   engine registering and completing duration-0 windows like any other) must
   bind the home descriptor (max ≥ 1, query fit, min satisfiable around the
-  home) under a COMPLETABLE recipe — selectable under first-match (no
-  earlier when-less recipe, no earlier static-true `when` always beating
-  it; a count-form gate decides False only when it holds at no reachable
-  pool — an undecided interval gate may select, the window-refuse retry
-  being existential), with no decided REFUSE, no deterministic
-  completion-time error on
+  home) under a COMPLETABLE recipe — selectable under first-match (EVERY
+  earlier recipe's `when` decidably False over the world: a when-less
+  earlier recipe matches always, and a non-static or undecided earlier
+  gate matches in some executions — either way it may select first, so the
+  witness must be guaranteed; a count-form gate decides False only when it
+  holds at no reachable pool — an undecided interval gate may select, the
+  window-refuse retry being existential), with no decided REFUSE, no
+  deterministic completion-time error on
   the always-applying path (an application ERROR defers from the table to
   the completion and refuses the window; a census-frozen draw cap of 0
   never durably serves), and no unconditional non-stackable mint colliding
@@ -2563,9 +2571,14 @@ are the only reach files allowed to):
   failing guard producing its `CardBlocker` (judgment and reason are the
   same computation — no post-hoc re-derivation); `site_proven` is the
   ladder's `.ok()` face and the `--why` diagnostics its Err face, so the
-  demotion rules have one home. New rungs append at the ladder tail;
-  existing rungs stay stable.
-- **paths** — the post-fixpoint report: dead verbs are derived here, along
+  demotion rules have one home. A new rung takes its evaluation-order
+  position in the ladder; existing rungs stay stable.
+- **paths** — the post-fixpoint report: dead verbs are derived here (a
+  chain-pinned verb — some authored RUN/FORK targets one of its recipes —
+  is exempt: the §6.7 follow-up path synthesizes the window and skips
+  `validate_slots`, so the verb completes over whatever bindings the chain
+  projects and its own mints stay candidates instead of structurally
+  absent), along
   with the mint universe (aspect values
   there are bounds, not facts), deck caps derived from proven once-trigger
   draws (only the first `cap` served positions can ever be reached), the first-hit
@@ -2577,15 +2590,24 @@ are the only reach files allowed to):
   matched against the actual mint descriptors, target ignored). Verdicts
   tier obtainable / unobtainable / unproven / unusable × existence
   proven / candidate / none.
-  The §4.2 unique rule is EXACT in three faces and under-claims in one
-  composition. The exact faces: the serving predicate (`deck_serves_cap`,
+  The §4.2 unique rule is EXACT in four faces and under-claims only behind
+  UNPROVEN in-play mints (the conservative direction). The exact faces:
+  the serving predicate (`deck_serves_cap`,
   one home for the card/graph/demand faces) counts a deck position DEAD
   when it is a LATER occurrence of any unique name — the earliest copy's
   serve or skip always manifests the name before the draw cursor reaches
   the later position, so a later occurrence never serves in any execution —
-  and when its card names a unique in the initial state's MANIFESTED set (the midgame
-  projection face: the fold rebuilds that set, so a replayed initial state
-  carries the truth); a target's reach is measured in LIVE positions
+  and when its card names a unique in the MANIFESTED set: the initial
+  state's set UNIONED with the fixpoint's `minted_manifested` marks — a
+  proven in-play SPAWN/REPLACE of a unique name marks it (the engine's
+  mint face records the name permanently, whether or not the mint lands;
+  draw sites never mark, a draw SERVES an existing copy rather than
+  minting), so the once-draw + in-play-mint composition agrees with play
+  on both faces: the marked name's deck positions are dead for the serving
+  draws after the mint, and a bounded draw's single serve skips the dead
+  position at no cost and the next position serves (the initial set keeps
+  its midgame projection face: the fold rebuilds it, so a replayed initial
+  state carries the truth); a target's reach is measured in LIVE positions
   before it, and the defaultcard's face at true exhaustion runs over the
   live order length (a fully manifested reset deck falls to it, the B9.4
   filtered-reshuffle face); `add_product` registers the same live window
@@ -2595,16 +2617,9 @@ are the only reach files allowed to):
   the distinct-instance list — no slot can ever bind two), so a proof
   needing the same unique twice — from one deck's second position, from
   two decks, or from deck + in-play mint — decides False instead of
-  over-proving. The under-claim: in-play mints — ambient or player — do
-  NOT mark manifested in the analyzer's world (the manifested set is read
-  once from the initial state; no mint site writes it), so a unique's deck
-  position reads LIVE even in executions where a mint manifests the name
-  before the draw — a BOUNDED draw whose single serve budget is thereby
-  pinned on that phantom-live position judges the NEXT position
-  unobtainable where at play the dead position costs the serve nothing and
-  the next position serves (a false unobtainable — the conservative
-  direction; ledgered in §13.3 with the repro shape, pinned as an
-  engine+reach split in the test suite). The collision faces read a unique
+  over-proving. The residual under-claim: a mint that applies at play but
+  never PROVES cannot mark — the same conservative direction, narrowed to
+  unproven mints. The collision faces read a unique
   mint as name-sharing (it skips instead of erroring), so no co-mint
   freeze, duplicate-collision risk or window/draft refusal rung fires on
   it.
@@ -2667,7 +2682,8 @@ are the only reach files allowed to):
   0/1 for trigger-held draws after the fixpoint (seed 81401's shape),
   judged per name by `deck_serves_cap` — the cursor-aware verdict the
   card face sees, against `facts.deck_cap`; one serving predicate, one
-  home (at cursor 0 with an empty manifested set it is the raw position
+  home (at cursor 0 with no unique marked manifested — an empty initial
+  set and no proven in-play mint — it is the raw position
   face, the script faces' identity;
   the site's raw cap is never read). `mints → requires` edges carry the
   verb's slot fillers (or an expiry trigger's named card — the same
@@ -2758,8 +2774,8 @@ once triggers (`AlreadyFired` — they never fire again; their past
 mints ride the replayed entities as initial facts), and non-reset deck
 cursors bound the remaining draws (`deck_serves_cap` serves the window
 from the cursor forward — the graph face's predicate too;
-`add_product` registers the same window; identity at cursor 0 with an
-empty manifested set). Read
+`add_product` registers the same window; identity at cursor 0 with no
+unique marked manifested). Read
 but deliberately unmodeled: open windows (the lock table), the
 executed-recipe map, the rng counter — named by a name-free fidelity
 note that rides on every replayed card report (global, the
@@ -2861,20 +2877,33 @@ full 1,566 × 2,084 world) on worker threads — at most
 `min(available_parallelism, 4)` workers by default, each rebuilding the
 whole deterministic world — with a `--worker i k P R` child protocol
 dumping per-name JSON stats. The campaign is the OPEN-GAP LEDGER: a red
-seed is a triaged finding (the suite pins determinism, never verdicts); the
-v11 reshuffle surfaced the chain-class gaps on seeds 70/84/103/170 —
-event-channel follow-ups vs the dead-verb and mint-collision demotions,
-both directions, none involving `unique` (the test crate's header carries
-the ledger). The ledger also holds one unique-shaped composition, triaged
-by hand and pinned deliberately (an engine+reach split in the test suite,
-not a generated seed): deck `QUEST spec U, B` + a `once` slot trigger
-drawing QUEST + any verb minting U. The analyzer's manifested projection
-is LOAD-TIME ONLY (in-play mints never mark manifested in its world, the
-§13.1 under-claim), so its once-window pins the trigger's single serve on
-U's live deck position and judges B unobtainable/None, while at play the
-mint manifests U first and the draw skips the dead position and serves B —
-a false `unobtainable`, the conservative direction (with U non-unique the
-analyzer is correct: the single serve genuinely takes position 0).
+seed is a triaged finding (the suite pins determinism, never verdicts).
+The ledger's five chain-class entries are CLOSED (the test crate's header
+carries the ledger, each seed's shape beside its fix): seed 70 by the
+hoisted completing-recipe selection rule (a witness pair needs EVERY
+earlier `when` decidably False); seed 84 by the chain-pinned exemption in
+the dead-verb demotion (a §6.7 follow-up skips `validate_slots` and
+completes over empty bindings); seeds 103/170 by the census's chain-slot
+refusal flag and the ladder's `ChainPinRefusal` rung (a pin-capable
+RUN/FORK followed by another chain op refuses the parent window;
+event-channel lists exempt — the second op is a silent skip there); and
+the unique-shaped composition (deck `QUEST spec U, B` + a `once` slot
+trigger drawing QUEST + any verb minting U) by the in-play mints mark
+manifested (§13.1's `minted_manifested`) — the analyzer's once draw skips
+the minted-unique position and serves B, agreeing with play, and the
+former engine+reach split pin (reach_unique.rs) asserts agreement. Two
+residual classes remain OPEN beyond seed 291 (16 failing seeds in the
+200–3199 window, pre-existing, Wave-4 material): cross-list interference
+the per-list census never sees — a pinned candidate's top-level REFUSE
+refusing the PARENT window (`run_inline_gate` trials it on the draft;
+seed 291's shape), a complete-trigger body's chain op pinning before the
+completing recipe's parked RUNs replay (`run_taken` is shared across the
+trigger phase and the deferred replay), sibling same-home trigger bodies
+pinning and refusing each other — and a completing recipe that destroys
+the locked
+home before the trigger phase (the draft rung checks draft-name
+collisions, never the home's survival through the completing recipe's own
+outcomes; seed 371's shape).
 
 The fuzz generator (`gen_scenario`, v11) builds one random script per
 seed over the FULL trigger face — slot, expiry and completion triggers

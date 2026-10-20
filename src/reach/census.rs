@@ -145,6 +145,11 @@ pub(crate) struct RawSite<'c> {
     pub killed_in_list: bool,
     /// this list can mint a name that is (or may become) already alive
     pub dup_risk: bool,
+    /// a pin-capable RUN/FORK in this list is followed by another chain op —
+    /// the second op hits the taken chain slot FIRST (§6.7) and refuses the
+    /// parent window, so the whole draft dies (event-channel lists exempt —
+    /// there the second op is a silent skip, §6.6)
+    pub chain_refusal: bool,
     /// REPLACE: another op in this list also kills the replace-target
     pub target_killed_in_list: bool,
     /// non-stackable names this LIST mints (bootstrap-gate check); the
@@ -305,6 +310,11 @@ pub(crate) struct WalkState<'c> {
     pub op_counter: i64,
     pub sites: Vec<RawSite<'c>>,
     pub kills: Vec<Kill>,
+    /// the list's RUN/FORK ops in walk order, each carrying its PIN
+    /// capability: does it name ≥1 name-form candidate (candidates resolve
+    /// against the GLOBAL recipe table at load, so a named candidate always
+    /// resolves). The post-pass folds it into the list's chain-slot refusal.
+    pub chain_ops: Vec<bool>,
 }
 
 /// The per-list identity of the list being walked — the list context the
@@ -576,6 +586,30 @@ fn walk_list<'c, 'a>(
         flags.iter().filter(|(_, f)| f.refused).map(|(k, _)| *k).collect();
     let throw_ops: i64 = flags.values().map(|f| f.throwing).sum();
 
+    // the §6.7 chain-slot refusal (fuzz seeds 103/170): the list REFUSES iff
+    // some pin-capable chain op has ANOTHER chain op after it — the second
+    // op checks the taken slot BEFORE it walks its candidates, so its own
+    // gate is irrelevant, and the refusal discards the whole completion
+    // draft. Event-channel lists (slot/expire trigger bodies) are EXEMPT:
+    // there the second pinning op is a SILENT SKIP (§6.6 — an event has no
+    // step to refuse; the first op's effects stand and the body continues).
+    let event_channel = matches!(
+        trig_idx.get(list_cx.owner),
+        Some((CompiledTrigger::Slot { .. } | CompiledTrigger::Expire { .. }, _))
+    );
+    let chain_refusal = !event_channel && {
+        let mut pinned = false;
+        let mut refuses = false;
+        for &capable in &st.chain_ops {
+            if pinned {
+                refuses = true;
+                break;
+            }
+            pinned = capable;
+        }
+        refuses
+    };
+
     // per-name mint counts, duplicates → dup_risk
     let mut mint_counts: IndexMap<String, MintCount> = IndexMap::new();
     for s in sites.iter() {
@@ -630,6 +664,7 @@ fn walk_list<'c, 'a>(
         let cap = draw_cap(sites, i, census, trig_idx);
         let s = &mut sites[i];
         s.throw_ops = throw_ops;
+        s.chain_refusal = chain_refusal;
         s.killed_in_list = s.kind != SiteKind::Draw
             && kills.iter().any(|k| {
                 s.segs.contains(&k.seg) && (k.seg != s.seg || k.pos > s.pos) && k.name == s.name
@@ -800,6 +835,21 @@ fn record_visit<'c, 'a>(
     let sites = &mut st.sites;
     let kills = &mut st.kills;
 
+    // §6.7 chain ops: the op joins the walk-order chain_ops log with its pin
+    // capability (a name-form candidate the global table resolves — load-
+    // checked, so a named candidate always resolves; a when-less default
+    // candidate is always live, but the crude "any named candidate" rule is
+    // the honest MAY-pin test — the busy/max/gate skips are not statically
+    // resolvable, so "capable" not "guaranteed" is what the refusal rung
+    // needs, and over-demotion costs precision only)
+    if o.op == "RUN" || o.op == "FORK" {
+        let capable = o.args.iter().any(|a| {
+            matches!(a, Arg::Ref { r#ref: Ref::Name { name, .. } }
+                if content.recipe_verbs.contains_key(name.as_str()))
+        });
+        st.chain_ops.push(capable);
+    }
+
     // a name-form first arg kills that name
     let kill_name: Option<&str> = match o.args.first() {
         Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name),
@@ -932,6 +982,7 @@ fn base_site<'c>(
         replace_target: None,
         killed_in_list: false,
         dup_risk: false,
+        chain_refusal: false,
         target_killed_in_list: false,
         list_gate_mints: Rc::new(IndexSet::new()),
         list_stack_mints: Rc::new(IndexSet::new()),

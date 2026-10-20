@@ -1,5 +1,4 @@
-//! The reach analyzer's §4.2 unique faces (v0.9.6) — EXACT in three faces,
-//! under-claiming in one composition:
+//! The reach analyzer's §4.2 unique faces (v0.9.7) — EXACT in four faces:
 //!
 //! - a unique serves from its FIRST order position only; every later
 //!   occurrence is a dead position (the earliest copy's serve or skip
@@ -9,19 +8,14 @@
 //! - a unique in the initial state's manifested set (the midgame truth)
 //!   never serves from any deck — a deck whose uniques are all manifested
 //!   falls to the defaultcard face;
+//! - a unique minted IN PLAY by a proven SPAWN/REPLACE marks manifested
+//!   (the engine's mint face records the name permanently, whether or not
+//!   the mint lands), so the marked name's deck positions are dead for the
+//!   serving draws after it — the once-draw + in-play-mint composition
+//!   agrees with play on both faces (pinned below);
 //! - the world's pooled total for a unique name clamps at 1 (one living
 //!   copy, ever), whatever the sources' own counts — deck + ambient mint
 //!   composes to exactly one living copy by the clamp alone.
-//!
-//! The boundary: in-play mints do NOT mark manifested in the analyzer's
-//! world (the manifested set is read once from the initial state; no mint
-//! site writes it), so a unique's deck position reads LIVE even where an
-//! in-play mint manifests the name before the draw. A bounded draw whose
-//! single serve budget is pinned on that phantom-live position then
-//! under-claims — a false unobtainable, ledgered in the reach-fuzz campaign
-//! header (reach_fuzz.rs) and pinned here as an engine+reach split test.
-//! Everything else stays exact in both directions (at play a unique name
-//! never has two living copies).
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -231,12 +225,13 @@ fn a_manifested_unique_never_serves_and_the_all_manifested_deck_falls_to_the_def
 
 #[test]
 fn the_count_clamp_keeps_the_in_play_mint_plus_deck_composition_at_one_living_copy() {
-    // the clamp face: the ambient SPAWN proves U unconditionally, and the
-    // pooled total clamps U at ONE — the STUDY gate needs a SECOND living U
-    // and decides False over the clamped world, whatever the two sources'
-    // own counts sum to. The deck position plays no part: the analyzer's
-    // world never marks the in-play mint manifested, so QUEST's U position
-    // reads live there — and the unbounded WAIT draw serves B either way.
+    // the clamp face: the ambient SPAWN proves U unconditionally — and marks
+    // U manifested — and the pooled total clamps U at ONE — the STUDY gate
+    // needs a SECOND living U and decides False over the clamped world,
+    // whatever the two sources' own counts sum to. The marked U position is
+    // dead, which only makes the unbounded WAIT draw's serve of B cheaper;
+    // TARGET stays non-obtainable either way (a second living unique is
+    // impossible).
     let raw = ContentRaw {
         prototypes: Some(IndexMap::from([
             proto("U", "idea", true),
@@ -305,23 +300,25 @@ fn the_count_clamp_keeps_the_in_play_mint_plus_deck_composition_at_one_living_co
     );
 }
 
-// ---------------------------------------------------------- the boundary ----
+// ------------------------------------------------ the mint marks manifested ----
 
 #[test]
-fn the_once_draw_plus_in_play_mint_composition_splits_engine_serves_b_analyzer_says_unobtainable() {
-    // the ledgered gap (reach_fuzz.rs header, §13.3), pinned as the CURRENT
-    // honest face on BOTH sides — the point is visibility, not silence.
-    // Repro shape: deck QUEST spec U, B; a `once` slot trigger drawing
-    // QUEST; a verb minting U. At play the mint lands first — U manifests —
-    // and the trigger's single draw then skips the dead U position and
-    // serves B. The analyzer's manifested projection is load-time only, so
-    // its once-window pins the single serve on U's phantom-live position 0
-    // and judges B unobtainable/None (the conservative false unobtainable;
-    // with U non-unique the single serve genuinely takes position 0 and the
-    // analyzer would be right).
+fn the_once_draw_plus_in_play_mint_composition_agrees_the_draw_skips_the_minted_unique_and_serves_b(
+) {
+    // the formerly-ledgered composition (§13.3), now agreeing on BOTH faces:
+    // a PROVEN in-play mint marks its unique name manifested, so the deck
+    // position is dead for the serving draws after it. Repro shape: deck
+    // QUEST spec U, B; a `once` slot trigger drawing QUEST; a verb minting
+    // U. At play the mint lands first — U manifests — and the trigger's
+    // single draw then skips the dead U position and serves B. The analyzer
+    // proves U through the mint, reads U's position dead through the same
+    // mark, and proves B through the draw's remaining serve budget (with U
+    // non-unique the single serve genuinely takes position 0 and B would
+    // NOT serve — the split pin's old face, now guarded by the
+    // a_unique_never_proves_twice… clamp above).
     let dict = core_dictionary();
     let text = "\
-script: Once Draw Split
+script: Once Draw Agreement
 player: ANA
 start: 0:0
 seed: 0
@@ -353,14 +350,16 @@ verbs:
     let deck = content.decks.get("QUEST").unwrap();
     assert_eq!(deck.order.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["U", "B"]);
 
-    // the analyzer's face: U obtainable, B unobtainable/None
+    // the analyzer's face: U obtainable (the mint), B obtainable (the
+    // minted-unique position is dead — the draw's serve budget skips it)
     let u = analyze(&content, &state, "U");
     assert_eq!(u.verdict, CardVerdict::Obtainable);
     let b = analyze(&content, &state, "B");
-    assert_eq!(b.verdict, CardVerdict::Unobtainable);
-    assert_eq!(b.existence, chorus::reach::Existence::None);
+    assert_eq!(b.verdict, CardVerdict::Obtainable);
+    assert_eq!(b.existence, chorus::reach::Existence::Proven);
 
-    // the engine's face: mint, then the trigger's single draw serves B
+    // the engine's face: mint, then the trigger's single draw serves B —
+    // the same journal the analyzer's faces now agree with
     let base = clone_state(&state);
     let r1 = settle_line(&content, &dict, state, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r1.rejected, None);
@@ -395,7 +394,7 @@ verbs:
     assert_eq!(drawn, ["B"], "the dead U position is consumed within the serving draw");
     assert_eq!(r2.state.decks.get("QUEST"), Some(&2));
     assert_eq!(r2.state.by_name.get("B").map(Vec::len), Some(1));
-    // play == fold across the split composition
+    // play == fold across the composition
     let replayed = fold(&records, &base, &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&r2.state));
 }

@@ -13,13 +13,13 @@
 //! recipe-body RUNs cross verbs; slot/expire bodies chain onto the global
 //! duration>0 table), recipe-line `aspects`, recipe-line `dur`, and the two
 //! §6.3 predicate sum scopes in the `when` candidate table, ambient verbs,
-//! and `unique` prototypes (riding deck specs) — features whose
-//! analyzer
-//! coverage is still being established, and which legitimately surface open
-//! false-`obtainable` gaps (the Wave-3 worklist, triaged by the reach-fuzz
-//! campaign: `cargo run --bin reach-fuzz -- --seeds 200`). Pinning "these
-//! 100 seeds have 0 failures" would pin the open gaps red right here, so
-//! soundness is asserted by the CAMPAIGN, not by this suite. What each seed
+//! and `unique` prototypes (riding deck specs) — the chain-model features
+//! whose analyzer faces the campaign covers (a red seed stays a triaged
+//! finding, never a suite failure: `cargo run --bin reach-fuzz --
+//! --seeds 200`). Pinning "these 100 seeds have 0 failures" would pin the
+//! OPEN residual ocean red right here (the Wave-4 classes in the ledger
+//! below), so soundness is asserted by the CAMPAIGN, not by this suite.
+//! What each seed
 //! pins instead is that `run_fuzz_seed` is a pure function of its seed: two
 //! runs must agree on the failure set, the inconclusive set and the
 //! exploration bookkeeping — a generator or oracle that drifts (or a
@@ -31,27 +31,45 @@
 //! gap shapes on four seeds — every one a CHAIN-class interaction between
 //! the §6.6/§6.7 event-channel follow-ups and the dead-verb / mint-collision
 //! demotions, none involving `unique` — those scenarios declare none, so the
-//! unique model is inert on them):
-//!   - 70, 103, 170: a completion/slot trigger or chain follow-up applies a
-//!     recipe whose sibling chain arm collides or whose home verb is
-//!     slot-dead — the analyzer proves the mint, the play's completion dies
-//!     with the whole settle (false `obtainable`);
-//!   - 84: a chain-fed recipe (FORK onto a slot-dead verb) mints at play
-//!     over empty event bindings, but the dead-verb demotion closes every
-//!     site of that verb (false `unobtainable`).
+//! unique model is inert on them). All five ledgered gaps are CLOSED (v0.9.7),
+//! each seed's shape by its model fix:
+//!   - 70: the completing-recipe selection rule (`recipe_draft`'s hoisted
+//!     selectability, fixpoint.rs) — a witness pair survives only when EVERY
+//!     earlier recipe's `when` is decidably False, so a static-true sibling
+//!     that always selects first demotes the pair;
+//!   - 84: the dead-verb demotion exempts chain-pinned verbs
+//!     (`build_post_fixpoint`'s `chain_pinned` exemption, paths.rs) — a §6.7
+//!     follow-up skips validate_slots and completes over empty bindings, so
+//!     a slot-dead verb's own mints stay candidates;
+//!   - 103, 170: the census records a list-level chain-slot refusal
+//!     (census.rs — a pin-capable RUN/FORK followed by another chain op;
+//!     event-channel lists exempt, the second op a silent skip there), and
+//!     the ladder's `ChainPinRefusal` rung (fixpoint.rs) demotes the list's
+//!     every live site;
+//!   - the unique composition: a proven in-play SPAWN/REPLACE of a unique
+//!     name marks it manifested (`minted_manifested`, fixpoint.rs/world.rs),
+//!     and every dead-position reader unions the mark beside the initial
+//!     state's set — the once draw's serve skips the dead position, and the
+//!     former engine+reach split pin (reach_unique.rs) asserts agreement.
 //!
-//! The ledger also carries one UNIQUE-shaped composition, triaged by hand
-//! and pinned deliberately as an engine+reach split (reach_unique.rs), not
-//! generated: deck `QUEST spec U, B`, a `once` slot trigger drawing QUEST,
-//! and any verb minting U. The analyzer's manifested projection is load-time
-//! only (in-play mints never mark manifested in its world), so its
-//! once-window pins the trigger's single serve on U's live deck position
-//! and judges B unobtainable/None, while at play the mint manifests U first
-//! and the draw skips the dead position and serves B — a false
-//! `unobtainable`, the conservative direction (U non-unique → the analyzer
-//! is correct: the single serve genuinely takes position 0).
-//!
-//! The seed entries are the chain model's open faces, pre-dating v11.
+//! The Wave-4 residual ocean (pre-existing, OPEN — 16 failing seeds in the
+//! 200–3199 window, one triaged cross-list class with three channels):
+//!   - cross-list interference the per-list census never sees (seed 291's
+//!     shape and siblings): a PINNED candidate's top-level REFUSE refusing
+//!     the PARENT window (`run_inline_gate` trials it on the draft); a
+//!     complete-trigger body's chain op pinning before the completing
+//!     recipe's parked RUNs replay (`run_taken` is shared across the trigger
+//!     phase and the deferred replay); sibling same-home trigger bodies
+//!     pinning and refusing each other (fix shape: extend the chain-refusal
+//!     census walk across lists — a pin-capable chain op naming a candidate
+//!     whose top-level REFUSE is not decidably-false demotes its own list
+//!     the same way);
+//!   - a completing recipe that DESTROYS the locked home before the trigger
+//!     phase skips the dead card's completion triggers, but the draft rung
+//!     checks only draft-name collisions, never the home's survival through
+//!     the completing recipe's own outcomes (seed 371's shape; fix shape: a
+//!     per-pair rung — the completing recipe's outcome walk kills the home ⇒
+//!     that pair cannot witness).
 //!
 //! Bounds rationale (2026-10 audit, v7 scenarios): the default 8 steps ×
 //! 500 states per run, twice per seed; complete-trigger worlds explore

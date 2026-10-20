@@ -345,17 +345,24 @@ impl<'c> WorldFacts<'c> {
         if site.kind == SiteKind::Draw {
             let deck = draw_deck(&site);
             // copied out so the `dead` closure borrows no `self` (the pushes
-            // below take &mut while the closure is still alive)
+            // below take &mut while the closure is still alive); the
+            // minted-marks copy-out mirrors the `initial` one — the closure
+            // reads the same union `deck_position_dead` reads (initial set ∪
+            // in-play mints)
             let initial: &'c State = self.initial;
+            let minted: IndexSet<String> = self.minted_manifested.clone();
             // the §4.2 unique deck filter's dead positions (the engine's lazy
-            // draw rule): a manifested unique, or a later occurrence of any
-            // unique — the earliest copy's serve always manifests the name,
-            // so a later occurrence never serves in any execution. Dead
-            // positions cost no serve (the serving draw consumes them).
+            // draw rule): a manifested unique — in the initial state's set or
+            // minted in-play by a proven SPAWN/REPLACE (the mint face records
+            // the name permanently) — or a later occurrence of any unique —
+            // the earliest copy's serve always manifests the name, so a later
+            // occurrence never serves in any execution. Dead positions cost
+            // no serve (the serving draw consumes them).
             let dead = |idx: usize| -> bool {
                 let c = &deck.order[idx];
                 content.mint_is_unique(&c.name)
                     && (initial.manifested_uniques.contains(&c.name)
+                        || minted.contains(&c.name)
                         || deck.order[..idx].iter().any(|p| p.name == c.name))
             };
             // capacity-aware: only the first `site.cap`
@@ -500,6 +507,18 @@ impl<'c> WorldFacts<'c> {
         // its open interval instead of assuming the capped weight exact
         let unbounded = count == MANY && Self::bare_list(&site);
         self.push(key.to_string(), CardFact { entity, count, how, unbounded });
+        // the in-play mints mark manifested (§4.2): the engine's mint face
+        // records a UNIQUE name PERMANENTLY — `apply_spawn`/`apply_replace`
+        // insert unconditionally, whether or not the mint lands — so a
+        // proven mint of a unique bare name kills that name's deck
+        // positions. The blinded derive-mint marks nothing (its product is
+        // the sentinel, never the unique name — exact, since a derived name
+        // is never the unique name at play either). Draw sites mark nothing:
+        // a draw SERVES an existing copy rather than minting, and marking
+        // from a draw would kill the served position itself.
+        if !blind && content.mint_is_unique(&site.name) {
+            self.minted_manifested.insert(site.name.clone());
+        }
     }
 
     /// Whether a site proves this round: [`Self::site_ladder`]'s verdict,
@@ -561,6 +580,17 @@ impl<'c> WorldFacts<'c> {
             && !site.target_killed_in_list;
         if site.throw_ops - i64::from(self_safe) > 0 {
             return (Err(CardBlocker::ThrowOps), None);
+        }
+        // the §6.7 chain-slot refusal (fuzz seeds 103/170): a pin-capable
+        // RUN/FORK in this list is followed by another chain op — the second
+        // op checks the taken slot FIRST (§6.7) and refuses the parent
+        // window, and the refusal discards the whole completion scratch, the
+        // mint included. Content-static (no world read), so the flag cannot
+        // interact with the fixpoint's anti-monotone schedule; event-channel
+        // lists are exempt at the census (there the second op is a silent
+        // skip, §6.6).
+        if site.chain_refusal {
+            return (Err(CardBlocker::ChainPinRefusal), None);
         }
         if site.shadow_risk {
             return (Err(CardBlocker::ShadowRisk), None); // first-match: an earlier recipe may shadow
@@ -803,12 +833,9 @@ impl<'c> WorldFacts<'c> {
 /// Why one site stays unproven — the FIRST ladder guard it fails. The
 /// variants are the ladder rungs in evaluation order (the doc comments quote
 /// the guards); [`CardBlocker::as_str`] renders the human text, aligned with
-/// `render::site_reason`'s wording.
-///
-/// Extension seam: the Complete arm is known to be over-generous (fuzz is
-/// exposing classes of false OBTAINABLE); the coming tightening adds its
-/// demotion variants HERE — the ladder tail is the insertion point, existing
-/// variants stay stable.
+/// `render::site_reason`'s wording. A new rung takes its EVALUATION-ORDER
+/// position in this enum — the declaration order IS the guard order, one
+/// source for both.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardBlocker {
     /// `site.fallback` — ELSE runs only when earlier arms are false.
@@ -821,6 +848,12 @@ pub enum CardBlocker {
     SelfGated,
     /// a throwing op in the list (no self-safe REPLACE escape).
     ThrowOps,
+    /// `site.chain_refusal` — a pin-capable RUN/FORK in this list is
+    /// followed by another chain op (§6.7): the second op hits the taken
+    /// chain slot FIRST and refuses the parent window, so the whole draft
+    /// dies with the completion (event-channel lists exempt — a silent
+    /// skip there, §6.6).
+    ChainPinRefusal,
     /// `site.shadow_risk` — an earlier recipe may shadow (first-match).
     ShadowRisk,
     /// `path_open` failed: the FIRST condition that is not a static truth,
@@ -905,6 +938,12 @@ impl CardBlocker {
             }
             CardBlocker::ThrowOps => {
                 "a throwing op in this list may discard the whole draft at completion".to_string()
+            }
+            CardBlocker::ChainPinRefusal => {
+                "a pinning RUN/FORK in this list is followed by another chain op — the second hits \
+                 the taken chain slot and refuses the parent window (§6.7), so the whole draft dies \
+                 with the completion"
+                    .to_string()
             }
             CardBlocker::ShadowRisk => {
                 "an earlier recipe of the same verb may shadow it (first-match)".to_string()
@@ -1287,9 +1326,10 @@ impl<'c> WorldFacts<'c> {
     /// when the trigger phase begins.
     ///
     /// The verdict has three parts:
-    /// (a) selectability — first-match (§6.4): an earlier when-less recipe
-    ///     shadows permanently, and an earlier static-true `when` always
-    ///     matches first; a static-false `when` of this recipe never matches;
+    /// (a) selectability — first-match (§6.4): the recipe witnesses only if
+    ///     EVERY earlier recipe's `when` is decidably False over the world
+    ///     (a when-less or non-static or undecided earlier gate may select
+    ///     first); a static-false `when` of this recipe never matches;
     /// (b) the always-applying outcome walk — a decided REFUSE, or a
     ///     throwing op whose name targets cannot resolve against the world
     ///     (an application ERROR is not a gate at the table: exec.rs's
@@ -1313,9 +1353,26 @@ impl<'c> WorldFacts<'c> {
         // the window model the recipe's gates sum (what its verb's slots
         // can bind)
         let bound = self.bound_view(vi);
-        // (a) selectability
-        if v.recipes[..ri].iter().any(|rr| rr.when.is_none()) {
-            return None; // an earlier when-less recipe shadows permanently
+        // (a) selectability — first-match (§6.4): the pair witnesses only if
+        // EVERY earlier recipe's `when` is DECIDABLY false over the world.
+        // An earlier when-less recipe matches always; a non-static or
+        // static-Unknown gate matches in SOME executions — either way an
+        // earlier recipe may select first and shadow this one permanently.
+        // (The test sits OUTSIDE the own-`when` block: a when-less witness
+        // recipe must ask the same question, and a non-static own gate does
+        // not weaken the earlier siblings' claim on the selection.)
+        for rr in &v.recipes[..ri] {
+            let dead = match &rr.when {
+                None => false, // matches always
+                Some(we) => {
+                    pred_static(we)
+                        && eval_static_truth(we, world, bound.as_ref()).ok()
+                            == Some(StaticTruth::False)
+                }
+            };
+            if !dead {
+                return None; // an earlier recipe may select first
+            }
         }
         if let Some(w) = &r.when {
             if pred_static(w) {
@@ -1328,13 +1385,6 @@ impl<'c> WorldFacts<'c> {
                 // (a selectable witness), never produce "proven" on its own.
                 if eval_static_truth(w, world, bound.as_ref()).ok()? == StaticTruth::False {
                     return None; // never matches
-                }
-                if v.recipes[..ri].iter().any(|rr| {
-                    rr.when.as_ref().is_some_and(|we| {
-                        pred_static(we) && eval_static_ok(we, world, bound.as_ref())
-                    })
-                }) {
-                    return None; // an earlier static-true when always beats it
                 }
             }
         }

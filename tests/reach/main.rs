@@ -7,6 +7,7 @@ mod reach;
 mod reach_adversarial;
 mod reach_ambient;
 mod reach_bridge;
+mod reach_chain;
 mod reach_complete;
 mod reach_cost;
 mod reach_export;

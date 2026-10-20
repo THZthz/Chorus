@@ -273,6 +273,16 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
         if wf.committable.contains_key(&vi) {
             continue;
         }
+        // §6.7: a chain-pinned verb's follow-up window is synthesized onto the
+        // station directly (`synthesize_followup` → `register_windows`) and
+        // validates no slots — over the empty event/parent bindings its
+        // projection locks nothing, so the pinned recipe completes regardless
+        // of the slot queries the dead-verb rule reads. The exemption only
+        // widens (dead → alive): the verb stays uncommittable, so none of its
+        // sites gains a proof — its mints hold existence at candidate.
+        if wf.chain_pinned.contains(&vi) {
+            continue;
+        }
         // `slot_by_role`, not verb.slots: a shadowed
         // duplicate def must not doom the verb (fuzz seed 262)
         let Some((_, verb)) = content.verbs.get_index(vi) else {
@@ -321,15 +331,18 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
 impl<'c> WorldFacts<'c> {
     /// The §4.2 unique deck filter's dead-position test (the serving face of
     /// the engine's lazy draw rule): a position is dead when its card names
-    /// a unique that is already MANIFESTED (the midgame truth — the initial
-    /// state's manifested set, rebuilt through the mint path), or when it is
-    /// a LATER occurrence of any unique name — the earliest copy's serve (or
-    /// skip) always manifests the name first, so a later occurrence never
-    /// serves in any execution.
+    /// a unique that is already MANIFESTED — in the initial state's set (the
+    /// midgame truth, rebuilt through the mint path) or minted in-play by a
+    /// proven SPAWN/REPLACE (the engine's mint face records the name
+    /// permanently, whether or not the mint lands) — or when it is a LATER
+    /// occurrence of any unique name — the earliest copy's serve (or skip)
+    /// always manifests the name first, so a later occurrence never serves
+    /// in any execution.
     pub(crate) fn deck_position_dead(&self, deck: &CompiledDeck, idx: usize) -> bool {
         let c = &deck.order[idx];
         self.content.mint_is_unique(&c.name)
             && (self.initial.manifested_uniques.contains(&c.name)
+                || self.minted_manifested.contains(&c.name)
                 || deck.order[..idx].iter().any(|p| p.name == c.name))
     }
 

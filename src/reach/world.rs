@@ -653,6 +653,12 @@ pub(crate) struct WorldFacts<'c> {
     pub proven: IndexMap<usize, Vec<String>>,
     /// bare name → PROVEN sites minting it, in proof order (`mint_sources`)
     pub mint_sources: IndexMap<String, Vec<usize>>,
+    /// the §4.2 unique names a PROVEN SPAWN/REPLACE minted during the
+    /// fixpoint (the in-play mints mark manifested): unioned beside
+    /// `initial.manifested_uniques` by every dead-position reader, because
+    /// the engine's mint face records the name PERMANENTLY whether or not
+    /// the mint lands (`apply_spawn`/`apply_replace` insert unconditionally)
+    pub(crate) minted_manifested: IndexSet<String>,
     /// verb index → names its committability proof filled slots with
     pub fillers: IndexMap<usize, IndexSet<String>>,
     /// the universe of cards that can ever exist (static descriptors)
@@ -951,6 +957,7 @@ pub(crate) fn compute_world_facts<'c>(
         committable: IndexMap::new(),
         proven: IndexMap::new(),
         mint_sources: IndexMap::new(),
+        minted_manifested: IndexSet::new(),
         fillers: IndexMap::new(),
         universe: Vec::new(),
         opaque_spawn_aspects: false,

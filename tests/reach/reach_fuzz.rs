@@ -321,19 +321,19 @@ fn scenario_pred_has(seed: u32, f: &dyn Fn(&Pred) -> bool) -> bool {
 
 #[test]
 fn seed_4_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deterministic() {
-    // (seed re-pinned under generator v13: the parked draw shifted the draw
-    // order)
+    // (seed re-checked under generator v14: the uniquegroup draw kept this
+    // seed's property)
     assert!(scenario_has_aspect_world_form(4));
     assert!(scenario_has_closed_aspect_count_form(4));
     assert_seed_deterministic(4);
 }
 
 #[test]
-fn seed_7_emits_an_aspect_scoped_world_form_when_and_stays_deterministic() {
-    // (seed re-pinned under generator v13: the parked draw shifted the draw
-    // order)
-    assert!(scenario_has_aspect_world_form(7));
-    assert_seed_deterministic(7);
+fn seed_3_emits_an_aspect_scoped_world_form_when_and_stays_deterministic() {
+    // (seed re-pinned under generator v14: the uniquegroup draw shifted the
+    // draw order)
+    assert!(scenario_has_aspect_world_form(3));
+    assert_seed_deterministic(3);
 }
 
 // The v5 recipe-body chain table: the GLOBAL build prefix, so a recipe-body
@@ -371,23 +371,23 @@ fn scenario_has_ambient_verb(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_3_carries_an_ambient_verb_and_stays_deterministic() {
-    // (seed re-pinned under generator v12: the held draw shifted the draw
-    // order)
-    assert!(scenario_has_ambient_verb(3));
-    assert_seed_deterministic(3);
+fn seed_2_carries_an_ambient_verb_and_stays_deterministic() {
+    // (seed re-pinned under generator v14: the uniquegroup draw shifted the
+    // draw order)
+    assert!(scenario_has_ambient_verb(2));
+    assert_seed_deterministic(2);
 }
 
 #[test]
-fn seed_33_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
+fn seed_29_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
     // the v9 sum-scope probe rides this seed too: a `when` whose comparison
     // names `total(bound, aspect:a)` or `total(table, aspect:b)` — the
     // analyzer's window-model and world-sum interval faces, exercised by the
-    // same differential sweep. (Seed re-pinned under generator v13: the
-    // parked draw shifted the draw order.)
-    assert!(scenario_has_sum_scope_when(33));
-    assert!(scenario_recipe_run_crosses_verbs(33));
-    assert_seed_deterministic(33);
+    // same differential sweep. (Seed re-pinned under generator v14: the
+    // uniquegroup draw shifted the draw order.)
+    assert!(scenario_has_sum_scope_when(29));
+    assert!(scenario_recipe_run_crosses_verbs(29));
+    assert_seed_deterministic(29);
 }
 
 // The v8 recipe `dur` band: a minority of recipes complete under a window of
@@ -409,11 +409,11 @@ fn scenario_has_recipe_dur(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_6_carries_a_recipe_dur_override_and_stays_deterministic() {
-    // (seed re-pinned under generator v11: the unique draw shifted the draw
-    // order)
-    assert!(scenario_has_recipe_dur(6));
-    assert_seed_deterministic(6);
+fn seed_1_carries_a_recipe_dur_override_and_stays_deterministic() {
+    // (seed re-pinned under generator v14: the uniquegroup draw shifted the
+    // draw order)
+    assert!(scenario_has_recipe_dur(1));
+    assert_seed_deterministic(1);
 }
 
 // The v7 event-body chain band: slot/expire bodies draw RUN/FORK onto the
@@ -435,11 +435,11 @@ fn scenario_event_body_chains(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_2_carries_an_event_body_chain_op_and_stays_deterministic() {
-    // (seed re-pinned under generator v13: the parked draw shifted the draw
-    // order)
-    assert!(scenario_event_body_chains(2));
-    assert_seed_deterministic(2);
+fn seed_11_carries_an_event_body_chain_op_and_stays_deterministic() {
+    // (seed re-pinned under generator v14: the uniquegroup draw shifted the
+    // draw order)
+    assert!(scenario_event_body_chains(11));
+    assert_seed_deterministic(11);
 }
 
 // The v12 held draw (§6.1): a verb whose block drew a HELD slot — the
@@ -454,9 +454,11 @@ fn scenario_has_flagged_held_slot(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_1_also_carries_a_flagged_held_slot_and_stays_deterministic() {
-    assert!(scenario_has_flagged_held_slot(1));
-    assert_seed_deterministic(1);
+fn seed_13_also_carries_a_flagged_held_slot_and_stays_deterministic() {
+    // (seed re-pinned under generator v14: the uniquegroup draw shifted the
+    // draw order)
+    assert!(scenario_has_flagged_held_slot(13));
+    assert_seed_deterministic(13);
 }
 
 // The v13 parked draw (§6.3, v0.10.0): a SPAWN carrying the `parked` mint
@@ -487,6 +489,8 @@ fn scenario_has_parked_scope_when(seed: u32) -> bool {
 
 #[test]
 fn seed_139_carries_a_parked_mint_and_a_parked_scope_when_and_stays_deterministic() {
+    // (seed re-checked under generator v14: the uniquegroup draw kept this
+    // seed's property)
     assert!(scenario_has_parked_spawn(139));
     assert!(scenario_has_parked_scope_when(139));
     assert_seed_deterministic(139);
@@ -509,7 +513,34 @@ fn scenario_has_unique_deck_card(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_8_carries_a_unique_prototype_riding_a_deck_and_stays_deterministic() {
-    assert!(scenario_has_unique_deck_card(8));
-    assert_seed_deterministic(8);
+fn seed_38_carries_a_unique_prototype_riding_a_deck_and_stays_deterministic() {
+    // (seed re-pinned under generator v14: the uniquegroup draw shifted the
+    // draw order)
+    assert!(scenario_has_unique_deck_card(38));
+    assert_seed_deterministic(38);
+}
+
+// The v14 uniquegroup draw (§4.2, v0.10.1): a group of 2–3 members riding
+// the deck spec pool — the group faces (one living member, the manifested
+// group killing every member's deck position) exercised by the same
+// differential sweep.
+fn scenario_has_group_deck_pair(seed: u32) -> bool {
+    let sc = gen_scenario(seed);
+    let mut dict = core_dictionary();
+    for v in sc.raw.verbs.keys() {
+        let _ = dict.register_verb(v);
+    }
+    let content =
+        compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the generated scenario compiles");
+    content.unique_groups.iter().any(|(_, members)| members.len() >= 2)
+        && content
+            .decks
+            .values()
+            .any(|d| d.order.iter().any(|c| content.mint_is_group_member(&c.name)))
+}
+
+#[test]
+fn seed_48_carries_a_member_group_riding_a_deck_and_stays_deterministic() {
+    assert!(scenario_has_group_deck_pair(48));
+    assert_seed_deterministic(48);
 }

@@ -163,6 +163,19 @@ pub(crate) struct RawSite<'c> {
     /// the earlier mint in the same application always lands first, so this
     /// site never mints (its product never exists).
     pub unique_skipped: bool,
+    /// §4.2 (v0.10.1): the ENGINE-TIMED holder sources of this site's
+    /// group SIBLINGS — for each member name this site lands (a mint, or a
+    /// draw's serve: the DRAWN row's SPAWN half rides the same mint path),
+    /// every sibling member of its group with an engine-timed minter
+    /// outside this list, as `(name, source)` pairs. The group
+    /// living-check skips the landing while ANY member lives; whether the
+    /// engine-timed sibling is alive at THIS site's landing is a timing
+    /// question the fixpoint decides (the collision join's
+    /// `collision_sources` twin). Same-list siblings are the ordering face
+    /// (an earlier op's mint lands first; a later one cannot block the
+    /// earlier landing), and a derive-renamed mint is not a member.
+    /// Content-static, computed once over the whole census.
+    pub group_sources: Vec<(String, MintSource)>,
     /// REPLACE: another op in this list also kills the replace-target
     pub target_killed_in_list: bool,
     /// non-stackable names this LIST mints (bootstrap-gate check); the
@@ -516,7 +529,9 @@ pub(crate) fn mint_stacks(content: &CompiledContent, name: &str, kind: Option<&s
 /// A mint's NAME-REUSE face (§4.2): may it share its name with living
 /// copies? A declared stackable mint stacks; a UNIQUE mint is skipped by the
 /// engine's mint face while a copy lives, so it never name-collides either —
-/// every collision/duplication consumer (the census mint counters, the
+/// and the same holds for a uniquegroup MEMBER (the mint face skips while
+/// any member of its group lives, so the repeat mint deals nothing). Every
+/// collision/duplication consumer (the census mint counters, the
 /// co-mint freeze scan through `collision_names`, the duplicate-collision
 /// risk, the window/draft refusal rungs) reads this, not [`mint_stacks`].
 /// Uniqueness is name-level (the declared unique NAMES, §4.2); stackability
@@ -527,6 +542,7 @@ pub(crate) fn mint_name_reusable(
     kind: Option<&str>,
 ) -> bool {
     content.mint_is_unique(name)
+        || content.mint_is_group_member(name)
         || match kind.or_else(|| content.prototypes.get(name).map(|p| p.kind.as_str())) {
             Some(k) => content.mint_is_stackable(name, k),
             None => content.stackable_names.contains(name),
@@ -759,6 +775,67 @@ fn resolve_cross_list_map<'c>(
     for s in census.sites.iter_mut() {
         s.collision_refusal = census.collision_refusers.contains(&s.owner);
     }
+    // §4.2 (v0.10.1): the GROUP living-check's cross-list face — a member
+    // landing (a mint, or a draw's serve: the DRAWN row's SPAWN half rides
+    // the same mint path) SKIPS while ANY member of its group has a LIVING
+    // copy. An INITIAL living member (a replayed midgame world's entity — a
+    // fresh initial world never carries a member name: entity lines reject
+    // `uniquegroup`) is alive from minute zero and blocks unorderably, the
+    // collision join's Initial discipline. A sibling member minted by an
+    // ENGINE-TIMED owner outside this list is alive at landings the player
+    // cannot outrun (the holder-source discipline above — a player-timed
+    // sibling is dodgeable existentially and never blocks), so such a
+    // site's landing deals nothing and it cannot prove its product.
+    // Same-list siblings are the ordering face (an earlier op's mint lands
+    // first — the unique_skipped face; a later op's mint cannot block the
+    // earlier landing), and a derive-renamed mint is not a member (the
+    // resolved name escapes the group, §4.2).
+    let mut member_engine_minters: IndexMap<&str, IndexSet<&str>> = IndexMap::new();
+    for (o, _) in &holder_sources {
+        if let Some(ns) = census.owner_minted.get(*o) {
+            for n in ns {
+                if content.mint_is_group_member(n) {
+                    member_engine_minters.entry(n.as_str()).or_default().insert(*o);
+                }
+            }
+        }
+    }
+    for s in census.sites.iter_mut() {
+        // a derive-renamed mint carries a different name — never a member
+        if s.kind != SiteKind::Draw && s.derives && object_always(content, s.verb) {
+            continue;
+        }
+        let names: Vec<String> = if s.kind == SiteKind::Draw {
+            site_mints(s).iter().map(|(n, _)| (*n).to_string()).collect()
+        } else {
+            vec![s.name.clone()]
+        };
+        for n in &names {
+            let Some(g) = content.mint_group(n) else { continue };
+            let Some(members) = content.unique_groups.get(g) else { continue };
+            for m in members {
+                if m == n {
+                    continue;
+                }
+                // the initial sibling: alive before every landing, no owner
+                // to exclude (one row per blocking member name)
+                if census.initial_names.contains(m) {
+                    s.group_sources.push((m.clone(), MintSource::Initial));
+                }
+                if let Some(os) = member_engine_minters.get(m.as_str()) {
+                    for o in os {
+                        if *o != s.owner {
+                            // the sibling's earliest landing source (one row
+                            // per blocking owner)
+                            if let Some((_, src)) = holder_sources.iter().find(|(ho, _)| ho == o) {
+                                s.group_sources.push((m.clone(), *src));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// The per-name mint counter row.
@@ -897,22 +974,37 @@ fn walk_list<'c, 'a>(
     // field docs)
     let list_stack_mints = Rc::new(list_stack_mints);
 
-    // the §4.2 unique mint face across a list (§5.1's skip, same
-    // application): an earlier op of this list minting the same UNIQUE name
-    // unconditionally (its segment chain is this site's ancestor chain — it
-    // always applies before this site) lands the ONE copy first, and the
-    // mint face SKIPS for this site — the site's product never exists.
-    // Draw sources count (a draw serves a fresh copy of a not-yet-manifested
-    // unique like any mint).
+    // the §4.2 unique/group mint face across a list (§5.1's skip, same
+    // application): an earlier op of this list minting the SAME UNIQUE name
+    // — or ANY member of this site's GROUP — unconditionally (its segment
+    // chain is this site's ancestor chain — it always applies before this
+    // site) lands the ONE copy first, and the mint face SKIPS for this site
+    // — the site's product never exists. Draw sources count (a draw serves
+    // a fresh copy of a not-yet-manifested unique or member like any mint).
     let mut unique_skipped_flags: IndexSet<usize> = IndexSet::new();
     for (i, s) in sites.iter().enumerate() {
-        if !content.mint_is_unique(&s.name) {
+        // the site's blocked-by set: its own name for a unique, every
+        // member name of its group for a group member (a name is never
+        // both — the grammar rejects `unique` + `uniquegroup`, §4.2)
+        let blocked_by: Vec<String> = if content.mint_is_unique(&s.name) {
+            vec![s.name.clone()]
+        } else {
+            match content.mint_group(&s.name) {
+                Some(g) => content
+                    .unique_groups
+                    .get(g)
+                    .map(|ms| ms.iter().cloned().collect())
+                    .unwrap_or_default(),
+                None => Vec::new(),
+            }
+        };
+        if blocked_by.is_empty() {
             continue;
         }
         let earlier = sites[..i].iter().any(|o| {
             o.pos < s.pos
                 && s.segs.starts_with(&o.segs)
-                && site_mints(o).iter().any(|(n, _)| *n == s.name)
+                && site_mints(o).iter().any(|(n, _)| blocked_by.iter().any(|b| b == n))
         });
         if earlier {
             unique_skipped_flags.insert(i);
@@ -1338,6 +1430,7 @@ fn base_site<'c>(
         chain_refusal: false,
         collision_refusal: false,
         unique_skipped: false,
+        group_sources: Vec::new(),
         target_killed_in_list: false,
         list_gate_mints: Rc::new(IndexSet::new()),
         list_stack_mints: Rc::new(IndexSet::new()),

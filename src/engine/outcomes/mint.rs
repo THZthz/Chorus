@@ -3,6 +3,7 @@
 //! name-pool namespace, and the `aspects=`/`attrs=` materialization pairs
 //! the fold replays byte-identically.
 
+use crate::content::CompiledContent;
 use crate::core::jsonw::{canonical_key_order, clone_map_in_key_order};
 use crate::core::r#ref::{id_ref, name_ref, Ref};
 use crate::core::roles::Role;
@@ -78,9 +79,12 @@ pub(super) fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResul
     let desc = ctx.content.mint_desc(&name).map(str::to_string);
     // §5.1 + §4.2: a non-stackable mint demands a free name; a stackable
     // mint stacks with its own kind of pool but may not collide with a
-    // distinct NON-stackable living name (shared namespace). A unique mint
-    // skips this gate — its living-check below is the whole story.
-    if !ctx.content.mint_is_unique(&name) {
+    // distinct NON-stackable living name (shared namespace). A unique or
+    // group-member mint skips this gate — its living-check below is the
+    // whole story (the §4.2 skip replaces the whole §9.2 name-in-use
+    // rejection for its name: the mint only lands when no living copy of
+    // any blocking name exists, so the gate can never see a collision).
+    if !ctx.content.mint_is_unique(&name) && !ctx.content.mint_is_group_member(&name) {
         check_mint_name_free(ctx, &name, is_stack, "SPAWN")?;
     }
     // an explicit AS id, else the mint generator
@@ -211,8 +215,19 @@ pub(super) fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResul
     // what the deck filter reads — and the deck filter is why the row must
     // log even on a skip: the fold's manifested-set rebuild rides these
     // rows.
+    // §4.2 (v0.10.1) — the GROUP face: a group-member mint skips while ANY
+    // member of its group has a LIVING copy (the v0.9.6 living-check
+    // generalized — the member's own name is one of the member names, so
+    // the group check subsumes it), and the mint records the GROUP id
+    // permanently in `manifested_groups` — the group face INSTEAD of the
+    // name face, so one mint inserts into exactly one of the two sets.
     let is_unique = ctx.content.mint_is_unique(&name);
-    let skip_mint = is_unique && name_is_living(ctx.state, &name);
+    let group = ctx.content.mint_group(&name).map(str::to_string);
+    let skip_mint = is_unique && name_is_living(ctx.state, &name)
+        || group.as_deref().is_some_and(|g| group_is_living(ctx.content, ctx.state, g));
+    if let Some(g) = &group {
+        ctx.state.manifested_groups.insert(g.clone());
+    }
     if is_unique {
         ctx.state.manifested_uniques.insert(name.clone());
     }
@@ -318,12 +333,19 @@ pub(super) fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyRes
         // manifests the name permanently and SKIPS the spawn when a living
         // copy exists — the dying card included (it is still in the pool at
         // mint time, so `REPLACE X WITH X` on a unique X destroys X and
-        // mints nothing). The DESTROY half still applies either way, and
-        // the concrete SPAWN row still logs (the fold replays it through
-        // the same living-check — play and fold skip identically).
+        // mints nothing). The GROUP face (§4.2, v0.10.1) mirrors it: the
+        // spawn skips while ANY member of the successor's group lives (the
+        // dying member included — its name is a member name), and the mint
+        // records the GROUP id permanently either way. The DESTROY half
+        // still applies either way, and the concrete SPAWN row still logs
+        // (the fold replays it through the same living-check — play and
+        // fold skip identically).
         let skip_mint = if ctx.content.mint_is_unique(&proto_name) {
             ctx.state.manifested_uniques.insert(proto_name.clone());
             name_is_living(ctx.state, &proto_name)
+        } else if let Some(g) = ctx.content.mint_group(&proto_name).map(str::to_string) {
+            ctx.state.manifested_groups.insert(g.clone());
+            group_is_living(ctx.content, ctx.state, &g)
         } else {
             check_mint_name_free(ctx, &proto_name, is_stack, "REPLACE")?;
             false
@@ -434,6 +456,17 @@ fn check_mint_name_free(ctx: &ApplyCtx, name: &str, is_stack: bool, what: &str) 
 /// test — a locked copy is living and counts (§4.2's unique mint face).
 fn name_is_living(state: &State, name: &str) -> bool {
     state.by_name.get(name).is_some_and(|pool| !pool.is_empty())
+}
+
+/// §4.2 (v0.10.1): does ANY member of `group` have a LIVING copy? The same
+/// pool-membership test swept over the group's compiled member names — the
+/// v0.9.6 living-check generalized (a member's own name is a member name,
+/// so the sweep subsumes the name-level check). A locked copy is living and
+/// counts, like the name-level face.
+fn group_is_living(content: &CompiledContent, state: &State, group: &str) -> bool {
+    content.unique_groups.get(group).is_some_and(|members| {
+        members.iter().any(|m| state.by_name.get(m).is_some_and(|pool| !pool.is_empty()))
+    })
 }
 
 /// The aspects clone: the top-level walk AND each sub-map clone are

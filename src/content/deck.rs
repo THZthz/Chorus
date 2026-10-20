@@ -121,11 +121,14 @@ pub fn permute_positions(n: usize, seed: i64, deck_id: &str) -> Vec<usize> {
 ///
 /// The §4.2 unique deck filter is LAZY, applied here at serve time (CS's
 /// `Dealer.Shuffle` filters at shuffle time — B9.4/B10): `manifested` is the
-/// state's manifested-unique set, and an order entry is a DEAD position when
-/// its name is a unique that is already manifested, or a later occurrence of
-/// any unique — the earliest copy's serve (or skip) always manifests the
-/// name first, so a later occurrence is dead in every execution. The scan
-/// consumes dead positions within the serving draw.
+/// state's manifested-unique set, `manifested_groups` the manifested-group
+/// set (v0.10.1), and an order entry is a DEAD position when its name is a
+/// unique that is already manifested, a member of a group that is already
+/// manifested (one member's manifestation kills every member's entries), or
+/// a later occurrence of any unique OR member name — the earliest copy's
+/// serve (or skip) always manifests first, so a later occurrence is dead in
+/// every execution. The scan consumes dead positions within the serving
+/// draw.
 ///
 /// The cursor discipline: `cursor` counts CONSUMED POSITIONS. A served
 /// position lands the cursor past it — dead positions in between consumed
@@ -151,23 +154,29 @@ pub fn draw_from(
     deck: &CompiledDeck,
     cursor: i64,
     manifested: &IndexSet<String>,
+    manifested_groups: &IndexSet<String>,
 ) -> Result<(DeckCard, i64)> {
     if cursor < 0 {
         debug_assert!(false, "negative deck cursor {cursor} is unreachable");
         return Err(ChorusError::new(format!("internal: negative deck cursor {cursor}")));
     }
     let n = deck.order.len() as i64;
-    // dead = a manifested unique, or a later occurrence of any unique (§4.2)
+    // dead = a manifested unique, a member of a manifested group, or a later
+    // occurrence of any unique or member name (§4.2)
     let dead = |idx: i64| -> bool {
         let c = &deck.order[idx as usize];
-        content.mint_is_unique(&c.name)
-            && (manifested.contains(&c.name)
-                || (0..idx).any(|q| deck.order[q as usize].name == c.name))
+        let unique = content.mint_is_unique(&c.name);
+        let member = content.mint_is_group_member(&c.name);
+        let name_dead = unique && manifested.contains(&c.name)
+            || member && content.mint_group(&c.name).is_some_and(|g| manifested_groups.contains(g));
+        let later = (unique || member) && (0..idx).any(|q| deck.order[q as usize].name == c.name);
+        name_dead || later
     };
     // the first LIVE position in `from..n`
     let scan = |from: i64| -> Option<i64> { (from..n).find(|p| !dead(*p)) };
     // (scan origin, served position): in the period below the end, else the
-    // reset wrap — the reshuffle skips manifested uniques too (CS B9.4)
+    // reset wrap — the reshuffle skips dead positions too (manifested
+    // uniques and manifested-group members alike, CS B9.4)
     let serve: Option<(i64, i64)> = if cursor < n {
         scan(cursor).map(|p| (cursor, p)).or_else(|| {
             if deck.reset {
@@ -208,8 +217,9 @@ mod tests {
     use crate::content::{compile_content, ContentRaw};
 
     /// A compiled one-deck content carrying `spec` under deck id `D`,
-    /// every prototype `idea`-kind; `uniques` names the unique ones.
-    fn rig(spec: &[&str], uniques: &[&str]) -> CompiledContent {
+    /// every prototype `idea`-kind; `uniques` names the unique ones,
+    /// `groups` maps a group id to its member names.
+    fn rig(spec: &[&str], uniques: &[&str], groups: &[(&str, &[&str])]) -> CompiledContent {
         let dict = crate::core::dict::core_dictionary();
         let raw = ContentRaw {
             decks: Some(vec![DeckRaw {
@@ -225,6 +235,10 @@ mod tests {
                             PrototypeDef {
                                 kind: "idea".into(),
                                 unique: uniques.contains(s),
+                                unique_group: groups
+                                    .iter()
+                                    .find(|(_, ms)| ms.contains(s))
+                                    .map(|(g, _)| (*g).to_string()),
                                 ..Default::default()
                             },
                         )
@@ -243,10 +257,10 @@ mod tests {
         assert_eq!(permute_positions(4, 42, "RUMOURS"), vec![3, 0, 1, 2]);
         assert_eq!(permute_positions(7, 0, "SEVEN"), vec![0, 6, 3, 1, 4, 5, 2]);
         assert_eq!(permute_positions(7, -3, "NEG"), vec![4, 0, 2, 6, 3, 1, 5]);
-        let content = rig(&["HEARSAY"], &[]);
+        let content = rig(&["HEARSAY"], &[], &[]);
         let deck = content.decks.get("D").unwrap();
         let none = IndexSet::new();
-        let err = draw_from(&content, deck, 1, &none).unwrap_err();
+        let err = draw_from(&content, deck, 1, &none, &none).unwrap_err();
         assert_eq!(err.msg, "deck 'D' is exhausted — no 'reset' and no 'defaultcard' (§4.4)");
     }
 
@@ -254,20 +268,45 @@ mod tests {
     fn the_unique_filter_skips_manifested_positions_and_lands_the_consumed_cursor() {
         // spec [A(unique), B] — a manifested A is a dead position: the serve
         // walks to the first live one and the cursor lands past it
-        let content = rig(&["A", "B"], &["A"]);
+        let content = rig(&["A", "B"], &["A"], &[]);
         let deck = content.decks.get("D").unwrap();
         let manifested: IndexSet<String> = ["A".to_string()].into_iter().collect();
+        let none = IndexSet::new();
         let b_position = deck
             .order
             .iter()
             .position(|c| c.name == "B")
             .map(|p| p as i64)
             .unwrap_or_else(|| unreachable!("the rig writes one B"));
-        let (card, next) = draw_from(&content, deck, 0, &manifested).unwrap();
+        let (card, next) = draw_from(&content, deck, 0, &manifested, &none).unwrap();
         assert_eq!(card.name, "B");
         assert_eq!(next, b_position + 1); // the dead A consumed within the draw
                                           // true exhaustion with no reset and no defaultcard
-        let err = draw_from(&content, deck, next, &manifested).unwrap_err();
+        let err = draw_from(&content, deck, next, &manifested, &none).unwrap_err();
         assert!(err.msg.contains("is exhausted"), "{err}");
+    }
+
+    #[test]
+    fn the_group_filter_kills_every_members_position_once_the_group_is_manifested() {
+        // spec [G1A, B, G1B] — unmanifested, the full period serves (3
+        // draws); once the GROUP is manifested, BOTH member positions are
+        // dead (the first serve included): B serves and the deck is truly
+        // exhausted after it
+        let content = rig(&["G1A", "B", "G1B"], &[], &[("G1", &["G1A", "G1B"])]);
+        let deck = content.decks.get("D").unwrap();
+        let none = IndexSet::new();
+        let groups: IndexSet<String> = ["G1".to_string()].into_iter().collect();
+        let drain = |manifested_groups: &IndexSet<String>| -> Vec<String> {
+            let mut served: Vec<String> = Vec::new();
+            let mut cursor = 0i64;
+            while let Ok((card, next)) = draw_from(&content, deck, cursor, &none, manifested_groups)
+            {
+                served.push(card.name);
+                cursor = next;
+            }
+            served
+        };
+        assert_eq!(drain(&none).len(), 3); // the unfiltered period
+        assert_eq!(drain(&groups), ["B"]); // every member position dead
     }
 }

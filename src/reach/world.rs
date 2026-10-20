@@ -711,6 +711,13 @@ pub(crate) struct WorldFacts<'c> {
     /// the engine's mint face records the name PERMANENTLY whether or not
     /// the mint lands (`apply_spawn`/`apply_replace` insert unconditionally)
     pub(crate) minted_manifested: IndexSet<String>,
+    /// §4.2 (v0.10.1): the unique GROUPS a PROVEN member SPAWN/REPLACE
+    /// minted during the fixpoint (a proven member mint marks the GROUP —
+    /// the engine's mint face records it permanently whether or not the
+    /// mint lands): unioned beside `initial.manifested_groups` by every
+    /// dead-position reader. Draw sites mark nothing, the
+    /// `minted_manifested` discipline.
+    pub(crate) minted_groups: IndexSet<String>,
     /// verb index → names its committability proof filled slots with
     pub fillers: IndexMap<usize, IndexSet<String>>,
     /// the universe of cards that can ever exist (static descriptors)
@@ -814,14 +821,23 @@ impl<'c> WorldFacts<'c> {
         // the parked pool's unique-clamp registry (the `by_name` membership
         // test's twin — the parked pool keeps no by-name map)
         let mut parked_uniques: IndexSet<String> = IndexSet::new();
+        // §4.2 (v0.10.1): the GROUP clamp registries, per pool — a group
+        // contributes at most ONE living copy across ALL its members (the
+        // mint face skips while any member lives), so the FIRST member fact
+        // of a group becomes the group's one distinct instance and every
+        // later member fact clamps at it
+        let mut group_uniques: IndexSet<String> = IndexSet::new();
+        let mut parked_group_uniques: IndexSet<String> = IndexSet::new();
         for list in self.avail.values() {
             for f in list {
                 // §4.2 unique: at most ONE living copy of a unique name can
                 // ever exist (the mint face skips while one lives) — the
                 // pooled total clamps at 1 and only the FIRST fact becomes
                 // the distinct instance (no slot can ever bind two), whatever
-                // the sources' own counts say
+                // the sources' own counts say. §4.2 (v0.10.1): the same face
+                // lifted one level — at most ONE living member of a group.
                 let unique = self.content.mint_is_unique(&f.entity.name);
+                let group = self.content.mint_group(&f.entity.name);
                 // v0.10.0: the parked facts pool SEPARATELY (§6.3's visibility
                 // law — the world forms cannot see them). The unique clamp is
                 // a CARD face, not a world-pool face: both mint faces skip
@@ -834,7 +850,7 @@ impl<'c> WorldFacts<'c> {
                 // a unique name becomes the distinct instance (weight
                 // clamped at 1); later same-name parked facts clamp at it —
                 // no second copy can ever coexist, whatever the sources'
-                // own counts say.
+                // own counts say. The group clamp mirrors it per pool.
                 if f.parked {
                     if unique {
                         if parked_uniques.contains(&f.entity.name) {
@@ -842,16 +858,28 @@ impl<'c> WorldFacts<'c> {
                         }
                         parked_uniques.insert(f.entity.name.clone());
                     }
+                    if let Some(g) = group {
+                        if parked_group_uniques.contains(g) {
+                            continue;
+                        }
+                        parked_group_uniques.insert(g.to_string());
+                    }
                     let w = std::cmp::min(f.count, FLATTEN_WEIGHT_CAP);
-                    let w = if unique { w.min(1) } else { w };
+                    let w = if unique || group.is_some() { w.min(1) } else { w };
                     parked.push(DistEntry { e: f.entity.clone(), w, unbounded: f.unbounded });
                     continue;
                 }
                 if unique && by_name.contains_key(&f.entity.name) {
                     continue;
                 }
+                if let Some(g) = group {
+                    if group_uniques.contains(g) {
+                        continue;
+                    }
+                    group_uniques.insert(g.to_string());
+                }
                 let w = std::cmp::min(f.count, FLATTEN_WEIGHT_CAP);
-                let w = if unique { w.min(1) } else { w };
+                let w = if unique || group.is_some() { w.min(1) } else { w };
                 by_name.insert(
                     f.entity.name.clone(),
                     by_name.get(&f.entity.name).copied().unwrap_or(0) + w,
@@ -1039,6 +1067,7 @@ pub(crate) fn compute_world_facts<'c>(
         proven: IndexMap::new(),
         mint_sources: IndexMap::new(),
         minted_manifested: IndexSet::new(),
+        minted_groups: IndexSet::new(),
         fillers: IndexMap::new(),
         universe: Vec::new(),
         opaque_spawn_aspects: false,

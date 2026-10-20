@@ -52,6 +52,20 @@ fn unique_re() -> &'static Regex {
     static_regex(&RE, || Regex::new(&format!(r"^unique(?-u:\b){DSL_WS_CLASS}*")))
 }
 
+/// `/^uniquegroup\b\s*(\S+)\s*/` (a PREFIX match; the matched text is sliced
+/// off `rest`) — the §4.2 `uniquegroup <NAME>` keyword with its group id
+/// capture, a sibling of `unique`. The capture must be a legal identifier
+/// (`^[A-Za-z_][A-Za-z0-9_]*$`, the §10 identifier lexeme) — validated by
+/// the parse below, an error naming the captured text otherwise.
+fn uniquegroup_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    static_regex(&RE, || {
+        Regex::new(&format!(
+            r"^uniquegroup(?-u:\b){DSL_WS_CLASS}*({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}*"
+        ))
+    })
+}
+
 /// `/(?:^|\s+)(?:at|in)\s+(\S+)\s*$/`
 fn at_in_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -304,13 +318,19 @@ pub(super) fn parse_entity_line(
     }
     // §4.2 (v0.9.6): an entity line cannot carry `unique` — a declared
     // entity exists once by name already, so the keyword would be redundant.
-    // The keyword-position check only (the same prefix discipline as
-    // `stackable`): the word inside a desc string or after the clause walk
-    // never reaches here, and a stray trailing `unique` stays the ordinary
-    // could-not-parse error.
+    // §4.2 (v0.10.1): nor `uniquegroup <NAME>` — group membership is a
+    // prototype-line keyword for the same reason. The keyword-position
+    // check only (the same prefix discipline as `stackable`): the word
+    // inside a desc string or after the clause walk never reaches here, and
+    // a stray trailing keyword stays the ordinary could-not-parse error.
     if unique_re().is_match(&rest) {
         return Err(ChorusError::new(format!(
             "line {ln}: entity '{name}' cannot carry `unique` — a declared entity exists once by name already (§4.2)"
+        )));
+    }
+    if uniquegroup_re().is_match(&rest) {
+        return Err(ChorusError::new(format!(
+            "line {ln}: entity '{name}' cannot carry `uniquegroup` — a declared entity exists once by name already (§4.2)"
         )));
     }
     // trailing clauses, in either order: "with specs" and "at/in PLACE" —
@@ -401,11 +421,15 @@ pub(super) fn parse_prototype_line(
     }
     let mut proto = PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() };
     let mut rest: String = grp_text(&m, 3).to_string();
-    // §4.2: the `stackable`/`unique` keywords sit before `deriving`/`with`
-    // clauses, in either order — carrying BOTH is a load error (a unique
-    // prototype is never stackable, §4.2)
+    // §4.2: the `stackable`/`unique`/`uniquegroup <NAME>` keywords sit
+    // before `deriving`/`with` clauses, in either order — `unique` +
+    // `stackable`, `uniquegroup` + `stackable` and `unique` + `uniquegroup`
+    // on one line are each a load error (a unique prototype is never
+    // stackable, and a group member carries the group face INSTEAD of the
+    // name face, §4.2)
     let mut stackable = false;
     let mut unique = false;
+    let mut unique_group: Option<String> = None;
     loop {
         if !stackable {
             if let Some(sm) = stackable_re().find(&rest) {
@@ -423,6 +447,24 @@ pub(super) fn parse_prototype_line(
                 continue;
             }
         }
+        if unique_group.is_none() {
+            if let Some(gm) = uniquegroup_re().captures(&rest) {
+                let id = grp_text(&gm, 1).to_string();
+                // §4.2 (v0.10.1): the group id is an identifier — the §10
+                // identifier lexeme — so a keyword-looking or punctuated
+                // token fails loud here instead of compiling a group no
+                // reader can spell
+                if !crate::content::compile::ident_re().is_match(&id) {
+                    return Err(ChorusError::new(format!(
+                        "line {ln}: prototype '{name}': uniquegroup expects an identifier, got '{id}' (§4.2)"
+                    )));
+                }
+                unique_group = Some(id);
+                let end = grp_end(&gm, 0);
+                rest.drain(..end);
+                continue;
+            }
+        }
         break;
     }
     if unique && stackable {
@@ -430,8 +472,19 @@ pub(super) fn parse_prototype_line(
             "line {ln}: prototype '{name}' cannot carry both `stackable` and `unique` — a unique prototype is never stackable (§4.2)"
         )));
     }
+    if unique_group.is_some() && stackable {
+        return Err(ChorusError::new(format!(
+            "line {ln}: prototype '{name}' cannot carry both `stackable` and `uniquegroup` — a group member is never stackable (§4.2)"
+        )));
+    }
+    if unique_group.is_some() && unique {
+        return Err(ChorusError::new(format!(
+            "line {ln}: prototype '{name}' cannot carry both `unique` and `uniquegroup` — the group carries the group face instead of the name face (§4.2)"
+        )));
+    }
     proto.stackable = stackable;
     proto.unique = unique;
+    proto.unique_group = unique_group;
     let mut aspects_done = false;
     let mut derive_done = false;
     let mut desc: Option<String> = None;

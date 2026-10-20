@@ -422,11 +422,17 @@ pub(super) fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResu
                 )));
             };
             let cursor = ctx.state.decks.get(&deck.id).copied().unwrap_or(0);
-            // the §4.2 unique deck filter is part of the shared draw rule —
-            // the fold re-derives it from its own manifested set (rebuilt
-            // through the mint path), so the landed cursor is identical
-            let (expected, next) =
-                draw_from(ctx.content, deck, cursor, &ctx.state.manifested_uniques)?; // throws loud on a drifted-away exhaustion rule
+            // the §4.2 unique/group deck filter is part of the shared draw
+            // rule — the fold re-derives it from its own manifested sets
+            // (rebuilt through the mint path), so the landed cursor is
+            // identical
+            let (expected, next) = draw_from(
+                ctx.content,
+                deck,
+                cursor,
+                &ctx.state.manifested_uniques,
+                &ctx.state.manifested_groups,
+            )?; // throws loud on a drifted-away exhaustion rule
             if expected.name != recorded {
                 return Err(ChorusError::new(format!(
                     "DRAWN: deck '{}' draw #{cursor} recorded '{recorded}' but the compiled deck serves '{}' — content drift between play and fold (§4.4)",
@@ -707,14 +713,21 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }
         None => None,
     };
-    // serve + advance the cursor; the §4.2 unique deck filter skips
-    // manifested-unique positions inside the same call (the returned cursor
-    // is the drawn rule's own landing), and `draw_from` throws on a truly
+    // serve + advance the cursor; the §4.2 unique/group deck filter skips
+    // dead positions (manifested uniques, manifested-group members, later
+    // occurrences) inside the same call (the returned cursor is the drawn
+    // rule's own landing), and `draw_from` throws on a truly
     // exhausted deck with neither `reset` nor `defaultcard` — §9.2 (nothing
     // logged, cursor unmoved: the mutation below happens on the draft only
     // after it returns)
     let cursor = ctx.state.decks.get(&deck_id).copied().unwrap_or(0);
-    let (drawn, next) = draw_from(ctx.content, deck, cursor, &ctx.state.manifested_uniques)?;
+    let (drawn, next) = draw_from(
+        ctx.content,
+        deck,
+        cursor,
+        &ctx.state.manifested_uniques,
+        &ctx.state.manifested_groups,
+    )?;
     ctx.state.decks.insert(deck_id.clone(), next);
     let mut spawn_args: Vec<Arg> =
         vec![Arg::Ref { r#ref: name_ref(drawn.name.clone(), Some(drawn.kind.clone())) }];

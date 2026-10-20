@@ -94,6 +94,27 @@ pub(crate) fn collect_uniques(
     names
 }
 
+/// The §4.2 unique-GROUP table: the prototypes carrying `uniquegroup <NAME>`
+/// contribute (GROUP → member NAMES) in first-member declaration order.
+/// Membership attaches to the name (a derive-renamed mint escapes it, the
+/// `unique` sets' discipline); a name can carry at most one membership (the
+/// grammar rejects a second `uniquegroup` keyword on one line, and
+/// prototype names are unique), so the group sets are pairwise disjoint and
+/// the build order here is unobservable.
+pub(crate) fn collect_unique_groups(
+    prototypes: Option<&IndexMap<String, PrototypeDef>>,
+) -> IndexMap<String, IndexSet<String>> {
+    let mut groups: IndexMap<String, IndexSet<String>> = IndexMap::new();
+    if let Some(prototypes) = prototypes {
+        for (name, p) in entries_in_key_order(prototypes) {
+            if let Some(group) = &p.unique_group {
+                groups.entry(group.clone()).or_default().insert(name.to_string());
+            }
+        }
+    }
+    groups
+}
+
 /// The §4.2 description table: the declared entity and prototype names
 /// carrying a `desc "…"`. Keyed by NAME (an entity/prototype name collision
 /// is a load error, so the keys are unique); insertion order is
@@ -139,6 +160,23 @@ pub fn compile_content(
     let (stackable_names, stackable_kinds) = collect_stackable(entities, raw.prototypes.as_ref());
     // §4.2: …and the unique names beside them
     let unique_names = collect_uniques(raw.prototypes.as_ref());
+    // §4.2: …and the unique groups (GROUP → member names) with their
+    // one order-independent load check: a group id that IS a card name —
+    // a declared entity or prototype — would make the manifested sets
+    // ambiguous (a manifested_uniques entry and a manifested_groups entry
+    // would share one string with different meanings). Entity/prototype
+    // declarations are all in hand here, so the check is order-independent
+    // however the sections were listed.
+    let unique_groups = collect_unique_groups(raw.prototypes.as_ref());
+    for group in unique_groups.keys() {
+        let entity_hit = entities.iter().any(|e| &e.name == group);
+        let proto_hit = raw.prototypes.as_ref().is_some_and(|ps| ps.contains_key(group));
+        if entity_hit || proto_hit {
+            return Err(ChorusError::new(format!(
+                "uniquegroup group id '{group}' is also a declared entity/prototype name — a group id must not be a card name (§4.2)"
+            )));
+        }
+    }
     // §4.2: …and the description table they mint from
     let descs = collect_descs(entities, raw.prototypes.as_ref());
     let endings = compile_endings(raw.endings.as_ref())?;
@@ -211,6 +249,7 @@ pub fn compile_content(
         stackable_names,
         stackable_kinds,
         unique_names,
+        unique_groups,
         descs,
         decks,
         recipe_verbs,

@@ -12,8 +12,8 @@ use super::parse::parse_script;
 use super::types::declared_entities;
 use super::when_dead::{when_verdict, WhenCx, WhenRange, WhenVerdict};
 use crate::content::{
-    collect_stackable, collect_uniques, for_each_authored_outcome_infallible, mint_recipe_id,
-    CompiledTrigger, RecipeDef, SlotDef,
+    collect_stackable, collect_unique_groups, collect_uniques,
+    for_each_authored_outcome_infallible, mint_recipe_id, CompiledTrigger, RecipeDef, SlotDef,
 };
 use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
@@ -554,11 +554,14 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     // spec entry that can physically be served only ONCE cannot collide with
     // itself: the deck exhausts before a second copy is ever asked for.
     // A UNIQUE entry is exempt too: its mint face skips while a copy lives
-    // (§4.2), so the second serve deals nothing and the deck never pins.
+    // (§4.2), so the second serve deals nothing and the deck never pins —
+    // and the same exemption covers a uniquegroup MEMBER (the mint face
+    // skips while any member of its group lives, v0.10.1).
     let declared = declared_entities(&script.entities);
     let (stackable_names, stackable_kinds) =
         collect_stackable(&declared, script.content.prototypes.as_ref());
     let unique_names = collect_uniques(script.content.prototypes.as_ref());
+    let unique_groups = collect_unique_groups(script.content.prototypes.as_ref());
     if let Some(decks) = &script.content.decks {
         // the serve census: how many spec/defaultcard positions across ALL
         // decks serve each name — a name with a second serving position can
@@ -599,7 +602,9 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                 {
                     continue;
                 }
-                if unique_names.contains(entry) {
+                if unique_names.contains(entry)
+                    || unique_groups.values().any(|ms| ms.contains(entry))
+                {
                     continue;
                 }
                 // the once-only physics, all three required: the entry comes
@@ -617,6 +622,22 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                     d.id
                 )));
             }
+        }
+    }
+
+    // §4.2 (v0.10.1) advisory: a group with exactly ONE member — a unique
+    // spelled strangely. The single-member group face behaves like `unique`
+    // on the name except for the key it manifests under (the group id, not
+    // the name), which is almost never what the author meant.
+    for (group, members) in &unique_groups {
+        if members.len() == 1 {
+            let member = members.iter().next().unwrap_or(group);
+            findings.push(LintFinding {
+                severity: LintSeverity::Warning,
+                message: format!(
+                    "uniquegroup '{group}' has a single member ({member}) — a unique spelled strangely (§4.2)"
+                ),
+            });
         }
     }
 

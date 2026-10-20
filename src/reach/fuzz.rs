@@ -33,8 +33,15 @@
 //! (p=0.10, AFTER the INTO draw, inside the SPAWN band) and a
 //! `total(parked, aspect:a) >= n` form in the `when` candidate table (built
 //! eagerly with the other nine, so its draw joins the frozen order before
-//! the pick). Every recorded
-//! fuzz run taken before v13 is therefore NOT reproducible
+//! the pick); v14 added the §4.2 `uniquegroup` draw (v0.10.1): p=0.30 of a
+//! drawn unique prototype instead joins the scenario's single group G1 —
+//! one roll per prototype ALWAYS (AFTER the unique draw, landing only on a
+//! drawn unique: the grammar rejects `unique` + `uniquegroup` on one line),
+//! and the group backfills to 2–3 members AFTER the prototype loop (one
+//! count draw when a group seed and a non-member mate both exist, then the
+//! sample_distinct picks; a drafted mate's own `unique` flag clears under
+//! the same load rule). Every recorded
+//! fuzz run taken before v14 is therefore NOT reproducible
 //! seed-for-seed; reproduce against the matching generator version. What
 //! stays pinned is that the generator is a pure function of its seed — the
 //! same seed builds the same scenario, draw for draw, under ONE version.
@@ -470,6 +477,18 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         if r.next_f64() < 0.15 && !p.stackable {
             p.unique = true;
         }
+        // §4.2 (v14 NEW draw, p=0.30, ALWAYS one roll per prototype, AFTER
+        // the unique draw): the drawn unique INSTEAD joins the scenario's
+        // single group G1 — the group carries the group face instead of the
+        // name face, so the name-level flag clears (the grammar rejects
+        // `unique` + `uniquegroup` on one line). The group's mates come
+        // from the same prototype pool (the backfill below), so member
+        // draws can collide — two members riding one deck is the shape the
+        // group filter exists for.
+        if r.next_f64() < 0.30 && p.unique {
+            p.unique = false;
+            p.unique_group = Some("G1".to_string());
+        }
         // short-circuit: no draw once derive is done
         if !derive_done && r.next_f64() < 0.25 {
             p.derive =
@@ -477,6 +496,46 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             derive_done = true;
         }
         prototypes.insert(pn.clone(), p);
+    }
+
+    // §4.2 (v14 NEW backfill, AFTER the prototype loop): the group rides to
+    // its 2–3 members — one count draw (2 or 3 total) when a group seed and
+    // a non-member prototype both exist (no draws at all otherwise), then
+    // the sample_distinct picks over the non-members; a drafted mate's own
+    // `unique` flag clears under the same load rule. Group id "G1" collides
+    // with no card name in any pool (P1–P3, the NAME_POOL, ANA/BERTHA/
+    // HOUSE), so the §4.2 group-id load check passes by construction.
+    let group_seed = proto_names
+        .iter()
+        .find(|pn| prototypes.get(*pn).is_some_and(|p| p.unique_group.is_some()))
+        .cloned();
+    if let Some(seed_proto) = group_seed {
+        let group = prototypes.get(&seed_proto).and_then(|p| p.unique_group.clone());
+        if let Some(group) = group {
+            let members: Vec<String> = proto_names
+                .iter()
+                .filter(|pn| {
+                    prototypes.get(*pn).is_some_and(|p| p.unique_group.as_deref() == Some(&group))
+                })
+                .cloned()
+                .collect();
+            let non_members: Vec<String> = proto_names
+                .iter()
+                .filter(|pn| prototypes.get(*pn).is_some_and(|p| p.unique_group.is_none()))
+                .cloned()
+                .collect();
+            if !non_members.is_empty() {
+                let want_total = 2 + int(&mut r, 2); // 2–3
+                let need = (want_total - members.len()).min(non_members.len());
+                for mate in sample_distinct(&mut r, &non_members, need) {
+                    let p = prototypes.get_mut(&mate).unwrap_or_else(|| {
+                        unreachable!("backfill mates draw from the prototype pool")
+                    });
+                    p.unique = false;
+                    p.unique_group = Some(group.clone());
+                }
+            }
+        }
     }
 
     // deck — repeats weight the spec; defaultcard/reset combinations.

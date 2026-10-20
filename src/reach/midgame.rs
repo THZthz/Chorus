@@ -14,8 +14,9 @@
 //! What the face models on top (world.rs / fixpoint.rs / paths.rs):
 //! already-fired once triggers (they never fire again — the `AlreadyFired`
 //! rung), the deck cursors (draws serve from the cursor forward —
-//! `deck_serves_cap` / `add_product`), and the manifested unique set (§4.2:
-//! its deck positions never serve again — the same two predicates). What
+//! `deck_serves_cap` / `add_product`), and the manifested unique and group
+//! sets (§4.2: their deck positions never serve again — the same two
+//! predicates). What
 //! stays deliberately unmodeled
 //! is named in the fidelity note every replayed report carries: open
 //! windows (the lock table), the executed-recipe map, the rng counter.

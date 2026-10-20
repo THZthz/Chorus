@@ -197,6 +197,14 @@ pub struct State {
     /// (the `fired` precedent, §6.6): the fold rebuilds it from the logged
     /// SPAWN rows' unique faces.
     pub manifested_uniques: IndexSet<String>,
+    /// §4.2 (v0.10.1): the MANIFESTED GROUPS — every uniquegroup id ever
+    /// minted (by ANY member), permanently (a member's deck entries stay
+    /// dead once the group is manifested, whatever later mints land). The
+    /// name-level set stays name-keyed: one mint inserts into exactly one
+    /// of the two (the grammar rejects `unique` + `uniquegroup` on one
+    /// line). Maintained by the same one mint path play and fold share —
+    /// the fold rebuilds it from the logged SPAWN rows' group faces.
+    pub manifested_groups: IndexSet<String>,
     /// §6.4: recipe execution counts — recipe id → registered windows.
     /// Maintained by the ONE window-registration path play and fold share;
     /// selection reads only this map, never the log (the `fired`
@@ -219,6 +227,7 @@ pub fn new_state(now: i64) -> State {
         rng: 0,
         decks: IndexMap::new(),
         manifested_uniques: IndexSet::new(),
+        manifested_groups: IndexSet::new(),
         executed: IndexMap::new(),
         windows: IndexMap::new(),
     }
@@ -255,6 +264,8 @@ impl Clone for State {
             // law 6 (§4.2): the manifested set is copied — a discarded
             // draft's unique mints must not manifest into the real state
             manifested_uniques: self.manifested_uniques.clone(),
+            // law 6 (§4.2): the manifested groups likewise
+            manifested_groups: self.manifested_groups.clone(),
             executed: self.executed.clone(),
             windows: self.windows.clone(),
         }

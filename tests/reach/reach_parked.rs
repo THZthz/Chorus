@@ -89,6 +89,7 @@ fn proto(
             aspects: Some(a),
             stackable,
             unique: false,
+            unique_group: None,
             derive: None,
             attrs: None,
             desc: None,

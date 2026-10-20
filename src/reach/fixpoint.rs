@@ -361,23 +361,32 @@ impl<'c> WorldFacts<'c> {
             // copied out so the `dead` closure borrows no `self` (the pushes
             // below take &mut while the closure is still alive); the
             // minted-marks copy-out mirrors the `initial` one — the closure
-            // reads the same union `deck_position_dead` reads (initial set ∪
-            // in-play mints)
+            // reads the same unions `deck_position_dead` reads (initial sets
+            // ∪ in-play mints, names and groups alike)
             let initial: &'c State = self.initial;
             let minted: IndexSet<String> = self.minted_manifested.clone();
-            // the §4.2 unique deck filter's dead positions (the engine's lazy
-            // draw rule): a manifested unique — in the initial state's set or
-            // minted in-play by a proven SPAWN/REPLACE (the mint face records
-            // the name permanently) — or a later occurrence of any unique —
-            // the earliest copy's serve always manifests the name, so a later
-            // occurrence never serves in any execution. Dead positions cost
-            // no serve (the serving draw consumes them).
+            let minted_groups: IndexSet<String> = self.minted_groups.clone();
+            // the §4.2 unique/group deck filter's dead positions (the
+            // engine's lazy draw rule): a manifested unique — in the initial
+            // state's set or minted in-play by a proven SPAWN/REPLACE (the
+            // mint face records the name permanently) — a member of a
+            // manifested group (the same two-sided union on
+            // `initial.manifested_groups` ∪ the in-play member mints) — or a
+            // later occurrence of any unique OR member name — the earliest
+            // copy's serve always manifests first, so a later occurrence
+            // never serves in any execution. Dead positions cost no serve
+            // (the serving draw consumes them).
             let dead = |idx: usize| -> bool {
                 let c = &deck.order[idx];
-                content.mint_is_unique(&c.name)
-                    && (initial.manifested_uniques.contains(&c.name)
-                        || minted.contains(&c.name)
-                        || deck.order[..idx].iter().any(|p| p.name == c.name))
+                let unique = content.mint_is_unique(&c.name);
+                let group = content.mint_group(&c.name);
+                (unique
+                    && (initial.manifested_uniques.contains(&c.name) || minted.contains(&c.name)))
+                    || (group.is_some_and(|g| {
+                        initial.manifested_groups.contains(g) || minted_groups.contains(g)
+                    }))
+                    || ((unique || group.is_some())
+                        && deck.order[..idx].iter().any(|p| p.name == c.name))
             };
             // capacity-aware: only the first `site.cap`
             // order positions are ever served (seed 150846 phantom entries)
@@ -421,9 +430,12 @@ impl<'c> WorldFacts<'c> {
                 // a bounded number of times, whatever the deck's shape. A
                 // UNIQUE card never repeats: its first serve manifests it,
                 // and every later serve — next period or defaultcard alike —
-                // is skipped by the mint face (§4.2)
+                // is skipped by the mint face (§4.2). The GROUP face
+                // (v0.10.1): a member's first serve manifests the GROUP, so
+                // every later serve of ANY member is skipped the same way.
                 let unique = content.mint_is_unique(name);
-                let endless = !unique
+                let once = unique || content.mint_is_group_member(name);
+                let endless = !once
                     && (deck.reset || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == *name));
                 let repeats = endless && self.source_repeat_bound(&site) == MANY;
                 // a derive-card drawn behind an
@@ -442,6 +454,8 @@ impl<'c> WorldFacts<'c> {
                         }
                     } else if unique {
                         " (unique — one living copy)"
+                    } else if once {
+                        " (group member — one living copy)"
                     } else {
                         ""
                     }
@@ -460,11 +474,14 @@ impl<'c> WorldFacts<'c> {
             if let Some(dc) = &deck.defaultcard {
                 // the defaultcard is reached when the draws outrun the LIVE
                 // order (dead unique positions exhaust the deck sooner);
-                // a UNIQUE defaultcard still mints at most one living copy
+                // a UNIQUE or group-member defaultcard still mints at most
+                // one living copy (the first serve manifests — the name or
+                // the group — and every later serve skips)
                 let live_full =
                     deck.order.iter().enumerate().filter(|(i, _)| !dead(*i)).count() as i64;
                 if site.cap > live_full && !counts.contains_key(&dc.name) {
                     let repeats = !content.mint_is_unique(&dc.name)
+                        && !content.mint_is_group_member(&dc.name)
                         && self.source_repeat_bound(&site) == MANY;
                     let proto = content.prototypes.get(&dc.name);
                     let blind = draw_blinds_bare(content, &site, &dc.name);
@@ -501,11 +518,19 @@ impl<'c> WorldFacts<'c> {
         // the honest repeat count: a stackable mint from an UNBOUNDED
         // source is MANY; a `max`-capped recipe and a once trigger mint
         // exactly their bound; a REPLACE consumes its live target (bound 1
-        // — [`Self::source_repeat_bound`]); a UNIQUE mint never repeats —
-        // its pool never outlives one living copy (the mint face skips),
-        // whatever the kind's stackable declarations say
+        // — [`Self::source_repeat_bound`]); a UNIQUE or group-member mint
+        // never repeats — its pool never outlives one living copy (the
+        // mint face skips — the name for a unique, any member for a
+        // group), whatever the kind's stackable declarations say
         let bound = self.source_repeat_bound(&site);
-        let count = if stacks && !content.mint_is_unique(&site.name) { bound } else { 1 };
+        let count = if stacks
+            && !content.mint_is_unique(&site.name)
+            && !content.mint_is_group_member(&site.name)
+        {
+            bound
+        } else {
+            1
+        };
         let entity = self.synth(key, &kind, proto, None);
         let how = format!(
             "{} {} by {}{}",
@@ -533,13 +558,21 @@ impl<'c> WorldFacts<'c> {
         // records a UNIQUE name PERMANENTLY — `apply_spawn`/`apply_replace`
         // insert unconditionally, whether or not the mint lands — so a
         // proven mint of a unique bare name kills that name's deck
-        // positions. The blinded derive-mint marks nothing (its product is
-        // the sentinel, never the unique name — exact, since a derived name
-        // is never the unique name at play either). Draw sites mark nothing:
-        // a draw SERVES an existing copy rather than minting, and marking
-        // from a draw would kill the served position itself.
-        if !blind && content.mint_is_unique(&site.name) {
-            self.minted_manifested.insert(site.name.clone());
+        // positions. The GROUP face (v0.10.1): a proven member mint marks
+        // the GROUP, killing every member's positions the same way. The
+        // blinded derive-mint marks nothing (its product is
+        // the sentinel, never the marked name — exact, since a derived name
+        // is neither the unique name nor a member name at play either). Draw
+        // sites mark nothing: a draw SERVES an existing copy rather than
+        // minting, and marking from a draw would kill the served position
+        // itself.
+        if !blind {
+            if content.mint_is_unique(&site.name) {
+                self.minted_manifested.insert(site.name.clone());
+            }
+            if let Some(g) = content.mint_group(&site.name) {
+                self.minted_groups.insert(g.to_string());
+            }
         }
     }
 
@@ -582,7 +615,10 @@ impl<'c> WorldFacts<'c> {
             return (Err(CardBlocker::KilledInList), None); // the mint is destroyed later in the same list
         }
         if site.unique_skipped {
-            return (Err(CardBlocker::UniqueSkipped), None); // the §4.2 mint face skips this repeat mint
+            return (Err(CardBlocker::UniqueSkipped), None); // the §4.2 mint face skips this repeat mint (same name or group member)
+        }
+        if self.group_sibling_blocks(site) {
+            return (Err(CardBlocker::GroupMemberBlocked), None); // the group living-check skips this landing — an initial or engine-timed sibling may always be alive
         }
         if site.dup_risk {
             return (Err(CardBlocker::DupRisk), None); // a duplicate non-stackable mint refuses the draft
@@ -912,6 +948,14 @@ pub enum CardBlocker {
     /// copy lives: the earlier mint in the same application always lands
     /// first, so this site never mints.
     UniqueSkipped,
+    /// `site.group_blocked` — a SIBLING member of this site's uniquegroup
+    /// is already living outside this list — an INITIAL copy (the replayed
+    /// midgame world, alive from minute zero) or one minted by an
+    /// engine-timed owner (§4.2 v0.10.1): the group living-check skips the
+    /// landing (mint or draw serve) while ANY member lives, and those
+    /// siblings' copies are alive at landings the player cannot outrun, so
+    /// this site's landing deals nothing and its product never exists.
+    GroupMemberBlocked,
     /// `site.dup_risk` — a duplicate non-stackable mint refuses the draft.
     DupRisk,
     /// `self_gated` — gated on (or filled by) a card the list itself mints.
@@ -1019,7 +1063,9 @@ impl CardBlocker {
             }
             CardBlocker::KilledInList => "the mint is destroyed/Replaced later in the same outcome list — it never survives a step"
                 .to_string(),
-            CardBlocker::UniqueSkipped => "an earlier op of the same list already mints this unique name — the §4.2 mint face skips while a copy lives, so the earlier mint in the same application lands first and this site never mints"
+            CardBlocker::UniqueSkipped => "an earlier op of the same list already mints this unique name (or a member of its group) — the §4.2 mint face skips while a copy lives, so the earlier mint in the same application lands first and this site never mints"
+                .to_string(),
+            CardBlocker::GroupMemberBlocked => "a sibling member of its group is already living outside this list — an initial copy (the replayed world) or one minted by an engine-timed owner — and the §4.2 group mint face skips while ANY member lives, at landings the player cannot outrun, so this landing deals nothing"
                 .to_string(),
             CardBlocker::DupRisk => "this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft"
                 .to_string(),
@@ -1639,6 +1685,70 @@ impl<'c> WorldFacts<'c> {
                 let (_, v) = match self.content.verbs.get_index(verb) {
                     Some((n, v)) => (n, v),
                     None => return true,
+                };
+                self.initial.now + MIN_PER_TICK + super::world::effective_duration(v, recipe)
+                    <= own_first
+            }
+        })
+    }
+
+    /// §4.2 (v0.10.1): does a SIBLING member of this site's group hold a
+    /// LIVING copy at the site's own earliest landing? The group
+    /// living-check skips the landing while ANY member lives, so a sibling
+    /// that may already be alive there blocks the product. An INITIAL
+    /// sibling (the replayed midgame world's entity) is alive from minute
+    /// zero — before every landing the player can order — and blocks
+    /// unorderably. The orderable faces mirror
+    /// [`Self::collision_precedes_first_cross`]: a slot-trigger
+    /// site lands at its first crossing; an ambient recipe's site at the
+    /// sweep's first boundary plus the window length; a PLAIN player recipe
+    /// commits at will — an instant commit at the current minute precedes
+    /// every engine landing (the earliest is the sweep's first boundary,
+    /// now + MIN_PER_TICK, §6.6), so no ENGINE landing blocks it. A CHAIN-FED
+    /// candidate (some list's RUN/FORK names its recipe) conservatively
+    /// carries no orderable face: its landing rides the pinning parent's
+    /// completion (often engine-timed), so any engine-timed sibling blocks.
+    fn group_sibling_blocks(&self, site: &RawSite<'_>) -> bool {
+        if site.group_sources.is_empty() {
+            return false;
+        }
+        // the unorderable face: the initial sibling precedes every landing,
+        // the plain player recipe's outrun below included
+        if site.group_sources.iter().any(|(_, src)| matches!(src, MintSource::Initial)) {
+            return true;
+        }
+        let chain_fed = self
+            .census
+            .chain_target_owners
+            .values()
+            .flat_map(|ops| ops.iter().flatten())
+            .any(|cand| cand == &site.owner);
+        if chain_fed {
+            return true;
+        }
+        let own_first = match self.trig_idx.get(&site.owner) {
+            Some((CompiledTrigger::Slot { slot, .. }, _)) => {
+                self.initial.now + self.first_cross(*slot)
+            }
+            _ => {
+                let Some((_, v)) = site.verb.and_then(|vi| self.content.verbs.get_index(vi)) else {
+                    return true; // no orderable face — block
+                };
+                if !v.ambient {
+                    // a plain player recipe outruns every engine landing
+                    return false;
+                }
+                self.initial.now + MIN_PER_TICK + super::world::effective_duration(v, site.recipe)
+            }
+        };
+        site.group_sources.iter().any(|(_, src)| match *src {
+            MintSource::Initial | MintSource::ExpireTrigger => true,
+            MintSource::SlotTrigger { slot: theirs } => {
+                self.initial.now + self.first_cross(theirs) <= own_first
+            }
+            MintSource::AmbientRecipe { verb, recipe } => {
+                let Some((_, v)) = self.content.verbs.get_index(verb) else {
+                    return true;
                 };
                 self.initial.now + MIN_PER_TICK + super::world::effective_duration(v, recipe)
                     <= own_first

@@ -275,6 +275,7 @@ pub fn seed_content() -> ContentRaw {
                     kind: "idea".into(),
                     stackable: false,
                     unique: false,
+                    unique_group: None,
                     aspects: Some([("secret", AspectVal::Num(1))].into_iter().map(|(k, v)| (k.to_string(), v)).collect()),
                     attrs: None,
                     derive: None,
@@ -291,6 +292,7 @@ pub fn seed_content() -> ContentRaw {
                     kind: "idea".into(),
                     stackable: false,
                     unique: false,
+                    unique_group: None,
                     aspects: None,
                     attrs: None,
                     derive: Some(PrototypeDerive {

@@ -329,21 +329,29 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
 }
 
 impl<'c> WorldFacts<'c> {
-    /// The §4.2 unique deck filter's dead-position test (the serving face of
-    /// the engine's lazy draw rule): a position is dead when its card names
-    /// a unique that is already MANIFESTED — in the initial state's set (the
-    /// midgame truth, rebuilt through the mint path) or minted in-play by a
-    /// proven SPAWN/REPLACE (the engine's mint face records the name
-    /// permanently, whether or not the mint lands) — or when it is a LATER
-    /// occurrence of any unique name — the earliest copy's serve (or skip)
-    /// always manifests the name first, so a later occurrence never serves
-    /// in any execution.
+    /// The §4.2 unique/group deck filter's dead-position test (the serving
+    /// face of the engine's lazy draw rule): a position is dead when its
+    /// card names a unique that is already MANIFESTED — in the initial
+    /// state's set (the midgame truth, rebuilt through the mint path) or
+    /// minted in-play by a proven SPAWN/REPLACE (the engine's mint face
+    /// records the name permanently, whether or not the mint lands) — or a
+    /// member of a GROUP that is already manifested (the same two-sided
+    /// union on the group sets; one member's manifestation kills every
+    /// member's entries) — or when it is a LATER occurrence of any unique
+    /// OR member name — the earliest copy's serve (or skip) always
+    /// manifests first, so a later occurrence never serves in any
+    /// execution.
     pub(crate) fn deck_position_dead(&self, deck: &CompiledDeck, idx: usize) -> bool {
         let c = &deck.order[idx];
-        self.content.mint_is_unique(&c.name)
+        let unique = self.content.mint_is_unique(&c.name);
+        let group = self.content.mint_group(&c.name);
+        (unique
             && (self.initial.manifested_uniques.contains(&c.name)
-                || self.minted_manifested.contains(&c.name)
-                || deck.order[..idx].iter().any(|p| p.name == c.name))
+                || self.minted_manifested.contains(&c.name)))
+            || (group.is_some_and(|g| {
+                self.initial.manifested_groups.contains(g) || self.minted_groups.contains(g)
+            }))
+            || ((unique || group.is_some()) && deck.order[..idx].iter().any(|p| p.name == c.name))
     }
 
     /// The deck serving predicate with the midgame deck cursor folded in —
@@ -376,10 +384,12 @@ impl<'c> WorldFacts<'c> {
                     return false;
                 }
                 if deck.reset {
-                    // the order is periodic, but a UNIQUE target serves at
-                    // most once ever (its serve manifests it — every later
-                    // period skips it), so the first-period face is the only
-                    // one; with no uniques this is the raw `cap > idx`
+                    // the order is periodic, but a UNIQUE or group-member
+                    // target serves at most once ever (its first serve —
+                    // or skip — manifests the name or the group — every
+                    // later period skips it), so the first-period face is
+                    // the only one; with no uniques this is the raw
+                    // `cap > idx`
                     return cap > live_before(idx);
                 }
                 let cursor = self.initial.decks.get(&deck.id).copied().unwrap_or(0);

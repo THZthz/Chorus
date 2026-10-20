@@ -606,6 +606,125 @@ decks:
     assert_eq!(w, Vec::<String>::new(), "{w:?}");
 }
 
+// ---------------------------------------------------------------------------
+// the §4.2 `uniquegroup` keyword (v0.10.1): a prototype-line keyword only,
+// the three pairwise load errors, the group-id rules, the single-member
+// warning and the deck livelock advisory's member exemption
+// ---------------------------------------------------------------------------
+
+#[test]
+fn unique_and_uniquegroup_on_one_prototype_line_is_a_load_error() {
+    // the group carries the group face INSTEAD of the name face (§4.2)
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item unique uniquegroup CABARET")),
+        r"prototype 'RELIC' cannot carry both `unique` and `uniquegroup` — the group carries the group face instead of the name face",
+    );
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item uniquegroup CABARET unique")),
+        r"prototype 'RELIC' cannot carry both `unique` and `uniquegroup` — the group carries the group face instead of the name face",
+    );
+}
+
+#[test]
+fn uniquegroup_and_stackable_on_one_prototype_line_is_a_load_error() {
+    // a group member is never stackable (the `unique` + `stackable` precedent)
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item uniquegroup CABARET stackable")),
+        r"prototype 'RELIC' cannot carry both `stackable` and `uniquegroup` — a group member is never stackable",
+    );
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item stackable uniquegroup CABARET")),
+        r"prototype 'RELIC' cannot carry both `stackable` and `uniquegroup` — a group member is never stackable",
+    );
+}
+
+#[test]
+fn uniquegroup_on_an_entity_line_is_a_load_error() {
+    assert_err_msg(
+        compile(&base("  RELIC is item uniquegroup CABARET")),
+        r"entity 'RELIC' cannot carry `uniquegroup` — a declared entity exists once by name already",
+    );
+    // the keyword position only: the word inside a desc string is prose
+    assert!(compile(&base("  RELIC is item desc \"a uniquegroup relic\"")).is_ok());
+}
+
+#[test]
+fn uniquegroup_needs_an_identifier_group_name() {
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item uniquegroup")),
+        r"could not parse prototype line",
+    );
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item uniquegroup 9LIVES")),
+        r"uniquegroup expects an identifier, got '9LIVES'",
+    );
+    assert_err_msg(
+        compile(&base("prototypes:\n  RELIC is item uniquegroup CABARET-OPEN")),
+        r"uniquegroup expects an identifier, got 'CABARET-OPEN'",
+    );
+    // a legal identifier compiles
+    assert!(compile(&base("prototypes:\n  RELIC is item uniquegroup CABARET")).is_ok());
+}
+
+#[test]
+fn a_group_id_colliding_with_a_card_name_is_a_load_error() {
+    // a group id that IS a card name would make the manifested sets
+    // ambiguous — one order-independent check, either section order
+    assert_err_msg(
+        compile(&base("  RELIC is item\n\nprototypes:\n  GA is idea uniquegroup RELIC")),
+        r"uniquegroup group id 'RELIC' is also a declared entity/prototype name",
+    );
+    assert_err_msg(
+        compile(&base("prototypes:\n  GA is idea uniquegroup GB\n  GB is idea uniquegroup G1")),
+        r"uniquegroup group id 'GB' is also a declared entity/prototype name",
+    );
+}
+
+#[test]
+fn a_single_member_group_warns_and_a_member_deck_entry_is_exempt_from_the_livelock_rule() {
+    // the exemption: a member entry's mint face skips while any member
+    // lives (§4.2), so the deck never pins — no livelock finding. The one
+    // member is its own finding: the single-member-group advisory
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+prototypes:
+  RELIC is item uniquegroup CABARET
+
+decks:
+  POST spec RELIC, RELIC reset
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(
+        w,
+        vec![
+            "uniquegroup 'CABARET' has a single member (RELIC) — a unique spelled strangely (§4.2)"
+        ],
+        "{w:?}"
+    );
+    // two members: the exemption alone — silence
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+prototypes:
+  CURTAIN is item uniquegroup CABARET
+  RELIC is item uniquegroup CABARET
+
+decks:
+  POST spec CURTAIN, RELIC, CURTAIN reset
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(w, Vec::<String>::new(), "{w:?}");
+}
+
 /// `spec X defaultcard X` is one problem about one name: exactly one
 /// finding (the spec position's), never the byte-identical pair.
 #[test]

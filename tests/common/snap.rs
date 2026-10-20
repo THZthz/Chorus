@@ -4,8 +4,8 @@
 //! this. New State fields land here with the state itself.
 //!
 //! Frozen surface: the output is the exact canonical JSON image of the state —
-//! - key order: `ents, rels, byName, now, rng, decks, manifested, executed,
-//!   fired, ended, windows`
+//! - key order: `ents, rels, byName, now, rng, decks, manifested,
+//!   manifestedGroups, executed, fired, ended, windows`
 //!   (insertion order; no integer-like keys, so
 //!   OrdinaryOwnPropertyKeys agrees);
 //! - the SIX map fields
@@ -65,6 +65,10 @@ pub fn snap(s: &State) -> String {
     let mut manifested: Vec<&String> = s.manifested_uniques.iter().collect();
     manifested.sort_by(|a, b| cmp_utf16(a, b));
     root.insert("manifested".to_string(), serde_json::json!(manifested));
+    // §4.2 (v0.10.1): the manifested group set — the same rebuild discipline
+    let mut manifested_groups: Vec<&String> = s.manifested_groups.iter().collect();
+    manifested_groups.sort_by(|a, b| cmp_utf16(a, b));
+    root.insert("manifestedGroups".to_string(), serde_json::json!(manifested_groups));
     // §6.4: the recipe execution counts — play and fold must rebuild them
     // identically (the same registration path)
     root.insert(

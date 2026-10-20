@@ -213,7 +213,7 @@ fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_
     .unwrap();
     let none = indexmap::IndexSet::new();
     let serve = |deck: &chorus::content::CompiledDeck, cursor: i64| {
-        chorus::content::draw_from(&game.content, deck, cursor, &none).unwrap()
+        chorus::content::draw_from(&game.content, deck, cursor, &none, &none).unwrap()
     };
     let rumours = game.content.decks.get("RUMOURS").unwrap();
     assert_eq!(serve(rumours, 0).0.name, "RUMOUR");
@@ -232,7 +232,7 @@ fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_
     }
     // neither: the verbatim exhaustion error
     let singles = game.content.decks.get("SINGLES").unwrap();
-    let err = chorus::content::draw_from(&game.content, singles, 1, &none).unwrap_err();
+    let err = chorus::content::draw_from(&game.content, singles, 1, &none, &none).unwrap_err();
     assert_eq!(err.msg, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§4.4)");
 }
 

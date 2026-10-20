@@ -174,6 +174,13 @@ pub struct PrototypeDef {
     /// unique prototype is never stackable (`unique` + `stackable` on one
     /// line is a load error); the flag is a sibling truthiness `bool`.
     pub unique: bool,
+    /// §4.2: the `uniquegroup <NAME>` keyword — membership in group NAME,
+    /// the GROUP face of uniqueness (at most one living member manifests,
+    /// and once any member manifests every member is withdrawn from all
+    /// decks). The group carries the group face INSTEAD of the name face:
+    /// `unique` + `uniquegroup` on one line is a load error, as is
+    /// `uniquegroup` + `stackable`.
+    pub unique_group: Option<String>,
     pub aspects: Option<Aspects>,
     pub attrs: Option<Attrs>,
     pub derive: Option<PrototypeDerive>,
@@ -405,6 +412,15 @@ pub struct CompiledContent {
     /// too). The set is what keeps play and fold glued: both faces recompute
     /// the flag from the concrete row's resolved name alone.
     pub unique_names: IndexSet<String>,
+    /// §4.2 the unique GROUPS, derived from the prototypes carrying
+    /// `uniquegroup <NAME>` at load: GROUP id → its member NAMES in
+    /// declaration order. The group id needs no declaration (the
+    /// relation-type posture) and is load-checked against the declared
+    /// entity/prototype names (a group id that IS a card name would make
+    /// the manifested sets ambiguous). A member mint resolves its group
+    /// through this table by its OWN name — the one lookup the mint face,
+    /// the deck filter and the analyzer all share, so play and fold glue.
+    pub unique_groups: IndexMap<String, IndexSet<String>>,
     /// §4.2 the card descriptions: declared entity and prototype NAMES
     /// carrying a `desc "…"` — the mint-time lookup by the mint's RESOLVED
     /// name (the stackable sets' discipline). Display text only: no
@@ -430,6 +446,29 @@ impl CompiledContent {
     #[must_use]
     pub fn mint_is_unique(&self, name: &str) -> bool {
         self.unique_names.contains(name)
+    }
+
+    /// §4.2 the GROUP face of a mint: the group id the RESOLVED name is a
+    /// member of, None when the name belongs to no group — the same
+    /// one-lookup shape as [`CompiledContent::mint_is_unique`], so play and
+    /// fold recompute the group face from the concrete row's resolved name
+    /// (a `derive`d rename carries a different name and is no member).
+    /// A name is either a declared unique or a group member, never both
+    /// (`unique` + `uniquegroup` on one line is a load error), so the scan
+    /// order over the groups is unobservable.
+    #[must_use]
+    pub fn mint_group(&self, name: &str) -> Option<&str> {
+        self.unique_groups
+            .iter()
+            .find(|(_, members)| members.contains(name))
+            .map(|(group, _)| group.as_str())
+    }
+
+    /// §4.2 membership of a RESOLVED name in any unique group — the
+    /// truthiness face of [`CompiledContent::mint_group`].
+    #[must_use]
+    pub fn mint_is_group_member(&self, name: &str) -> bool {
+        self.mint_group(name).is_some()
     }
 
     /// §4.2 stackability of a mint, decided from the RESOLVED name+kind: a

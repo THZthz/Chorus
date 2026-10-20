@@ -66,6 +66,7 @@ projection of that data, never the source of truth.
 45. **v0.9.8** — the reach analyzer's cross-list model closes the Wave-4 residual ocean, all sixteen failing seeds of the 200–3199 campaign window (§13.3): the census computes ONE cross-list interference map over the whole content — per list the candidate owners of its RUN/FORK ops and its top-level (seg-0) REFUSE face, per name its minting lists, non-reusable minters and engine-timed holder sources (slot/expire bodies, ambient recipes; fallback arms excluded) — and the fixpoint consumes it per completion (§13.1): the shared §6.7 chain channel joins across lists (`ChainSlotInterference` — a second pin, or a pin whose candidate carries a top-level REFUSE, refuses the parent window); the §5.1 mint check's LIVING-HOLDER side joins across lists (`CollisionRefusal` — recipe arms blanket, slot arms timing-refined to the first crossing, expire arms blanket, the witness-pair filter per pair, and the draft-occupant test widened to the holder side); the completing recipe's own outcomes killing the locked home void the witness pair (`CompleteHomeKilled`); the ambient gate's window-bound sum reads exactly 0 over the sweep's empty bindings; and an earlier unconditional same-list mint of a unique name marks the later site `UniqueSkipped` (§13.1).
 46. **v0.9.9** — held-N, the held slot becomes a slot class: the slot line takes two held-only flags between the count and the query — `greedy` (the engine pulls the oldest living, unlocked, query-fitting cards at window begin, in birth order, up to the slot's max; each pull an ordinary HOLD row with the unread `trigger: greedy` mark; best-effort, never a refusal, never a clock move) and `consuming` (the surviving held cards burn at completion, between the recipe outcomes and the completion-trigger phase, as engine-written `DESTROY #id` concrete rows on the COMPLETE row) (§6.1, §6.7); the held `0..1`-exactness guard becomes the min-0 rule — any finite max ≥ 1 and the unbounded `0..` are legal, `held: 1 …`/`held: 1.. …`/`held: 0..0 …` are load errors, and per-recipe held declarations stay unrepresentable (§6.1); the hold step's at-most-once becomes the at-max fill check — the window's held count against the verb's own slot range, mirrored in the fold through the SAME content-keyed rule (a hand-built HOLD row into a full window is loud drift), `bind_hold` appends, and a card the window already binds refuses (one binding per card) (§6.7); the reach arrangeable-hold face reads the declared range — the arranged count is min(slot max, fitting descriptors), a threshold above the slot max reads False, the band between stays Unknown (§13.1); the lint gains the greedy slot-fit advisory and the count-cardinality domain widens to the declared range (§13.2); the fuzz generator draws the held band and the campaign's step enumeration gains HOLD steps (v12).
 47. **v0.10.0** — the parked interior: the card-level flag `state.parked` (§4.2, the `state.*` namespace) with three faces and no new op — park/unpark are `SET(…, state.parked, true/false)` writes (§4.4); the authored `SPAWN X parked` mint modifier materializes the flag inside the concrete row's `attrs=` pair, the `expires` discipline — authored sugar only, nothing new on the log (§4.4); a third predicate sum scope `total(parked, aspect:k)` pools the alive parked cards, and the VISIBILITY LAW makes the world forms — `exists(NAME)`, `exists(<query>)`, `count(<query>)`, `total(table, …)` — read UNPARKED alive cards only, while name/`#id` refs keep full reach (§6.3); the binding law refuses a parked card every slot bind and hold (the greedy pull included) until unparked (§6.1, §6.7); a parked card keeps its authored expiry, its locks and its `on complete` triggers (§6.6); the play surface skips parked cards in the table projection (and the suggestion walk over it) while `inspect` still reaches one and renders the flag — the lenient input resolves a typed name to a parked card and the engine's pinned parked refusal speaks (§11); the reach card world splits into a world pool and a parked pool — proven parked mints and same-list SET flips register into the parked pool, the parked interval rides the same weighted machinery, and a parked product reports in the world notes (§13.1); the lint warns on a parked read with no writer anywhere and on an open parked gate one undrained mint already satisfies (§13.2); the fuzz generator draws the `parked` modifier and the parked-scope `when` form (v13).
+48. **v0.10.1** — unique groups: a prototype line may carry `uniquegroup <NAME>` (§4.2 — the GROUP face of uniqueness, the CS B9 `uniquenessgroup`: the group carries the group face INSTEAD of the name face, so `unique` + `uniquegroup` and `uniquegroup` + `stackable` on one line are each a load error, an entity line rejects the keyword, the group id must be a legal identifier and must not collide with a declared entity/prototype name); a member mint is skipped while ANY member of its group has a LIVING copy (the v0.9.6 living-check generalized — a locked member blocks a sibling), the concrete SPAWN row still logs and the fold replays it through the same group living-check, REPLACE's spawn half skips while any member lives (`REPLACE X WITH X` destroys and mints nothing), and the member's first mint records its GROUP id PERMANENTLY in `manifested_groups` beside the name-keyed `manifested_uniques` (one mint inserts into exactly one of the two); the deck draw filters lazily — a manifested-group member's position, a later occurrence of any member name, and the reshuffle's skips join the unique faces, true exhaustion still falls to `defaultcard`/exhaustion (§4.4); the deck livelock advisory exempts member entries and a single-member group warns (§13.2); the analyzer's five exact unique faces extend to groups — group-keyed dead positions, the `minted_groups` mark, the GROUP clamped at ONE living copy across all its members (world pool and parked pool alike), and the census's group-keyed skip — beside the one face the name-level rule never needed: a member landing demotes when an engine-timed sibling's earliest landing precedes its own (`GroupMemberBlocked`; chain-fed candidates conservatively unorderable) (§13.1); the fuzz generator draws member groups riding the deck pool (v14).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -305,6 +306,51 @@ redundant).
   serves forever (that face itself is never filtered — it is not a spec
   entry), else the §9.2 rejection. See §4.4 for the cursor discipline.
 
+**One-of groups — `uniquegroup <NAME>` (v0.10.1).** A prototype line may
+carry the `uniquegroup <NAME>` keyword: membership in the unique group
+NAME — the GROUP face of uniqueness, the CS `uniquenessgroup` (B9) reduced
+to Chorus's one-sphere world. At most one living copy of ANY member
+manifests, and once any member manifests, EVERY member is withdrawn from
+all decks permanently. The group carries the group face INSTEAD of the name
+face: `unique` + `uniquegroup` on one line is a load error (a member is
+not name-unique — the group check subsumes it, the member's own name being
+one of the member names), and so is `uniquegroup` + `stackable` (the
+`unique` + `stackable` precedent — a group member is never stackable); an
+ENTITY line rejects `uniquegroup` exactly as it rejects `unique` (a
+declared entity exists once by name already), and the group id must be a
+legal identifier (the §10 identifier lexeme). The group needs no
+declaration (the relation-type posture — deliberately unvalidated), but a
+group id that IS a declared entity/prototype name is one order-independent
+load error — a group id that is a card name would make the manifested sets
+ambiguous. A `derive`d rename escapes the group as it escapes `unique`
+(the mint's resolved name is not a member name).
+
+- **The mint face.** A member mint is SKIPPED while ANY member of its group
+  has a LIVING copy — the v0.9.6 living-check generalized (a locked copy is
+  living; a locked member blocks a sibling's mint). The concrete SPAWN row
+  still logs byte-identically to a minting one, and the fold replays it
+  through the same group living-check — play and fold skip identically.
+  REPLACE composes as for uniques: its spawn half skips while any member
+  lives (the dying member included — it is still in the pool at mint time,
+  so `REPLACE X WITH X` on a member destroys X and mints nothing), its
+  destroy half applies. A member mint never name-collides: the skip
+  replaces the whole §9.2 name-in-use rejection for member names.
+- **The manifested groups.** A member's first mint records its GROUP id
+  PERMANENTLY in state (`manifested_groups`, beside the name-keyed
+  `manifested_uniques` — one mint inserts into exactly one of the two, the
+  grammar's either/or guaranteeing it). The set is why the skip still
+  logs: a minted-then-destroyed member's name may mint again when no
+  member lives (the group's living set frees), but every member's deck
+  entries stay dead forever — the deck filter reads the manifested groups,
+  not the living set.
+- **The deck filter extends.** A deck order position is DEAD when its card
+  names a manifested unique (above), when it is a member of a manifested
+  GROUP, or when it is a later occurrence of any unique OR member name —
+  the earliest serve-or-skip always manifests first, so a later occurrence
+  is dead in every execution. One member's manifestation kills every
+  member's entries; `reset`'s reshuffle skips them too; the `defaultcard`
+  face is never filtered.
+
 **Relations** are facts *between* two cards (the social graph — and the
 corridor graph: the four directed types `north`/`south`/`east`/`west` place
 cards on the table, `A is south of B` reads naturally and stores the authored
@@ -401,7 +447,7 @@ contributes no template line; its recipe NARRATEs still speak.
 | `IF`      | cond `->` `(` outcomes `)` { `ELSE IF` cond `->` `(` outcomes `)` } [ `ELSE` `->` `(` outcomes `)` ] | branching (§6.8, §6.3): arms evaluate in order against the draft, first true condition wins, `ELSE` is the default, no true arm and no `ELSE` applies nothing; the log records only the TAKEN branch's outcomes, flattened in position — no IF ever appears in the log |
 | `ROLL`    | count, sides [, bonus]          | roll dice: paren-only; each argument is a §6.3 value expression (`3`, `total(actors, aspect:nerve)`, `count(name:X)`, `object.aspect.dc`, …). Rolls `count` dice of `sides` faces plus `bonus`, consuming exactly `count` rng counters; binds `roll` for the rest of the outcome list. The log records the engine-written `ROLLED(<total>, <ctrAfter>)` — no ROLL ever appears in the log. `sides` < 2 or `count` < 0 reject the whole step (§9.2); `count` = 0 is legal (total = bonus, counter unmoved); an argument expression that cannot resolve (a missing aspect over its bound role) rejects the step rather than silently rolling nothing |
 | `ROLLED`  | total, ctrAfter                 | **engine-written only**: the record of one ROLL — the fold sets `state.rng = ctrAfter` and derives nothing else. Authoring one is a load error |
-| `DRAW`    | deck [, INTO target]            | draw the next card of a `decks:` declaration: paren-less, the deck id is a plain name (a declared-deck check runs at load, over recipes and triggers, IF branches included; an empty spec is a load error); INTO is the SPAWN target grammar, and must RESOLVE — a role over empty event bindings or a dead ref rejects the step rather than materializing the card nowhere. With no INTO the mint reuses SPAWN's default (the step's `at` card, else the first actor's `container`; in triggers, where bindings are empty, the card is minted containerless unless an explicit INTO is authored). The deck entry may name a prototype or a declared entity; repeats in the spec weight the draw; the §4.2 unique deck filter skips manifested-unique positions at serve time (§4.4); a DRAW inside an untaken IF branch consumes nothing — the cursor rides the draft (§9.2). The log records the engine-written `DRAWN(<DECK>, <name>)` + the concrete `SPAWN … AS #id` pair — no DRAW ever appears in the log |
+| `DRAW`    | deck [, INTO target]            | draw the next card of a `decks:` declaration: paren-less, the deck id is a plain name (a declared-deck check runs at load, over recipes and triggers, IF branches included; an empty spec is a load error); INTO is the SPAWN target grammar, and must RESOLVE — a role over empty event bindings or a dead ref rejects the step rather than materializing the card nowhere. With no INTO the mint reuses SPAWN's default (the step's `at` card, else the first actor's `container`; in triggers, where bindings are empty, the card is minted containerless unless an explicit INTO is authored). The deck entry may name a prototype or a declared entity; repeats in the spec weight the draw; the §4.2 unique/group deck filter skips dead positions (manifested uniques, manifested-group members, later occurrences) at serve time (§4.4); a DRAW inside an untaken IF branch consumes nothing — the cursor rides the draft (§9.2). The log records the engine-written `DRAWN(<DECK>, <name>)` + the concrete `SPAWN … AS #id` pair — no DRAW ever appears in the log |
 | `DRAWN`   | deck, name                      | **engine-written only**: the record of one DRAW — the fold advances that deck's cursor, asserting `name` is exactly what the compiled permutation serves at the cursor (content drift between play and fold fails loud); the recorded name is the SPEC entry, not a derived mint name, so the assertion reads the permutation. Authoring one is a load error |
 | `RUN`     | `"recipe-id"` `, …`             | chain the completion (§6.7): walk the candidates in order, pin the first whose `when:` matches the post-outcome draft (lenient, §6.4) and whose `max` (§6.4) is unspent, and open it as a follow-up window on its verb with the parent's bindings projected onto the candidate verb's declared roles; no match — the chain ends silently; zero-concrete (the follow-up's BEGIN row is the only record). Candidates resolve against the GLOBAL recipe table in every home (recipe bodies, `on complete` bodies, slot/expire trigger bodies — §6.6); the parent's own station is not busy, any other busy station skips the candidate silently. The chain slot is earned by a PIN, not by a reach: a whiffed list spends nothing and a later chain op in the same completion still gets its walk; a second PINNING chain op rejects the window (§6.6: in an event body the chain-op refusals are silent skips — the second op ends its chain there, and a gate-vetoed branch skips alone) |
 | `FORK`    | `"recipe-id"` `, …`             | the multi-continuation chain (§6.7): open ONE follow-up window for EVERY matching candidate, in list order — same resolution, busy, `max` and `when:` gates as `RUN`, plus two fork-local rules: one branch per station (a candidate whose verb already took a branch in this fork skips silently — list order decides) and duplicate ids skip silently (`FORK "a", "a"` opens one window). FORK mutates no state during the walk, so the branches are order-free. The inline gate is ATOMIC: the first pinned branch's top-level REFUSE rejects the parent window with NO branch opening (§6.6: in an event body a vetoed branch skips alone, the remaining branches opening). A fork that pinned nothing consumes no slot (fall-through). Zero-concrete: each pinned branch synthesizes its own BEGIN row (`complete_id + 1 … + n`); nothing is logged of the FORK itself |
@@ -482,8 +528,9 @@ drawing never shifts a die). Shuffling positions — not names — preserves the
 multiset: repeats keep their weighting in every period. The permutation lives
 on compiled content; `State.decks` holds one cursor per deck, cloned like
 every state field (§9.2, atomic drafts). A draw serves the first LIVE
-position from the cursor forward — the §4.2 unique deck filter's dead
-positions (a manifested unique, or a later occurrence of any unique) are
+position from the cursor forward — the §4.2 unique/group deck filter's dead
+positions (a manifested unique, a member of a manifested group, or a later
+occurrence of any unique or member name) are
 consumed within the serving draw — and the cursor counts CONSUMED
 POSITIONS: a served position lands the cursor past it (dead positions in
 between included, so one draw can advance it several steps), a
@@ -493,7 +540,7 @@ every draw consumes exactly one position. Past the period, `reset` wraps
 `defaultcard` serves forever, and with neither the draw rejects the step
 (§9.2, application failure; cursor unmoved). Play and fold share one
 serving function — the fold re-derives the filter from its own manifested
-set (§4.2), so the two can never drift. Changing `seed` or the spec under
+sets (§4.2), so the two can never drift. Changing `seed` or the spec under
 an old log shifts future draws only
 — but the DRAWN row's assertion re-derives its expectation (cursor +
 permutation + manifested set), so the re-fold fails LOUD instead of
@@ -1822,7 +1869,9 @@ CREATE TABLE action (
   pool arrays; a name ref under a pool addresses the head, the OLDEST copy,
   §4.2), the `rng` counter (§4.4), one cursor per deck (§4.4), the
   manifested unique set (§4.2 — rebuilt from the logged SPAWN rows' unique
-  faces, the fired set's precedent), the
+  faces, the fired set's precedent) and the manifested-group set (§4.2,
+  v0.10.1 — rebuilt from the same rows' group faces; one mint inserts into
+  exactly one of the two), the
   executed-recipe map (§6.4), and the fired set (§6.6). A discarded draft
   deep-copies all of them, pool arrays included (§9.2, atomic drafts).
 - **The log is a working file, not a stable contract** (§9.2): it replays
@@ -1988,7 +2037,8 @@ to its current home.
    elapsed span, so a tick's trigger fires even when no action window
    covers that instant.
 5. **The fold trusts the log.** It never re-derives a decision: EVENT rows,
-   the fired set, the rng counter, deck cursors, the manifested unique set,
+   the fired set, the rng counter, deck cursors, the manifested unique and
+   group sets,
    and the executed-recipe
    map are each written by exactly one rule, shared by play and fold, so
    the two can never drift.
@@ -2148,7 +2198,9 @@ Rules:
   prototype line takes the same trailing `desc "…"` — §4.2's display text).
   `unique` is not an entity-line keyword: a declared entity exists once by
   name already, so carrying it is a load error (§4.2; the keyword position
-  only — the word inside a desc string is prose). Script ids are `s_<name>` —
+  only — the word inside a desc string is prose). `uniquegroup <NAME>` is
+  rejected the same way (§4.2, v0.10.1 — group membership is a
+  prototype-line keyword for the same reason). Script ids are `s_<name>` —
   the name lowercased, so two names differing only in case mint the same id
   (`ANA`/`ana` → `s_ana`); since names are case-exact (§5.1), the id
   collision is its own load error, naming both names. Containers resolve by
@@ -2161,6 +2213,17 @@ Rules:
   name is a pool (§4.2) — and are written as-is — prefer `UPPER_SNAKE` (a
   name outside the name-lexeme class is legal but forces quoting on every
   ref to it; the lint flags it, §13.2).
+- **Prototype line**: `NAME is KIND [stackable|unique|uniquegroup ID]
+  [deriving …] [with aspect:level, …] [desc "…"]` (the three uniqueness
+  keywords sit before `deriving`/`with`, in any order, each at most once;
+  §4.2). The three are pairwise exclusive on one line — `unique` +
+  `stackable`, `uniquegroup` + `stackable` and `unique` + `uniquegroup` are
+  each a load error naming the pair (a unique prototype is never stackable;
+  a group member is never stackable; a group carries the group face instead
+  of the name face). The `uniquegroup` id is a legal identifier and must
+  not collide with a declared entity/prototype name (one
+  order-independent check — a group id that is a card name would make the
+  manifested sets ambiguous, §4.2).
 - **Duplicate declarations are load errors in every section** — kinds,
   entities, prototypes, templates, verbs, decks, endings, functions alike
   (the functions/decks rule generalized): a second declaration of the same
@@ -2328,7 +2391,8 @@ Rules:
   can silently "fix" it by skipping or auto-consuming. A UNIQUE entry is the
   one engineered exemption: its mint face skips while a copy lives (§4.2),
   so the second serve deals nothing and the deck keeps moving — the pin
-  cannot form.
+  cannot form. A uniquegroup MEMBER is exempt under the same rule (the mint
+  face skips while any member lives, §4.2 v0.10.1).
 - **Ending lines**: `ID: "Title" [(flavour)]` — the ending table (§4.4).
   The id is UPPER_SNAKE and unique; the title is a quoted string; the
   flavour is a display word (any lowercase term) defaulting to
@@ -2877,6 +2941,40 @@ are the only reach files allowed to):
   mint as name-sharing (it skips instead of erroring), so no co-mint
   freeze, duplicate-collision risk or window/draft refusal rung fires on
   it.
+  The §4.2 uniquegroup rule (v0.10.1) extends the SAME five faces one
+  level, keyed on the GROUP instead of the name: the serving predicate's
+  dead positions gain the group-manifested disjunct — the initial state's
+  `manifested_groups` UNIONED with the fixpoint's `minted_groups` (a
+  proven member SPAWN/REPLACE marks the GROUP; draws still mark nothing) —
+  and the later-occurrence disjunct widens to any unique OR member name;
+  `add_product`'s once-face covers a member (its first serve manifests the
+  GROUP — a member never repeats, a member defaultcard counts 1); the
+  count-world clamps each GROUP at ONE living copy ACROSS its members (the
+  first member fact of a group is the group's one distinct instance, the
+  pooled total clamps at 1 per member, and the parked pool clamps its
+  member facts the same way), so a proof needing two living members — one
+  deck's later position, two members, deck + in-play mint — decides False;
+  and the census's skip face keys on the GROUP: an earlier unconditional
+  op minting ANY member marks the later member site `UniqueSkipped`, and
+  the collision faces read a member mint as skip-not-error exactly like a
+  unique's. One face the name-level rule never needed joins beside them
+  (`GroupMemberBlocked`): a member landing — a mint, or a draw's serve,
+  whose SPAWN half rides the same mint path — SKIPS while any member
+  lives, so a SIBLING member minted by an ENGINE-TIMED owner (a slot/expire
+  firing, an ambient sweep completion) blocks it whenever the sibling's
+  earliest landing precedes the site's own (the collision join's timing
+  arithmetic — a slot site at its first crossing, an ambient recipe's site
+  at the sweep boundary plus the window length, a plain player recipe
+  never blocked: an instant commit outruns every engine landing; a
+  chain-fed RUN/FORK candidate carries no orderable face and any
+  engine-timed sibling blocks it). The name-level rule is exempt from this
+  face exactly because a blocked unique mint still leaves the name
+  existent — the blocker's own copy; a group's blocker is a DIFFERENT
+  name, so the blocked member may never exist and the site must demote.
+  The group clamp's first-instance choice walks the avail
+  insertion order, so it is deterministic; draw sites never mark (the
+  `minted_manifested` discipline), and a derive-renamed mint is neither a
+  unique nor a member (the resolved name escapes both sets).
   The diagnostic faces live here too, both
   over the settled facts with ZERO new analysis: `card_blockers` (the
   `--why` table — the ladder's Err side over every live unproven site
@@ -3226,7 +3324,15 @@ modifier drawn on SPAWNs (p=0.10, after the INTO draw, inside the SPAWN
 band) and a `total(parked, aspect:a) >= n` form in the `when` candidate
 table (built eagerly with the other nine, so its draw joins the frozen
 order before the pick) — the parked pool and the parked-blind world forms
-both facing the differential sweep. Scenario
+both facing the differential sweep; v14 added the §4.2 `uniquegroup` draw
+— p=0.30 of a drawn unique prototype instead joins the scenario's single
+group G1 (one roll per prototype ALWAYS, after the unique draw, landing
+only on a drawn unique: the grammar rejects `unique` + `uniquegroup` on
+one line), and the group backfills to 2–3 members after the prototype
+loop (one count draw when a group seed and a non-member mate both exist,
+then the sample picks; a drafted mate's own `unique` flag clears under the
+same load rule) — so member groups ride the deck spec pool and the group
+faces face the differential sweep. Scenario
 streams differ across generator versions by design. What stays pinned is
 purity: the generator is a pure function of its seed — the same seed
 builds the same scenario, draw for draw, under ONE version.
@@ -3255,7 +3361,8 @@ builds the same scenario, draw for draw, under ONE version.
   once can never meet its own copy — the deck exhausts first — while a
   `defaultcard` entry never qualifies and `spec X defaultcard X` is one
   finding about one name), or a UNIQUE entry (its mint face skips while a
-  copy lives, §4.2 — the deck never pins); an aspect
+  copy lives, §4.2 — the deck never pins) or a uniquegroup MEMBER (the
+  mint face skips while any member lives, §4.2 v0.10.1); an aspect
   read — slot query, `when`, or derive
   source — with no writer anywhere (declared `with` clauses, derive
   targets, `SET(…, aspect:x)`; every dotted prefix of a written path counts
@@ -3333,6 +3440,10 @@ builds the same scenario, draw for draw, under ONE version.
   default candidate is always live, and ONE live candidate silences the
   whole list; the walk runs on the compiled outcomes, so trigger lists are
   seen through the same pass (owner `trigger {id}`).
+  And a group with exactly ONE member (v0.10.1) — a unique spelled
+  strangely: the single-member group face behaves like `unique` on the
+  name except for the key it manifests under (the group id, not the name),
+  which is almost never what the author meant.
 - **WARNING (the reach bridge)** — `--reach` appends the reach analyzer's
   global-dynamic findings (§13.1's `bridge` module) to the same stream,
   each line `[reach]`-prefixed so the two layers read apart and the
@@ -3394,12 +3505,16 @@ version that produced them. The scenario generator is itself VERSIONED
 chain-candidate table to the global build prefix (cross-verb chains, §6.7),
 v6 split the chain band into RUN [0.22, 0.27) and FORK [0.27, 0.32),
 v7 turned the chain band on in slot/expire trigger bodies (§6.6's
-event-chain channel), v10 added the §6.9 ambient draw, and v13 added the
+event-chain channel), v10 added the §6.9 ambient draw, v13 added the
 §6.3 parked scope — the `parked` mint modifier drawn on SPAWNs (p=0.10,
 after the INTO draw) and a `total(parked, aspect:a)` form in the `when`
 candidate table (built eagerly with the other nine, so its draw joins the
 frozen order before the pick; the full v13 note lives in §13.1's fuzz
-description). The bins freeze exactly five dependency
+description), and v14 added the §4.2 `uniquegroup` draw — p=0.30 of a
+drawn unique prototype instead joins the scenario's single group G1,
+backfilled to 2–3 members from the prototype pool after the loop (the
+full v14 note lives in §13.1's fuzz description). The bins freeze exactly
+five dependency
 crates (`Cargo.toml`: indexmap, serde, serde_json, regex, crossterm —
 the last only for the ANSI writer behind `cli`, riding with
 `default-features = false`; `Cargo.lock` is committed).

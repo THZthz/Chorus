@@ -808,3 +808,81 @@ fn a_floor_violated_closed_gate_never_selects_the_completing_recipe() {
     );
     gate_never_proves(&raw, vec![]);
 }
+
+// --------------------------------- Wave-4 (v0.9.8): the completing recipe kills the locked home ----
+
+/// The completing recipe's own outcomes kill the locked home BEFORE the
+/// trigger phase, and the phase iterates the commit-time locked ids skipping
+/// dead cards — a pair whose recipe destroys/replaces the home (by name, or
+/// by a role the home can be locked in) can never witness. Judged per pair
+/// beside the draft-collision dirt; every pair dying demotes the site at
+/// `CompleteHomeKilled`.
+#[test]
+fn a_completing_recipe_that_kills_the_locked_home_voids_the_witness_pair() {
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("LEDGER".to_string(), {
+                let mut p = proto("idea");
+                p.aspects = Some(IndexMap::from([("a".to_string(), AspectVal::Num(1))]));
+                p
+            }),
+            ("P1".to_string(), proto("idea")),
+        ])),
+        verbs: IndexMap::from([(
+            "TALK".to_string(),
+            VerbContent {
+                slots: vec![
+                    SlotDef {
+                        role: "actors".to_string(),
+                        min: 1,
+                        max: Some(1),
+                        query: Some("kind:character".to_string()),
+                        shown: None,
+                    },
+                    SlotDef {
+                        role: "with".to_string(),
+                        min: 1,
+                        max: Some(1),
+                        query: Some("aspect:a>=1".to_string()),
+                        shown: None,
+                    },
+                ],
+                duration: 0,
+                recipes: vec![RecipeDef {
+                    id: Some("talk.r0".to_string()),
+                    when: None,
+                    shown: None,
+                    hint: None,
+                    max: None,
+                    aspects: Vec::new(),
+                    dur: None,
+                    out: vec!["DESTROY LEDGER".to_string()],
+                }],
+                ambient: false,
+            },
+        )]),
+        triggers: Some(vec![TriggerDef::Complete(CompleteTriggerDef {
+            id: "complete:LEDGER".to_string(),
+            home: "LEDGER".to_string(),
+            aspect: None,
+            out: vec!["SPAWN P1".to_string()],
+        })]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let state = state_with(vec![ent("ANA", "character", &[]), ent("LEDGER", "idea", &[("a", 1)])]);
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "P1", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
+    // the --why face: the trigger's SPAWN site stays visible with the
+    // home-kill blocker
+    let analyzer = chorus::reach::Analyzer::new(&content, &state, &dict);
+    let rows = analyzer.card_blockers("P1");
+    assert_eq!(rows.len(), 1, "exactly the trigger's SPAWN P1 site serves P1");
+    assert_eq!(rows[0].owner, "trigger complete:LEDGER");
+    assert_eq!(
+        rows[0].blocker,
+        chorus::reach::fixpoint::CardBlocker::CompleteHomeKilled { home: "LEDGER".to_string() }
+    );
+}

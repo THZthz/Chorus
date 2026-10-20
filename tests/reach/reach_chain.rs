@@ -16,11 +16,28 @@
 //! - R4 (the mint marks manifested): a proven in-play SPAWN of a unique
 //!   name marks it manifested — the once draw's serve skips the dead
 //!   position at no cost and serves the next position.
+//!
+//! The Wave-4 cross-list faces (v0.9.8) — one pin per channel of the
+//! census's interference map, each repro a shape the campaign window
+//! surfaced:
+//!
+//! - W4A (seed 291's shape, channel a): a pinned candidate whose list
+//!   carries a top-level REFUSE refuses the PARENT window — the inline gate
+//!   (`run_inline_gate`) trials it on the completion draft — so the
+//!   completing list's mints die with the scratch (ChainSlotInterference);
+//! - W4G (channel c, no current seed): two sibling `on complete` bodies on
+//!   the same home share the completion's ONE chain slot — the second pin
+//!   refuses the parent window (ChainSlotInterference);
+//! - W4E (seed 851's shape): the ambient gate's window-bound sum reads
+//!   EXACTLY 0 over the §6.9 sweep's empty bindings — not Unknown through a
+//!   chain-pinned verb's nulled window model — so the gated recipe never
+//!   opens (WhenNotStaticTrue).
 
 use chorus::content::script::compile_script;
 use chorus::content::CompiledContent;
 use chorus::core::clock::parse_clock;
 use chorus::core::dict::core_dictionary;
+use chorus::core::sentence::Arg;
 use chorus::core::types::State;
 use chorus::engine::{execute_step, ExecOptions, Step};
 use chorus::reach::fixpoint::{CardBlocker, SiteOp};
@@ -332,4 +349,217 @@ verbs:
         "the minted-unique position is dead — the once draw's serve skips it and serves B"
     );
     assert_eq!(b.existence, Existence::Proven);
+}
+
+// ------------------------------------------- W4A: seed 291's shape (channel a) ----
+
+#[test]
+fn a_pin_whose_candidate_carries_a_top_level_refuse_refuses_the_parent_completion_window() {
+    // The ambient USE_ON completion parks its RUN (§6.7's deferral), its own
+    // REPLACE/SPAWN land P1 on the draft, and the parked op then pins
+    // commune.r1 — whose `when` reads the draft's P1 — and the inline gate
+    // trials commune.r1's TOP-LEVEL REFUSE on that draft: the refusal
+    // rejects the PARENT window and the whole scratch dies, so P1 never
+    // lands (every window, forever). The census's per-list REFUSE model
+    // never sees it — the REFUSE lives on ANOTHER list — so the
+    // interference map joins it: any pin in the completion's shared chain
+    // channel naming a gate-refusing candidate demotes the completing
+    // list's mints at the ChainSlotInterference rung.
+    let text = "\
+script: W4A Pinned Gate Refusal
+player: ANA
+start: 0:0
+seed: 0
+
+entities:
+  ANA is character
+  LEDGER is text with a:3
+
+prototypes:
+  P1 is idea stackable
+
+verbs:
+  COMMUNE:
+    actors: 1 kind:character
+    duration: 30m
+    recipes:
+      commune.r1 when count(name:P1) >= 1 -> SPAWN P1, REFUSE(\"the gate refuses\")
+
+  USE_ON:
+    ambient
+    duration: 30m
+    recipes:
+      use_on.r0 -> RUN \"commune.r1\", REPLACE LEDGER WITH P1, SPAWN P1
+";
+    let (content, state) = compile(text);
+    let p1 = analyze(&content, &state, "P1");
+    assert_eq!(p1.verdict, CardVerdict::Unproven);
+    assert_eq!(p1.existence, Existence::Candidate);
+    let dict = core_dictionary();
+    let analyzer = Analyzer::new(&content, &state, &dict);
+    let rows = analyzer.card_blockers("P1");
+    let replace =
+        rows.iter().find(|r| r.op == SiteOp::Replace).expect("the REPLACE site serves P1");
+    assert_eq!(replace.owner, "recipe use_on.r0 of USE_ON");
+    assert_eq!(replace.blocker, CardBlocker::ChainSlotInterference);
+
+    // the engine's face: every ambient completion journals the gate's
+    // recurring REFUSE and P1 never lands
+    let r1 = execute_step(
+        &content,
+        &dict,
+        state,
+        Step {
+            start_min: None,
+            clock: Some(parse_clock("1:30").unwrap()),
+            clauses: vec![],
+            t_real: None,
+        },
+        ExecOptions { first_record_id: 1, id_gen: None },
+    )
+    .unwrap();
+    assert_eq!(r1.rejected, None);
+    assert!(
+        r1.state.by_name.get("P1").is_none_or(|pool| pool.is_empty()),
+        "the gate refusal kills every window: P1 never lands"
+    );
+    let gate_refuses = r1
+        .records
+        .iter()
+        .filter(|rec| rec.kind == "complete" && rec.verb == "USE_ON")
+        .flat_map(|rec| &rec.outcomes)
+        .any(|o| {
+            o.op == "REFUSE"
+                && matches!(o.args.first(), Some(Arg::Str { v }) if v == "the gate refuses")
+        });
+    assert!(gate_refuses, "the COMPLETE rows journal the inline gate's REFUSE");
+}
+
+// --------------------------------------------- W4G: channel c, sibling bodies ----
+
+#[test]
+fn two_sibling_completion_bodies_pin_each_other_so_the_completing_recipe_mints_die() {
+    // LEDGER carries TWO `on complete` bodies, each chaining a RUN: the
+    // completion's ONE chain slot takes the first body's pin, and the
+    // second body's pin hits the taken slot FIRST — the parent window
+    // refuses and the completing recipe's SPAWN P1 dies with the draft.
+    // The analyzer's per-list chain refusal sees neither list misbehaving
+    // (talk.r0 and talk.r1 each carry a single chain op); the interference
+    // map's per-completion join counts the pins ACROSS the firing bodies.
+    let text = "\
+script: W4G Sibling Bodies Pin And Refuse Each Other
+player: ANA
+start: 0:0
+seed: 0
+
+entities:
+  ANA is character
+  LEDGER is text with a:1 on complete -> (RUN \"talk.r0\") on complete -> (RUN \"talk.r1\")
+
+prototypes:
+  P1 is idea
+
+verbs:
+  TALK:
+    actors: 1 kind:character
+    with: 1 aspect:a>=1
+    duration: 0m
+    recipes:
+      talk.r0 -> SPAWN P1
+      talk.r1 -> NARRATE \"beat\"
+      talk.r2 -> NARRATE \"beat\"
+";
+    let (content, state) = compile(text);
+    let p1 = analyze(&content, &state, "P1");
+    assert_eq!(p1.verdict, CardVerdict::Unproven);
+    assert_eq!(p1.existence, Existence::Candidate);
+    let dict = core_dictionary();
+    let analyzer = Analyzer::new(&content, &state, &dict);
+    let rows = analyzer.card_blockers("P1");
+    assert_eq!(rows.len(), 1, "exactly talk.r0's SPAWN site serves P1");
+    assert_eq!(rows[0].owner, "recipe talk.r0 of TALK");
+    assert_eq!(rows[0].blocker, CardBlocker::ChainSlotInterference);
+
+    // the engine's face: the window refuses — P1 never lands, and the
+    // COMPLETE row journals the second-pin refusal
+    let r1 = settle_line(&content, &dict, state, "0:0 @ ANA TALK WITH LEDGER", 1).unwrap();
+    assert_eq!(r1.rejected, None);
+    assert!(
+        r1.state.by_name.get("P1").is_none_or(|pool| pool.is_empty()),
+        "the second sibling pin refuses the window: P1 never lands"
+    );
+    assert!(
+        r1.records
+            .iter()
+            .any(|rec| rec.kind == "complete" && rec.outcomes.iter().any(|o| o.op == "REFUSE")),
+        "the COMPLETE row journals the chain-slot refusal"
+    );
+}
+
+// ----------------------------------------------- W4E: seed 851's shape, fix D ----
+
+#[test]
+fn the_ambient_gate_window_bound_sum_reads_exactly_zero_over_the_sweep_empty_bindings() {
+    // t0's RUN makes AMB chain-pinned, so its window model is nulled — and
+    // the pre-fix ambient gate read `total(bound, aspect:a)` through that
+    // nulled model as Unknown, which HOLDS, so amb.r0 stayed selectable and
+    // P1 proved. The §6.9 sweep selects over EMPTY bindings where the
+    // window-bound sum reads exactly 0: amb.r0 NEVER selects (0 >= 1 is
+    // false — the exact runtime face), the deep exploration never sees P1,
+    // and the gate's decided-False demotes.
+    let text = "\
+script: W4E Ambient Window Sum Through The Nulled Window Model
+player: ANA
+start: 0:0
+seed: 0
+
+entities:
+  ANA is character
+
+prototypes:
+  P1 is idea
+
+verbs:
+  AMB:
+    ambient
+    duration: 30m
+    recipes:
+      amb.r0 when total(bound, aspect:a) >= 1 -> SPAWN P1
+
+triggers:
+  t0 once at hour 1 -> RUN \"amb.r0\"
+";
+    let (content, state) = compile(text);
+    let p1 = analyze(&content, &state, "P1");
+    assert_eq!(p1.verdict, CardVerdict::Unproven);
+    assert_eq!(p1.existence, Existence::Candidate);
+    let dict = core_dictionary();
+    let analyzer = Analyzer::new(&content, &state, &dict);
+    let rows = analyzer.card_blockers("P1");
+    assert_eq!(rows.len(), 1, "exactly amb.r0's SPAWN site serves P1");
+    assert_eq!(rows[0].owner, "recipe amb.r0 of AMB");
+    assert_eq!(rows[0].blocker, CardBlocker::WhenNotStaticTrue);
+
+    // the engine's face: the sweep never opens AMB (the gate reads 0 >= 1
+    // over the empty bindings) and the t0 chain never pins it — P1 never
+    // exists
+    let r1 = execute_step(
+        &content,
+        &dict,
+        state,
+        Step {
+            start_min: None,
+            clock: Some(parse_clock("2:0").unwrap()),
+            clauses: vec![],
+            t_real: None,
+        },
+        ExecOptions { first_record_id: 1, id_gen: None },
+    )
+    .unwrap();
+    assert_eq!(r1.rejected, None);
+    assert!(r1.state.by_name.get("P1").is_none_or(|pool| pool.is_empty()));
+    assert!(
+        !r1.records.iter().any(|rec| rec.kind == "begin" && rec.verb == "AMB"),
+        "the sweep never opens the gated ambient recipe"
+    );
 }

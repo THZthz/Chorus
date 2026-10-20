@@ -3,7 +3,9 @@
 //! only** (the engine-side halves of these tests — settle traces,
 //! the exhaustive explorer — are confirmed by the engine test-suite; this
 //! file carries the reach-verdict / existence / chain / notes / usable_via
-//! assertions).
+//! assertions). The W4 section (v0.9.8) is the exception: its collision-join
+//! pins carry the engine play faces beside the analyzer verdicts, because
+//! the failing and control faces of the join ARE play behaviors.
 //!
 //! Verdict contract under test (the reach header contract): 'unobtainable' must never
 //! fire wrongly; 'obtainable' must be backed by a real chain; guarded sites
@@ -822,4 +824,329 @@ fn q17_zero_entity_scripts_keep_the_site_reason_branch_reachable() {
         .find(|c| c.via.contains("EXPLORE"))
         .expect("the gated spawn is the candidate source");
     assert!(candidate.reason.contains("verb committability unknown"));
+}
+
+// ---------------------------------------------------------------- W4 (v0.9.8)
+/// The cross-list faces of the census's interference map. The engine applies
+/// every firing and every completion on a clone of the LIVING world (and,
+/// within one completion, ONE §6.7 chain channel), while the census walked
+/// per list — the map joins what can pin, what refuses and whose mints
+/// collide across lists; these pins carry the engine play faces beside the
+/// analyzer verdicts (the class-2/file convention: the failing and control
+/// faces of the collision join are engine-confirmed).
+mod w4 {
+    use super::*;
+
+    fn ambient_verb(duration: i64, out: &[&str]) -> (String, VerbContent) {
+        (
+            "USE_ON".to_string(),
+            VerbContent { slots: vec![], duration, recipes: vec![recipe(out)], ambient: true },
+        )
+    }
+
+    /// W4C (seed 931's shape, the B1 firing face): the slot trigger's firing
+    /// applies on the LIVING world, so its second SPAWN P3 — whose
+    /// non-stackable holder the AMBIENT list minted — refuses the whole
+    /// step, every crossing, forever. The per-list dup model saw one P3
+    /// mint in t1's list (clean) and proved P9; the collision join reads
+    /// the holder's origin and demotes at CollisionRefusal.
+    #[test]
+    fn a_slot_firing_mint_colliding_with_another_list_living_holder_refuses_the_step() {
+        let raw = ContentRaw {
+            prototypes: protos(&[("P9", proto("idea")), ("P3", proto("idea"))]),
+            verbs: IndexMap::from([ambient_verb(30, &["REPLACE LEDGER WITH P3"])]),
+            triggers: Some(vec![slot_trigger("t1", 6, &["SPAWN P9", "SPAWN P3"])]),
+            ..ContentRaw::default()
+        };
+        let content = compile(&raw);
+        let state = state_with(vec![ent("ANA", "character", &[]), ent("LEDGER", "text", &[])]);
+        let card = analyze(&content, &state, "P9");
+        assert_eq!(card.verdict, CardVerdict::Unproven);
+        assert_eq!(card.existence, Existence::Candidate);
+
+        // the engine's face: the ambient sweep lands P3 (the 30m window
+        // completes at 0:40); the hour-1 firing then refuses the step on the
+        // living holder and rolls back — P9 never exists. (The engine face
+        // runs the 30m window: a 0m ambient self-reopens inside one pass and
+        // trips the §6.7 livelock budget before the crossing — the
+        // collision join is duration-blind either way.)
+        use chorus::engine::{execute_step, ExecOptions, Step};
+        let dict = core_dictionary();
+        let r1 = execute_step(
+            &content,
+            &dict,
+            state,
+            Step {
+                start_min: None,
+                clock: Some(chorus::core::clock::parse_clock("1:0").unwrap()),
+                clauses: vec![],
+                t_real: None,
+            },
+            ExecOptions { first_record_id: 1, id_gen: None },
+        )
+        .unwrap();
+        assert!(
+            r1.rejected.as_deref().is_some_and(|m| m.contains("already in use")),
+            "the firing refuses against the living P3: {:?}",
+            r1.rejected
+        );
+        assert!(r1.state.by_name.get("P9").is_none_or(|pool| pool.is_empty()));
+    }
+
+    /// W4C-TIE — the timing guard's tie face: an ambient window landing
+    /// EXACTLY on the firing's first crossing is no escape. A completion at
+    /// minute m precedes slot-m events (§6.6), so the sweep lands P3 BEFORE
+    /// t1's body mints and the shared step rejects; a strict "source lands
+    /// before the crossing" comparison would prove P9 here, so the tie
+    /// counts as not-strictly-before and demotes (the same-slot pair face
+    /// of the tie is the census's risky rule, pinned in reach_timing.rs).
+    #[test]
+    fn an_ambient_completion_tying_the_first_crossing_demotes_the_firing_mint() {
+        let raw = ContentRaw {
+            prototypes: protos(&[("P9", proto("idea")), ("P3", proto("idea"))]),
+            verbs: IndexMap::from([ambient_verb(50, &["REPLACE LEDGER WITH P3"])]),
+            triggers: Some(vec![slot_trigger("t1", 6, &["SPAWN P9", "SPAWN P3"])]),
+            ..ContentRaw::default()
+        };
+        let content = compile(&raw);
+        let state = state_with(vec![ent("ANA", "character", &[]), ent("LEDGER", "text", &[])]);
+        let card = analyze(&content, &state, "P9");
+        assert_eq!(card.verdict, CardVerdict::Unproven);
+        assert_eq!(card.existence, Existence::Candidate);
+
+        // the engine's face: the 50m window completes at minute 60 (the
+        // sweep's first boundary 0:10 plus the window) — the same minute as
+        // t1's first crossing — and the completion fires FIRST: the living
+        // P3 refuses t1's second SPAWN and the whole step rolls back
+        use chorus::engine::{execute_step, ExecOptions, Step};
+        let dict = core_dictionary();
+        let r1 = execute_step(
+            &content,
+            &dict,
+            state,
+            Step {
+                start_min: None,
+                clock: Some(chorus::core::clock::parse_clock("1:0").unwrap()),
+                clauses: vec![],
+                t_real: None,
+            },
+            ExecOptions { first_record_id: 1, id_gen: None },
+        )
+        .unwrap();
+        assert!(
+            r1.rejected.as_deref().is_some_and(|m| m.contains("already in use")),
+            "the tie crossing refuses the shared step: {:?}",
+            r1.rejected
+        );
+        assert!(r1.state.by_name.get("P9").is_none_or(|pool| pool.is_empty()));
+    }
+
+    /// W4C2 — the precision control: the SAME world with a player-committed
+    /// (non-ambient) minter. The player dodges — wait to hour 1 without
+    /// committing USE_ON, and the firing lands P9 AND P3 — so P9 stays
+    /// OBTAINABLE and the analyzer keeps it proven. The join refuses only
+    /// on holders whose aliveness the player cannot always outrun
+    /// (engine-timed sources: the initial world, slot/expire bodies, the
+    /// ambient sweep). Not revert-sensitive by design — it pins the
+    /// opposite regression (the join refusing on a player-timed holder).
+    #[test]
+    fn a_player_timed_minter_is_dodgeable_so_the_control_world_keeps_p9_proven() {
+        let raw = ContentRaw {
+            prototypes: protos(&[("P9", proto("idea")), ("P3", proto("idea"))]),
+            verbs: IndexMap::from([(
+                "USE_ON".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["REPLACE LEDGER WITH P3"])],
+                ),
+            )]),
+            triggers: Some(vec![slot_trigger("t1", 6, &["SPAWN P9", "SPAWN P3"])]),
+            ..ContentRaw::default()
+        };
+        let content = compile(&raw);
+        let state = state_with(vec![ent("ANA", "character", &[]), ent("LEDGER", "text", &[])]);
+        let card = analyze(&content, &state, "P9");
+        assert_eq!(card.verdict, CardVerdict::Obtainable);
+        assert_eq!(card.existence, Existence::Proven);
+
+        // the engine's face: the player dodges, and the hour-1 firing lands
+        // both mints (the EVENT row journals them)
+        use chorus::engine::{execute_step, ExecOptions, Step};
+        let dict = core_dictionary();
+        let r1 = execute_step(
+            &content,
+            &dict,
+            state,
+            Step {
+                start_min: None,
+                clock: Some(chorus::core::clock::parse_clock("1:0").unwrap()),
+                clauses: vec![],
+                t_real: None,
+            },
+            ExecOptions { first_record_id: 1, id_gen: None },
+        )
+        .unwrap();
+        assert_eq!(r1.rejected, None);
+        assert_eq!(r1.state.by_name.get("P9").map(Vec::len), Some(1));
+        assert_eq!(r1.state.by_name.get("P3").map(Vec::len), Some(1));
+        let event = r1
+            .records
+            .iter()
+            .find(|rec| rec.kind == "event" && rec.trigger.as_deref() == Some("t1"))
+            .expect("the firing journals its EVENT row");
+        let ops: Vec<&str> = event.outcomes.iter().map(|o| o.op.as_str()).collect();
+        assert_eq!(ops, vec!["SPAWN", "SPAWN"], "the EVENT row lands P9 and P3");
+    }
+
+    /// W4D (seed 1723's shape, the B2 completion face): a recipe completion
+    /// applies on the living world too — the ambient MANSUS lands P2
+    /// unconditionally (first boundary + window), so DREAM's own SPAWN P2
+    /// refuses EVERY completion window and its SPAWN P1 dies with each
+    /// scratch. DREAM's list is dup-clean; the cross-list join demotes.
+    #[test]
+    fn a_completion_mint_colliding_with_an_ambient_list_mint_kills_the_completing_recipes_mints() {
+        let raw = ContentRaw {
+            prototypes: protos(&[("P1", proto("idea")), ("P2", proto("idea"))]),
+            verbs: IndexMap::from([
+                (
+                    "MANSUS".to_string(),
+                    VerbContent {
+                        slots: vec![],
+                        duration: 30,
+                        recipes: vec![recipe(&["REPLACE VIAL WITH P2"])],
+                        ambient: true,
+                    },
+                ),
+                (
+                    "DREAM".to_string(),
+                    verb(
+                        vec![slot("actors", 1, 1, Some("kind:character"))],
+                        60,
+                        vec![recipe(&["SPAWN P1", "SPAWN P2"])],
+                    ),
+                ),
+            ]),
+            ..ContentRaw::default()
+        };
+        let content = compile(&raw);
+        let state = state_with(vec![ent("ANA", "character", &[]), ent("VIAL", "resource", &[])]);
+        let card = analyze(&content, &state, "P1");
+        assert_eq!(card.verdict, CardVerdict::Unproven);
+        assert_eq!(card.existence, Existence::Candidate);
+    }
+
+    /// W4F (seed 2160's shape, the §4.2 unique skip in-list): the FIRST
+    /// mint of the unique name (the kind: override) always lands first and
+    /// manifests it, so the later same-list mint SKIPS (§4.2 — the mint
+    /// face skips while one lives) and its descriptor never exists. The
+    /// demand kind:resource face demotes to candidate and the REPLACE site
+    /// carries UniqueSkipped.
+    #[test]
+    fn an_earlier_same_list_mint_of_a_unique_name_skips_the_later_site_product() {
+        let mut p1 = proto("resource");
+        p1.unique = true;
+        let raw = ContentRaw {
+            prototypes: protos(&[("P1", p1)]),
+            verbs: IndexMap::from([(
+                "DREAM".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character")), slot("object", 1, 1, None)],
+                    30,
+                    vec![RecipeDef {
+                        id: Some("dream.r0".to_string()),
+                        when: None,
+                        shown: None,
+                        hint: None,
+                        max: None,
+                        aspects: Vec::new(),
+                        dur: None,
+                        out: vec![
+                            "SPAWN text:P1".to_string(),
+                            "REPLACE LEDGER WITH P1".to_string(),
+                        ],
+                    }],
+                ),
+            )]),
+            ..ContentRaw::default()
+        };
+        let content = compile(&raw);
+        let state = state_with(vec![ent("ANA", "character", &[]), ent("LEDGER", "item", &[])]);
+        let demand = analyze_demand(&content, &state, "kind:resource");
+        assert_eq!(demand.verdict, CardVerdict::Unproven);
+        assert_eq!(demand.existence, Existence::Candidate);
+        let dict = core_dictionary();
+        let analyzer = chorus::reach::Analyzer::new(&content, &state, &dict);
+        let rows = analyzer.card_blockers("P1");
+        let replace = rows
+            .iter()
+            .find(|r| {
+                r.owner == "recipe dream.r0 of DREAM"
+                    && r.op == chorus::reach::fixpoint::SiteOp::Replace
+            })
+            .expect("the REPLACE's bare-P1 mint serves the demand face");
+        assert_eq!(
+            replace.blocker,
+            chorus::reach::fixpoint::CardBlocker::UniqueSkipped,
+            "the later unique mint never lands: {}",
+            replace.blocker.as_str()
+        );
+    }
+
+    /// The conditional face of the same skip: an earlier IF-ARM mint of a
+    /// unique does NOT suppress a later TOP-LEVEL site — the arm may never
+    /// run (here it is statically false), so the top-level mint lands and
+    /// proves. Walk order alone would flag it; the ancestor check
+    /// (`segs.starts_with`) is what keeps the flag to unconditional
+    /// earlier mints.
+    #[test]
+    fn an_earlier_if_arm_mint_of_a_unique_does_not_suppress_the_later_top_level_site() {
+        let mut u = proto("resource");
+        u.unique = true;
+        let raw = ContentRaw {
+            prototypes: protos(&[("U", u)]),
+            verbs: IndexMap::from([(
+                "DREAM".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![RecipeDef {
+                        id: Some("dream.r0".to_string()),
+                        when: None,
+                        shown: None,
+                        hint: None,
+                        max: None,
+                        aspects: Vec::new(),
+                        dur: None,
+                        out: vec![
+                            "IF exists(NO_SUCH_CARD) -> (SPAWN U)".to_string(),
+                            "SPAWN U".to_string(),
+                        ],
+                    }],
+                ),
+            )]),
+            ..ContentRaw::default()
+        };
+        let content = compile(&raw);
+        let state = state_with(vec![ent("ANA", "character", &[])]);
+        let card = analyze(&content, &state, "U");
+        assert_eq!(card.verdict, CardVerdict::Obtainable);
+        assert_eq!(card.existence, Existence::Proven);
+
+        // the --why face: the only blocked row is the statically-false
+        // arm's own site (its closed path) — no UniqueSkipped anywhere
+        let dict = core_dictionary();
+        let analyzer = chorus::reach::Analyzer::new(&content, &state, &dict);
+        let rows = analyzer.card_blockers("U");
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0].owner, "recipe dream.r0 of DREAM");
+        assert_eq!(
+            rows[0].blocker,
+            chorus::reach::fixpoint::CardBlocker::PathClosed {
+                cond: "exists(NO_SUCH_CARD)".to_string()
+            },
+            "the arm's own face: {}",
+            rows[0].blocker.as_str()
+        );
+    }
 }

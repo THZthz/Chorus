@@ -150,6 +150,19 @@ pub(crate) struct RawSite<'c> {
     /// parent window, so the whole draft dies (event-channel lists exempt —
     /// there the second op is a silent skip, §6.6)
     pub chain_refusal: bool,
+    /// this list mints a name whose non-stackable holder may already be
+    /// alive from OUTSIDE the list (an initial card, or another list's
+    /// non-reusable mint) — §5.1's collision face across lists: the engine's
+    /// mint check reads the LIVING HOLDERS' stackable flag, so the mint may
+    /// refuse and the whole application (a firing step or a completion
+    /// draft) dies with it. Content-static, computed once over the whole
+    /// census (the cross-list join needs every list walked).
+    pub collision_refusal: bool,
+    /// this site mints a UNIQUE name an earlier unconditional op of the same
+    /// list already mints — §4.2's mint face SKIPS while a copy lives, and
+    /// the earlier mint in the same application always lands first, so this
+    /// site never mints (its product never exists).
+    pub unique_skipped: bool,
     /// REPLACE: another op in this list also kills the replace-target
     pub target_killed_in_list: bool,
     /// non-stackable names this LIST mints (bootstrap-gate check); the
@@ -197,6 +210,19 @@ pub(crate) struct SetSite {
     pub owner_slot: Option<i64>,
 }
 
+/// Where an outside holder's copy can come from — the timing side of the
+/// collision join. `Initial` is alive from minute zero; `ExpireTrigger`
+/// fires at the arming's expiry (content-unknowable, so never orderable);
+/// `SlotTrigger` fires first at its own first crossing; `AmbientRecipe`
+/// lands at the sweep's first boundary plus the window length.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum MintSource {
+    Initial,
+    SlotTrigger { slot: i64 },
+    ExpireTrigger,
+    AmbientRecipe { verb: usize, recipe: Option<usize> },
+}
+
 /// The census result. Sites live in one arena Vec (walk order across all
 /// lists); `live`/`refused` are arena indices in push order — the risky block
 /// mutates sites through these indices (the shared per-list site objects,
@@ -213,6 +239,47 @@ pub(crate) struct Census<'c> {
     /// non-stackable names anywhere in the content ∪ initial non-stackable
     /// entity names
     pub collision_names: IndexSet<String>,
+    // ---- the cross-list interference map (§5.1/§6.7, one join) ----
+    /// initial non-stackable entity names — a holder that is alive at every
+    /// first application unless the play killed it
+    pub initial_colliders: IndexSet<String>,
+    /// every initial entity name — a name that can be living from minute
+    /// zero (the alive side of the collision join)
+    pub initial_names: IndexSet<String>,
+    /// name → the owners whose mint of the name is NON-reusable (a mint that
+    /// would refuse against a living copy) — the outside-holder side of the
+    /// engine's mint check, joined per list in the post-pass
+    pub nonstack_minters: IndexMap<String, IndexSet<String>>,
+    /// owner → the candidate OWNER strings of each chain op (walk order, one
+    /// entry per RUN/FORK; empty when the op names no candidate) — the pin
+    /// side of the §6.7 chain-channel map
+    pub chain_target_owners: IndexMap<String, Vec<IndexSet<String>>>,
+    /// owners whose list carries a TOP-LEVEL (seg-0) REFUSE — the inline
+    /// gate's refusal face: the §6.7 gate walk skips IF ops entirely, so a
+    /// REFUSE nested in an arm never fires there, and any list pinning this
+    /// list's recipe refuses its own window
+    pub gate_refusers: IndexSet<String>,
+    /// owners whose application may refuse on a cross-list mint collision
+    /// (the [`RawSite::collision_refusal`] join, computed once)
+    pub collision_refusers: IndexSet<String>,
+    /// the refusing owner's per-name holder sources — the timing side of the
+    /// join, consumed where the application time is content-decidable (a
+    /// slot trigger's first crossing vs the holder's earliest landing)
+    pub collision_sources: IndexMap<String, Vec<(String, MintSource)>>,
+    /// owner → the candidate recipe ids of each chain op, as walked (raw,
+    /// unresolved) — resolved into [`Census::chain_target_owners`] by the
+    /// collect_sites post-pass
+    pub pending_chain_targets: IndexMap<String, Vec<Vec<String>>>,
+    /// owner → every name the owner's sites mint (any reusability) — the
+    /// minting side of the collision join
+    pub owner_minted: IndexMap<String, IndexSet<String>>,
+    /// owners whose mints land WITHOUT the player's timing: slot/expire
+    /// trigger bodies (engine-driven crossings) and AMBIENT verbs' recipes
+    /// (the §6.9 sweep opens them itself) — plus the initial world, the
+    /// holder sources whose aliveness the player cannot always outrun. A
+    /// player-committed recipe's mint is dodgeable existentially (the player
+    /// orders their own commits), so it is not a refusal source.
+    pub engine_timed_owners: IndexSet<String>,
 }
 
 /// Owner string ('trigger t3') → (trigger, declaration
@@ -315,6 +382,9 @@ pub(crate) struct WalkState<'c> {
     /// against the GLOBAL recipe table at load, so a named candidate always
     /// resolves). The post-pass folds it into the list's chain-slot refusal.
     pub chain_ops: Vec<bool>,
+    /// the same ops' named candidate recipe ids (walk order) — the raw form
+    /// the census post-pass resolves into [`Census::chain_target_owners`].
+    pub chain_targets: Vec<Vec<String>>,
 }
 
 /// The per-list identity of the list being walked — the list context the
@@ -494,8 +564,10 @@ pub(crate) fn collect_sites<'c>(
     let mut census = Census::default();
     // initial non-stackable names poison the collision set
     for e in init_names.values() {
+        census.initial_names.insert(e.name.clone());
         if !e.stackable {
             census.collision_names.insert(e.name.clone());
+            census.initial_colliders.insert(e.name.clone());
         }
     }
     // verbs first, recipes in declaration order
@@ -537,7 +609,137 @@ pub(crate) fn collect_sites<'c>(
             &mut census,
         );
     }
+    // the engine-timed minters: slot/expire bodies (crossings fire them
+    // without the player) and ambient recipes (the §6.9 sweep opens them
+    // itself). Complete bodies and player recipes are player-timed.
+    for t in &content.triggers {
+        if matches!(t, CompiledTrigger::Slot { .. } | CompiledTrigger::Expire { .. }) {
+            census.engine_timed_owners.insert(trigger_owner(t.id()));
+        }
+    }
+    for (_name, verb) in content.verbs.iter() {
+        if verb.ambient {
+            for r in &verb.recipes {
+                census.engine_timed_owners.insert(format!("recipe {} of {}", r.id, verb.name));
+            }
+        }
+    }
+    resolve_cross_list_map(content, &mut census, trig_idx);
     census
+}
+
+/// THE cross-list interference map — one join, computed once, after every
+/// list has walked (§5.1/§6.7: the analyzer's census and refusal model are
+/// per-list, but the engine shares the living world and, within a
+/// completion, ONE chain channel across the completing recipe and every
+/// firing `on complete` body; the fixpoint consumes this map per
+/// completion instead of re-deriving it):
+///
+///   - `chain_target_owners`: each list's RUN/FORK candidates resolved to
+///     their owning lists (the pin side of the channel map);
+///   - `gate_refusers`: lists whose TOP-LEVEL REFUSE the §6.7 inline gate
+///     would fire when pinned — any list pinning them refuses its own
+///     window (the ledger's pinned-candidate channel);
+///   - `collision_refusers`: lists that mint a name whose non-stackable
+///     holder may already be alive from OUTSIDE the list (an initial card
+///     or another list's non-reusable mint) — the engine's mint check reads
+///     the living holders' stackable flag (mint.rs `check_mint_name_free`),
+///     so such an application may refuse and its whole draft dies.
+///
+/// The list's own non-reusable mints are NOT outside holders: the first
+/// application creates the holder, so its mints land — only the cross-list
+/// (or initial) side refuses an application whose mints never landed
+/// anywhere.
+fn resolve_cross_list_map<'c>(
+    content: &'c CompiledContent,
+    census: &mut Census<'c>,
+    trig_idx: &TrigIndex<'c>,
+) {
+    // resolve the raw candidate ids to owner strings
+    for (owner, ops) in census.pending_chain_targets.drain(..) {
+        let resolved: Vec<IndexSet<String>> = ops
+            .iter()
+            .map(|op| {
+                op.iter()
+                    .filter_map(|id| {
+                        content
+                            .recipe_verbs
+                            .get(id.as_str())
+                            .map(|vn| format!("recipe {id} of {vn}"))
+                    })
+                    .collect()
+            })
+            .collect();
+        census.chain_target_owners.insert(owner, resolved);
+    }
+    // the collision join (the engine's two-sided mint check, mint.rs
+    // `check_mint_name_free`): a mint of `name` refuses when the name is
+    // LIVING at the application and (the minted copy itself is
+    // non-reusable, or some living holder is non-stackable). The aliveness
+    // is the ENGINE-TIMED side only: the initial world, or a holder minted
+    // without the player's timing (a slot/expire firing, an ambient sweep
+    // completion) — the player can order their own commits, so a
+    // player-timed outside mint is dodgeable existentially and no refusal
+    // follows from it. A hostile holder/mint exists when the name is minted
+    // non-reusably by anyone (this owner's own non-reusable mint refuses
+    // against ANY living pool; another owner's non-reusable mint is the
+    // non-stackable holder) or the initial card is non-stackable.
+    // the holder sources (outside engine-timed minters), resolved once
+    let holder_sources: Vec<(&String, MintSource)> = census
+        .engine_timed_owners
+        .iter()
+        .filter_map(|o| {
+            match trig_idx.get(o) {
+                Some((CompiledTrigger::Slot { slot, .. }, _)) => {
+                    return Some((o, MintSource::SlotTrigger { slot: *slot }));
+                }
+                Some((CompiledTrigger::Expire { .. }, _)) => {
+                    return Some((o, MintSource::ExpireTrigger));
+                }
+                _ => {}
+            }
+            // an ambient recipe: resolve its verb/recipe indices
+            content.verbs.iter().enumerate().find_map(|(vi, (_, v))| {
+                v.recipes.iter().enumerate().find_map(|(ri, r)| {
+                    (format!("recipe {} of {}", r.id, v.name) == *o)
+                        .then_some((o, MintSource::AmbientRecipe { verb: vi, recipe: Some(ri) }))
+                })
+            })
+        })
+        .collect();
+    for (owner, names) in &census.owner_minted {
+        let mut sources: Vec<(String, MintSource)> = Vec::new();
+        let refuses = names.iter().any(|name| {
+            let mut alive = false;
+            if census.initial_names.contains(name) {
+                alive = true;
+                // the initial holder is unorderable (alive from minute zero)
+                if census.initial_colliders.contains(name) {
+                    sources.push((name.clone(), MintSource::Initial));
+                }
+            }
+            for (o, src) in &holder_sources {
+                if *o == owner {
+                    continue;
+                }
+                if census.owner_minted.get(*o).is_some_and(|ns| ns.contains(name)) {
+                    alive = true;
+                    sources.push((name.clone(), *src));
+                }
+            }
+            let hostile = census.nonstack_minters.contains_key(name)
+                || census.initial_colliders.contains(name);
+            alive && hostile
+        });
+        if refuses {
+            census.collision_refusers.insert(owner.clone());
+            census.collision_sources.insert(owner.clone(), sources);
+        }
+    }
+    // assign the per-site flag from the map
+    for s in census.sites.iter_mut() {
+        s.collision_refusal = census.collision_refusers.contains(&s.owner);
+    }
 }
 
 /// The per-name mint counter row.
@@ -610,18 +812,32 @@ fn walk_list<'c, 'a>(
         refuses
     };
 
-    // per-name mint counts, duplicates → dup_risk
+    // per-name mint counts, duplicates → dup_risk; the same walk feeds the
+    // cross-list map (per-owner minted names, per-name non-reusable minters)
     let mut mint_counts: IndexMap<String, MintCount> = IndexMap::new();
+    let mut owner_mints: IndexMap<String, IndexSet<String>> = IndexMap::new();
     for s in sites.iter() {
         if s.kind == SiteKind::Draw && s.deck.is_some() {
             for (name, kind) in site_mints(s) {
-                add_mint(content, &mut mint_counts, &mut census.collision_names, name, kind);
+                add_mint(
+                    content,
+                    &mut mint_counts,
+                    &mut census.collision_names,
+                    &mut census.nonstack_minters,
+                    &mut owner_mints,
+                    list_cx.owner,
+                    name,
+                    kind,
+                );
             }
         } else {
             add_mint(
                 content,
                 &mut mint_counts,
                 &mut census.collision_names,
+                &mut census.nonstack_minters,
+                &mut owner_mints,
+                list_cx.owner,
                 &s.name,
                 s.kind_override.as_deref(),
             );
@@ -658,6 +874,65 @@ fn walk_list<'c, 'a>(
     // field docs)
     let list_stack_mints = Rc::new(list_stack_mints);
 
+    // the §4.2 unique mint face across a list (§5.1's skip, same
+    // application): an earlier op of this list minting the same UNIQUE name
+    // unconditionally (its segment chain is this site's ancestor chain — it
+    // always applies before this site) lands the ONE copy first, and the
+    // mint face SKIPS for this site — the site's product never exists.
+    // Draw sources count (a draw serves a fresh copy of a not-yet-manifested
+    // unique like any mint).
+    let mut unique_skipped_flags: IndexSet<usize> = IndexSet::new();
+    for (i, s) in sites.iter().enumerate() {
+        if !content.mint_is_unique(&s.name) {
+            continue;
+        }
+        let earlier = sites[..i].iter().any(|o| {
+            o.pos < s.pos
+                && s.segs.starts_with(&o.segs)
+                && site_mints(o).iter().any(|(n, _)| *n == s.name)
+        });
+        if earlier {
+            unique_skipped_flags.insert(i);
+        }
+    }
+
+    // the census side of the §6.7 chain-channel map: this list's per-op
+    // candidate ids (resolved against the global table in the collect_sites
+    // post-pass, where every list has walked) and the inline-gate refusal
+    // face — a TOP-LEVEL (seg-0) REFUSE. The §6.7 gate walk skips IF ops
+    // entirely, so only a seg-0 REFUSE is decisive there; a REFUSE inside an
+    // arm marks the arm's segment, not seg 0.
+    let chain_targets: Vec<Vec<String>> = st.chain_targets.clone();
+    let gate_refuses = st.flags.get(&0).is_some_and(|f| f.refused);
+    census.pending_chain_targets.insert(list_cx.owner.to_string(), chain_targets);
+    if gate_refuses {
+        census.gate_refusers.insert(list_cx.owner.to_string());
+    }
+    // the minting side of the collision join: every name this list mints
+    // UNCONDITIONALLY — an ELSE body runs only when earlier arms are false,
+    // so its holder may never exist (whether the sibling arms decide false
+    // is a world question), and counting it would demote lists no play ever
+    // refuses. The dup/collision bookkeeping above stays complete.
+    for s in sites.iter() {
+        if !s.fallback {
+            if s.kind == SiteKind::Draw && s.deck.is_some() {
+                for (name, _) in site_mints(s) {
+                    census
+                        .owner_minted
+                        .entry(list_cx.owner.to_string())
+                        .or_default()
+                        .insert(name.to_string());
+                }
+            } else {
+                census
+                    .owner_minted
+                    .entry(list_cx.owner.to_string())
+                    .or_default()
+                    .insert(s.name.clone());
+            }
+        }
+    }
+
     // the post-pass, site by site (co-mint reads see
     // the whole list, mutation goes to the one site)
     for i in 0..sites.len() {
@@ -665,6 +940,7 @@ fn walk_list<'c, 'a>(
         let s = &mut sites[i];
         s.throw_ops = throw_ops;
         s.chain_refusal = chain_refusal;
+        s.unique_skipped = unique_skipped_flags.contains(&i);
         s.killed_in_list = s.kind != SiteKind::Draw
             && kills.iter().any(|k| {
                 s.segs.contains(&k.seg) && (k.seg != s.seg || k.pos > s.pos) && k.name == s.name
@@ -753,18 +1029,30 @@ fn draw_cap<'c>(
 
 /// Per-name UNIFORMITY: a list re-minting X
 /// collides unless EVERY mint of X shares its name safely (§5.1; seed 2654 —
-/// stackable mints stack, unique mints skip, §4.2).
+/// stackable mints stack, unique mints skip, §4.2). The same walk feeds the
+/// cross-list map: `owner_mints` records that `owner` mints `name` (any
+/// reusability), and a NON-reusable mint records the owner beside the name
+/// in `nonstack_minters` — the outside-holder side of the engine's mint
+/// check (mint.rs reads the LIVING HOLDERS' stackable flag, so a non-stackable
+/// holder from another list or the initial world makes any mint of the name
+/// refuse).
+#[allow(clippy::too_many_arguments)]
 fn add_mint(
     content: &CompiledContent,
     mint_counts: &mut IndexMap<String, MintCount>,
     collision_names: &mut IndexSet<String>,
+    nonstack_minters: &mut IndexMap<String, IndexSet<String>>,
+    owner_mints: &mut IndexMap<String, IndexSet<String>>,
+    owner: &str,
     name: &str,
     kind: Option<&str>,
 ) {
     let reusable = mint_name_reusable(content, name, kind);
     if !reusable {
         collision_names.insert(name.to_string());
+        nonstack_minters.entry(name.to_string()).or_default().insert(owner.to_string());
     }
+    owner_mints.entry(name.to_string()).or_default().insert(owner.to_string());
     let e = mint_counts.entry(name.to_string()).or_insert(MintCount { count: 0, all_stack: true });
     e.count += 1;
     e.all_stack = e.all_stack && reusable;
@@ -843,11 +1131,18 @@ fn record_visit<'c, 'a>(
     // resolvable, so "capable" not "guaranteed" is what the refusal rung
     // needs, and over-demotion costs precision only)
     if o.op == "RUN" || o.op == "FORK" {
-        let capable = o.args.iter().any(|a| {
-            matches!(a, Arg::Ref { r#ref: Ref::Name { name, .. } }
-                if content.recipe_verbs.contains_key(name.as_str()))
+        let mut targets: Vec<String> = Vec::new();
+        let capable = o.args.iter().any(|a| match a {
+            Arg::Ref { r#ref: Ref::Name { name, .. } }
+                if content.recipe_verbs.contains_key(name.as_str()) =>
+            {
+                targets.push(name.clone());
+                true
+            }
+            _ => false,
         });
         st.chain_ops.push(capable);
+        st.chain_targets.push(targets);
     }
 
     // a name-form first arg kills that name
@@ -983,6 +1278,8 @@ fn base_site<'c>(
         killed_in_list: false,
         dup_risk: false,
         chain_refusal: false,
+        collision_refusal: false,
+        unique_skipped: false,
         target_killed_in_list: false,
         list_gate_mints: Rc::new(IndexSet::new()),
         list_stack_mints: Rc::new(IndexSet::new()),

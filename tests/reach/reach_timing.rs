@@ -260,6 +260,69 @@ fn by_and_freeze_take_the_tighter_horizon() {
 }
 
 // ---------------------------------------------------------------------------
+// the tie face: two lists crossing on the same tick share no clean pool
+// ---------------------------------------------------------------------------
+
+/// Two recurring triggers on the SAME tick minting the same non-stackable
+/// name from different lists (the bridge fixture's freeze-pair shape): a
+/// tie is no proof. Play fires the crossing's triggers in declaration order
+/// on the living world — the second SPAWN refuses the shared step and the
+/// whole advance rolls back (§9.2, the fired-set with it) — so neither
+/// list's first application creates the pool.
+fn frozen_tie_raw() -> ContentRaw {
+    ContentRaw {
+        prototypes: Some(IndexMap::from([("THE_GEM".to_string(), proto("item"))])),
+        triggers: Some(vec![
+            slot_trigger("t_tie_a", 24, false, &["SPAWN THE_GEM"]),
+            slot_trigger("t_tie_b", 24, false, &["SPAWN THE_GEM"]),
+        ]),
+        ..ContentRaw::default()
+    }
+}
+
+#[test]
+fn a_first_crossing_tie_demotes_every_list_the_shared_step_never_lands() {
+    let content = compile(&frozen_tie_raw());
+    let state = state_with(vec![ana()]);
+
+    // the analyzer's dictionary: the fixtures declare no vocabulary, so
+    // the core seed IS the load-effective one
+    let dict = core_dictionary();
+
+    // the analyzer's face: the card falls to candidate — the census's
+    // same-slot pair rule already reads the tie as risky, and the timing
+    // guard's own tie face (a landing equal to the crossing demotes) is
+    // pinned against the ambient sweep in reach_adversarial.rs
+    let rep = Analyzer::new(&content, &state, &dict)
+        .analyze_card("THE_GEM", CardOptions::default())
+        .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
+
+    // the engine's face: the tie crossing rejects the shared step in
+    // declaration order — the mint never lands and the clock never passes it
+    let r1 = execute_step(
+        &content,
+        &dict,
+        state,
+        Step {
+            start_min: None,
+            clock: Some(chorus::core::clock::parse_clock("4:0").unwrap()),
+            clauses: vec![],
+            t_real: None,
+        },
+        ExecOptions { first_record_id: 1, id_gen: None },
+    )
+    .unwrap();
+    assert!(
+        r1.rejected.as_deref().is_some_and(|m| m.contains("already in use")),
+        "the tie crossing refuses the shared step: {:?}",
+        r1.rejected
+    );
+    assert!(r1.state.by_name.get("THE_GEM").is_none_or(|pool| pool.is_empty()));
+}
+
+// ---------------------------------------------------------------------------
 // --by: duration>0 recipes cannot prove inside a finite horizon
 // ---------------------------------------------------------------------------
 

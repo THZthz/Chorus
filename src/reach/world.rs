@@ -471,7 +471,16 @@ pub(crate) fn ambient_gate_truth(
             eval_static_truth(p, world, bound).unwrap_or(StaticTruth::False)
         }
         Pred::Cmp { l, op, r } => {
-            if expr_static(l) && expr_static(r) {
+            // the §6.9 sweep selects over EMPTY bindings — no window exists,
+            // so a window-bound sum reads exactly 0 there. The window-model
+            // interval (the player-commit face) is the WRONG truth for the
+            // ambient face: through a chain-pinned verb's nulled window model
+            // it reads Unknown and holds a gate the sweep always fails (the
+            // pool can never raise a sum with no window to bind). Route the
+            // window-bound form to the empty-scope operand like every other
+            // role form.
+            let window_bound = |x: &ValExpr| matches!(x, ValExpr::TotalBound { .. });
+            if expr_static(l) && expr_static(r) && !window_bound(l) && !window_bound(r) {
                 return cmp_interval_truth(l, op, r, world, bound).unwrap_or(StaticTruth::False);
             }
             match (ambient_operand(l), ambient_operand(r)) {

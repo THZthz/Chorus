@@ -17,9 +17,9 @@
 //! whose analyzer faces the campaign covers (a red seed stays a triaged
 //! finding, never a suite failure: `cargo run --bin reach-fuzz --
 //! --seeds 200`). Pinning "these 100 seeds have 0 failures" would pin the
-//! OPEN residual ocean red right here (the Wave-4 classes in the ledger
-//! below), so soundness is asserted by the CAMPAIGN, not by this suite.
-//! What each seed
+//! generator's current draw by verdict — a generator or engine bump can
+//! surface a new gap shape on any unseen seed — so soundness is asserted by
+//! the CAMPAIGN, not by this suite. What each seed
 //! pins instead is that `run_fuzz_seed` is a pure function of its seed: two
 //! runs must agree on the failure set, the inconclusive set and the
 //! exploration bookkeeping — a generator or oracle that drifts (or a
@@ -52,24 +52,36 @@
 //!     state's set — the once draw's serve skips the dead position, and the
 //!     former engine+reach split pin (reach_unique.rs) asserts agreement.
 //!
-//! The Wave-4 residual ocean (pre-existing, OPEN — 16 failing seeds in the
-//! 200–3199 window, one triaged cross-list class with three channels):
-//!   - cross-list interference the per-list census never sees (seed 291's
-//!     shape and siblings): a PINNED candidate's top-level REFUSE refusing
-//!     the PARENT window (`run_inline_gate` trials it on the draft); a
-//!     complete-trigger body's chain op pinning before the completing
-//!     recipe's parked RUNs replay (`run_taken` is shared across the trigger
-//!     phase and the deferred replay); sibling same-home trigger bodies
-//!     pinning and refusing each other (fix shape: extend the chain-refusal
-//!     census walk across lists — a pin-capable chain op naming a candidate
-//!     whose top-level REFUSE is not decidably-false demotes its own list
-//!     the same way);
-//!   - a completing recipe that DESTROYS the locked home before the trigger
-//!     phase skips the dead card's completion triggers, but the draft rung
-//!     checks only draft-name collisions, never the home's survival through
-//!     the completing recipe's own outcomes (seed 371's shape; fix shape: a
-//!     per-pair rung — the completing recipe's outcome walk kills the home ⇒
-//!     that pair cannot witness).
+//! The Wave-4 cross-list ocean is CLOSED (v0.9.8) — the 16 failing seeds of
+//! the 200–3199 window decompose into five fixes over ONE census mechanism
+//! (the per-list interference map: what each list pins, what refuses it,
+//! whose mints collide, from where holders can be alive), consumed per
+//! completion by the fixpoint; each seed's shape by its fix:
+//!   - 291, 1601, 2425: the shared §6.7 chain channel (channels b/c appear
+//!     in no seed and are pinned synthetically, reach_chain.rs) — the
+//!     completing recipe's parked RUNs and every firing `on complete` body
+//!     share ONE chain slot, so a second pin — or a pin whose candidate
+//!     carries a top-level REFUSE (the inline gate trials it) — refuses the
+//!     parent window (`ChainSlotInterference`);
+//!   - 931, 1537, 1574, 1723, 2890, 2986, 3045, 3080, 3196, 1548: the
+//!     cross-list mint-collision join — the §5.1 name check reads the LIVING
+//!     HOLDERS' stackable flag, so a non-stackable holder minted by an
+//!     engine-timed other list (or the initial world) makes an application
+//!     refuse and its whole draft dies (`CollisionRefusal`; slot arms
+//!     timing-refined to the trigger's first crossing — the first
+//!     application creates the pool and its mints ARE the proof);
+//!   - 371: the completing recipe's own outcomes kill the locked home
+//!     before the trigger phase, and the phase skips dead cards — the
+//!     witness pair is void (`CompleteHomeKilled`);
+//!   - 851: the ambient gate's window-bound sum reads EXACTLY 0 over the
+//!     §6.9 sweep's empty bindings — not Unknown through a chain-pinned
+//!     verb's nulled window model;
+//!   - 2160: the §4.2 unique skip, in-list — an earlier unconditional
+//!     same-list mint of a unique name always lands first, so the later
+//!     site's product never exists (`UniqueSkipped`).
+//!
+//! The window's one remaining line is soft: seed 2638's state-cap
+//! inconclusive. The ledger has zero open classes.
 //!
 //! Bounds rationale (2026-10 audit, v7 scenarios): the default 8 steps ×
 //! 500 states per run, twice per seed; complete-trigger worlds explore

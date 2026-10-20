@@ -24,7 +24,7 @@ use crate::core::types::{Entity, State};
 
 use super::census::{
     draw_blinds_bare, draw_deck, mint_name_reusable, mint_stacks, object_always, op_throws,
-    site_mints, trigger_owner, RawSite, SetSite, SiteKind, DERIVED_NAME, MANY,
+    site_mints, trigger_owner, MintSource, RawSite, SetSite, SiteKind, DERIVED_NAME, MANY,
 };
 use super::render::pred_text;
 use super::world::{
@@ -32,6 +32,7 @@ use super::world::{
     BoundSlot, BoundView, CardFact, CardWorld, SlotFiller, SlotProof, StaticTruth, WorldFacts,
     INFINITY,
 };
+use crate::core::clock::MIN_PER_TICK;
 
 // ---------------------------------------------------------------------------
 // gate-name collectors
@@ -559,6 +560,9 @@ impl<'c> WorldFacts<'c> {
         if site.killed_in_list {
             return (Err(CardBlocker::KilledInList), None); // the mint is destroyed later in the same list
         }
+        if site.unique_skipped {
+            return (Err(CardBlocker::UniqueSkipped), None); // the §4.2 mint face skips this repeat mint
+        }
         if site.dup_risk {
             return (Err(CardBlocker::DupRisk), None); // a duplicate non-stackable mint refuses the draft
         }
@@ -591,6 +595,18 @@ impl<'c> WorldFacts<'c> {
         // skip, §6.6).
         if site.chain_refusal {
             return (Err(CardBlocker::ChainPinRefusal), None);
+        }
+        // the cross-list mint-collision refusal (the §5.1 holder-side check
+        // joined across lists in the census): this list mints a name whose
+        // non-stackable holder may already be alive from outside the list —
+        // the application may refuse and the whole draft dies with it.
+        // Content-static (census map), so it cannot interact with the
+        // fixpoint's anti-monotone schedule. RECIPE-owned sites only here:
+        // the trigger arms carry their own face (the slot arm timing-refined
+        // to the first crossing, where the first application creates the
+        // pool and its mints are the proof).
+        if site.collision_refusal && site.verb.is_some() {
+            return (Err(CardBlocker::CollisionRefusal), None);
         }
         if site.shadow_risk {
             return (Err(CardBlocker::ShadowRisk), None); // first-match: an earlier recipe may shadow
@@ -689,6 +705,17 @@ impl<'c> WorldFacts<'c> {
                 if let Some(name) = self.completion_contaminated(world, vi, ri) {
                     return (Err(CardBlocker::CompleteDraftCollision { name }), None);
                 }
+                // the completion's SHARED chain channel (§6.7, cross-list):
+                // the recipe's own chain ops park while the `on complete`
+                // bodies fire inline, and the parked ops replay under the
+                // same slot — a second pin (or a pin whose candidate carries
+                // a top-level REFUSE, which the inline gate trials) refuses
+                // the parent window, and the recipe's mints die with the
+                // draft. Consumed here AND by the trigger arm's witness-pair
+                // filter — one mechanism for all three channels.
+                if self.completion_chain_dirty(vi, ri) {
+                    return (Err(CardBlocker::ChainSlotInterference), None);
+                }
             }
             let verb_name = match self.content.verbs.get_index(vi) {
                 Some((name, _)) => name.clone(),
@@ -701,6 +728,18 @@ impl<'c> WorldFacts<'c> {
             return (Err(CardBlocker::UnknownGuard), None);
         };
         if let CompiledTrigger::Slot { id, slot, once, .. } = trig {
+            // the firing draft IS the living world (an event applies on the
+            // pass's state): a body mint whose non-stackable holder may
+            // already be alive from outside the list refuses the whole STEP
+            // (fuzz seed 931 — the second SPAWN against another list's mint
+            // rejects the crossing, forever), so the body's mints never
+            // land. The timing face refines it: the claim survives when the
+            // body's FIRST crossing precedes every engine-timed holder's
+            // earliest landing — the first application creates the pool, and
+            // its product is the proof (the frozen-pair shape).
+            if site.collision_refusal && self.collision_precedes_first_cross(site) {
+                return (Err(CardBlocker::CollisionRefusal), None);
+            }
             // the midgame face: a spent ONCE trigger never fires again (its
             // past mints ride the replayed entities as initial facts)
             if *once && self.fired_once_owners.contains(&site.owner) {
@@ -787,7 +826,7 @@ impl<'c> WorldFacts<'c> {
             let clean =
                 match self.complete_draft_clean_pairs(world, &pairs, home, desc.stackable, site) {
                     Ok(clean) => clean,
-                    Err(name) => return (Err(CardBlocker::CompleteDraftCollision { name }), None),
+                    Err(dirt) => return (Err(dirt.into_blocker(home.clone())), None),
                 };
             // The first CLEAN witness renders the line (deterministic:
             // verbs in content.verbs order, recipes in declaration order) —
@@ -815,6 +854,11 @@ impl<'c> WorldFacts<'c> {
         let Some(initial) = expiry_support(self, world, on_expire_of) else {
             return (Err(CardBlocker::ExpiryUnsupported { card: on_expire_of.clone() }), None);
         };
+        // same firing-refusal face as the slot arm: the expiry body applies
+        // on the pass's state, and a cross-list-held mint refuses the step
+        if site.collision_refusal {
+            return (Err(CardBlocker::CollisionRefusal), None);
+        }
         let available = if initial { "initial" } else { "produced" };
         let writable_suffix = if initial { "" } else { " or minted" };
         let note = format!(
@@ -842,6 +886,11 @@ pub enum CardBlocker {
     Fallback,
     /// `site.killed_in_list` — the mint is destroyed later in the same list.
     KilledInList,
+    /// `site.unique_skipped` — an earlier unconditional op of the same list
+    /// already mints this UNIQUE name, and the §4.2 mint face skips while a
+    /// copy lives: the earlier mint in the same application always lands
+    /// first, so this site never mints.
+    UniqueSkipped,
     /// `site.dup_risk` — a duplicate non-stackable mint refuses the draft.
     DupRisk,
     /// `self_gated` — gated on (or filled by) a card the list itself mints.
@@ -854,6 +903,13 @@ pub enum CardBlocker {
     /// dies with the completion (event-channel lists exempt — a silent
     /// skip there, §6.6).
     ChainPinRefusal,
+    /// `site.collision_refusal` — this list mints a name whose non-stackable
+    /// holder may already be alive from OUTSIDE the list (an initial card or
+    /// another list's non-reusable mint): the §5.1 mint check reads the
+    /// LIVING HOLDERS' stackable flag, so the application may refuse and the
+    /// whole draft (a firing step, a completion, a trigger firing) dies with
+    /// it.
+    CollisionRefusal,
     /// `site.shadow_risk` — an earlier recipe may shadow (first-match).
     ShadowRisk,
     /// `path_open` failed: the FIRST condition that is not a static truth,
@@ -901,6 +957,17 @@ pub enum CardBlocker {
     /// (one clean pair would let the completion land), so the mint never
     /// lands.
     CompleteDraftCollision { name: String },
+    /// the completion's SHARED §6.7 chain channel, cross-list: the recipe's
+    /// own chain ops park while the firing `on complete` bodies apply inline
+    /// and the parked ops replay under the same slot — a second pin (or a
+    /// pin whose candidate carries a top-level REFUSE, which the inline gate
+    /// trials on the draft) refuses the PARENT window, and the completion
+    /// draft dies with every mint it carried.
+    ChainSlotInterference,
+    /// owner tail — completion trigger: every witness completion's own
+    /// outcomes destroy/replace the locked home before the trigger phase,
+    /// and the phase skips dead cards — the body never fires.
+    CompleteHomeKilled { home: String },
     /// the site's owner is not in the trigger index — defensively unreachable
     /// (mirrors `site_reason`'s "unknown guard" fallback).
     UnknownGuard,
@@ -931,6 +998,8 @@ impl CardBlocker {
             }
             CardBlocker::KilledInList => "the mint is destroyed/Replaced later in the same outcome list — it never survives a step"
                 .to_string(),
+            CardBlocker::UniqueSkipped => "an earlier op of the same list already mints this unique name — the §4.2 mint face skips while a copy lives, so the earlier mint in the same application lands first and this site never mints"
+                .to_string(),
             CardBlocker::DupRisk => "this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft"
                 .to_string(),
             CardBlocker::SelfGated => {
@@ -943,6 +1012,10 @@ impl CardBlocker {
                 "a pinning RUN/FORK in this list is followed by another chain op — the second hits \
                  the taken chain slot and refuses the parent window (§6.7), so the whole draft dies \
                  with the completion"
+                    .to_string()
+            }
+            CardBlocker::CollisionRefusal => {
+                "this list mints a name whose non-stackable holder may already be alive from outside the list (an initial card or another list's mint) — the §5.1 mint check reads the living holders, so the application may refuse and the whole draft dies"
                     .to_string()
             }
             CardBlocker::ShadowRisk => {
@@ -987,6 +1060,13 @@ impl CardBlocker {
             ),
             CardBlocker::CompleteDraftCollision { name } => format!(
                 "the completion draft already holds '{name}' (the locked home card, the completing recipe's own mints, or a sibling trigger's mint) — the body's mint refuses the draft and the whole completion is discarded"
+            ),
+            CardBlocker::ChainSlotInterference => {
+                "the completion's chain slot is shared between the recipe's parked RUNs and the firing `on complete` bodies (§6.7) — a second pin, or a pin whose candidate carries a top-level REFUSE (trialed by the inline gate), refuses the parent window and the completion draft dies"
+                    .to_string()
+            }
+            CardBlocker::CompleteHomeKilled { home } => format!(
+                "every witness completion's own outcomes destroy/replace '{home}' — the locked home is dead before the trigger phase and the phase skips dead cards, so the body never fires"
             ),
             CardBlocker::UnknownGuard => "unknown guard".to_string(),
             CardBlocker::TriggerBeyondBy { minute, by } => format!(
@@ -1304,16 +1384,29 @@ impl<'c> WorldFacts<'c> {
             if path_open_first_failure(&s.path, world, bound.as_ref()).is_some() {
                 continue; // roll/role-gated or statically false: not unconditional
             }
+            // the occupant test is the ENGINE's mint check, holder side
+            // included: a mint refuses when the name is living WITHOUT a
+            // fully-stackable holder pool — so a name with a possible
+            // non-stackable holder (the census's collision set: initial
+            // non-stackable cards, or another list's non-reusable mint)
+            // occupies the draft even when the minted copy itself would
+            // stack (the deck serving a stackable-KIND card over a living
+            // non-stackable holder refuses — the §5.1 check reads the
+            // holders).
             if s.kind == SiteKind::Draw && s.deck.is_some() {
                 let deck = draw_deck(s);
                 if s.cap >= 1 {
                     if let Some(c) = deck.order.first() {
-                        if !mint_name_reusable(self.content, &c.name, Some(c.kind.as_str())) {
+                        if !mint_name_reusable(self.content, &c.name, Some(c.kind.as_str()))
+                            || self.census.collision_names.contains(&c.name)
+                        {
                             out.insert(c.name.clone());
                         }
                     }
                 }
-            } else if !mint_name_reusable(self.content, &s.name, s.kind_override.as_deref()) {
+            } else if !mint_name_reusable(self.content, &s.name, s.kind_override.as_deref())
+                || self.census.collision_names.contains(&s.name)
+            {
                 out.insert(s.name.clone());
             }
         }
@@ -1483,6 +1576,150 @@ impl<'c> WorldFacts<'c> {
         Some(draft)
     }
 
+    /// Whether every holder source feeding this slot-trigger list's
+    /// collision refusal lands STRICTLY BEFORE the trigger's own first
+    /// crossing — the first application then creates the pool and its mints
+    /// ARE the proof. A tie is no proof: the crossing fires its triggers in
+    /// declaration order on the living world and the sibling mint refuses
+    /// the shared step in either order (§9.2's full rollback), and an
+    /// ambient completion at minute m precedes slot-m events (§6.6).
+    /// `Initial` and `ExpireTrigger` are unorderable (minute zero /
+    /// arming-dependent) and refuse; a slot minter and an ambient recipe
+    /// carry a computable earliest landing (the crossing, the sweep's first
+    /// boundary plus the window length).
+    fn collision_precedes_first_cross(&self, site: &RawSite<'_>) -> bool {
+        let Some((CompiledTrigger::Slot { slot, .. }, _)) = self.trig_idx.get(&site.owner) else {
+            return true; // a non-slot owner has no orderable face — refuse
+        };
+        let own_first = self.initial.now + self.first_cross(*slot);
+        let Some(sources) = self.census.collision_sources.get(&site.owner) else {
+            return true;
+        };
+        sources.iter().any(|(_name, src)| match *src {
+            MintSource::Initial | MintSource::ExpireTrigger => true,
+            MintSource::SlotTrigger { slot: theirs } => {
+                self.initial.now + self.first_cross(theirs) <= own_first
+            }
+            MintSource::AmbientRecipe { verb, recipe } => {
+                let (_, v) = match self.content.verbs.get_index(verb) {
+                    Some((n, v)) => (n, v),
+                    None => return true,
+                };
+                self.initial.now + MIN_PER_TICK + super::world::effective_duration(v, recipe)
+                    <= own_first
+            }
+        })
+    }
+
+    /// The completion's shared §6.7 chain channel, cross-list: ONE channel
+    /// per completion — the completing recipe's own chain ops PARK while the
+    /// `on complete` bodies fire inline, and the parked ops replay after
+    /// them under the same slot (advance.rs's fire_window). A second pin in
+    /// the channel refuses the PARENT window (the recipe body and the
+    /// complete bodies are not event-channel), and a pin's inline gate
+    /// trials the pinned candidate's top-level REFUSE on the draft — that
+    /// refusal also rejects the parent window. Either way the completion
+    /// draft dies, and every mint it carried never lands. The census map
+    /// supplies both halves (per-list chain targets, per-list gate
+    /// refusers); this join is per completion.
+    fn completion_chain_dirty(&self, vi: usize, ri: usize) -> bool {
+        let Some((_, v)) = self.content.verbs.get_index(vi) else {
+            return false;
+        };
+        let r = &v.recipes[ri];
+        let r_owner = format!("recipe {} of {}", r.id, v.name);
+        // the bodies that can fire on this completion: complete triggers
+        // whose emitter gate passes (no aspect, or one the recipe declares)
+        // and whose home the verb's committed slots can lock — the same
+        // MAY-lock the window rung accepts
+        let mut firing: Vec<String> = Vec::new();
+        for t in &self.content.triggers {
+            let CompiledTrigger::Complete { id, home, aspect, .. } = t else {
+                continue;
+            };
+            if aspect.as_ref().is_some_and(|a| !r.aspects.contains(a)) {
+                continue;
+            }
+            let Some(desc) = self.complete_home_desc(home) else {
+                continue;
+            };
+            if self.locking_role(vi, &desc).is_none() {
+                continue;
+            }
+            firing.push(trigger_owner(id));
+        }
+        let pins = |owner: &str| -> bool {
+            self.census
+                .chain_target_owners
+                .get(owner)
+                .is_some_and(|ops| ops.iter().any(|o| !o.is_empty()))
+        };
+        let gate_refusing_pins = |owner: &str| -> bool {
+            self.census.chain_target_owners.get(owner).is_some_and(|ops| {
+                ops.iter().flatten().any(|cand| self.census.gate_refusers.contains(cand))
+            })
+        };
+        // the trigger body's pin precedes the parked replay: the replayed op
+        // hits the taken slot and refuses the parent window
+        if pins(&r_owner) && firing.iter().any(|o| pins(o)) {
+            return true;
+        }
+        // two firing bodies pin: the second hits the taken slot
+        if firing.iter().filter(|o| pins(o)).count() >= 2 {
+            return true;
+        }
+        // any pin in the channel — a parked op or a firing body's op — whose
+        // candidate carries a top-level REFUSE: the inline gate refuses the
+        // parent window
+        if gate_refusing_pins(&r_owner) || firing.iter().any(|o| gate_refusing_pins(o)) {
+            return true;
+        }
+        false
+    }
+
+    /// The completing recipe's outcome walk vs the locked home: a DESTROY or
+    /// REPLACE naming the home kills the locked card before the trigger
+    /// phase (advance.rs's fire_completion_triggers skips dead cards), and a
+    /// role-form kill at a role the home can be locked by reaches it the
+    /// same way. Both forms are conservative: the census records the
+    /// name-form kills per owner, the walk covers the role form; a kill
+    /// behind an undecided arm may fire — the demotion direction only.
+    fn recipe_kills_home(&self, vi: usize, ri: usize, home: &str) -> bool {
+        let Some((_, v)) = self.content.verbs.get_index(vi) else {
+            return false;
+        };
+        let r = &v.recipes[ri];
+        let r_owner = format!("recipe {} of {}", r.id, v.name);
+        if self.census.destroyed_by.get(home).is_some_and(|set| set.contains(&r_owner)) {
+            return true;
+        }
+        let Some(desc) = self.complete_home_desc(home) else {
+            return false;
+        };
+        let mut kills = false;
+        let root: Vec<Pred> = Vec::new();
+        let _ = walk_outcomes(
+            &r.out,
+            &root,
+            &mut (),
+            &mut |_st, o, _path| {
+                if o.op != "DESTROY" && o.op != "REPLACE" {
+                    return Ok(());
+                }
+                if let Some(Arg::Role { role }) = o.args.first() {
+                    kills = kills
+                        || v.slot_by_role
+                            .get(role.as_str())
+                            .is_some_and(|slot| self.slot_can_lock(slot, &desc));
+                }
+                Ok(())
+            },
+            &mut |_st, _arm, p| p.clone(),
+            &mut |_st, p| p.clone(),
+        );
+        kills
+    }
+
     /// ① the window witnesses: every (verb, recipe) pair with the verb
     /// committable and able to lock a card with `desc` in a committed-role
     /// slot, and the recipe completable (a first application reaching the
@@ -1526,21 +1763,54 @@ impl<'c> WorldFacts<'c> {
         home: &str,
         home_stackable: bool,
         site: &RawSite<'_>,
-    ) -> Result<Vec<(usize, usize)>, String> {
+    ) -> Result<Vec<(usize, usize)>, PairDirt> {
         let self_mints = self.owner_draft_names(world, &site.owner);
         // the trigger fires BECAUSE a living locked card is named `home` —
         // minting `home` refuses every firing, whatever the witness
         if !home_stackable && self_mints.contains(home) {
-            return Err(home.to_string());
+            return Err(PairDirt::Collision(home.to_string()));
+        }
+        // the body's OWN firing may refuse on a cross-list-held mint: the
+        // body applies on the completion draft, which carries the whole
+        // living world — a mint whose non-stackable holder may be alive from
+        // outside the body refuses the PARENT WINDOW, and no pair survives
+        if self.census.collision_refusers.contains(&site.owner) {
+            return Err(PairDirt::CollisionRefusal);
         }
         let mut clean: Vec<(usize, usize)> = Vec::new();
-        let mut first_dirty: Option<String> = None;
+        let mut first_dirty: Option<PairDirt> = None;
+        let note = |d: PairDirt, first_dirty: &mut Option<PairDirt>| {
+            if first_dirty.is_none() {
+                *first_dirty = Some(d);
+            }
+        };
         for &(vi, ri) in pairs {
             let v = match self.content.verbs.get_index(vi) {
                 Some((_, v)) => v,
                 None => unreachable!("verb index {vi} came from content.verbs enumeration"),
             };
             let r = &v.recipes[ri];
+            // the shared chain channel (§6.7) and the recipe's own mint
+            // collision can refuse the completion before the trigger phase;
+            // the recipe's own outcomes can kill the locked home before the
+            // phase skips it (fuzz seed 371). Per-pair, conservative.
+            let dirt = if self.completion_chain_dirty(vi, ri) {
+                Some(PairDirt::ChainRefusal)
+            } else if self
+                .census
+                .collision_refusers
+                .contains(&format!("recipe {} of {}", r.id, v.name))
+            {
+                Some(PairDirt::CollisionRefusal)
+            } else if self.recipe_kills_home(vi, ri, home) {
+                Some(PairDirt::HomeKilled)
+            } else {
+                None
+            };
+            if let Some(d) = dirt {
+                note(d, &mut first_dirty);
+                continue;
+            }
             let mut forbidden: IndexSet<String> = IndexSet::new();
             if !home_stackable {
                 forbidden.insert(home.to_string());
@@ -1560,9 +1830,7 @@ impl<'c> WorldFacts<'c> {
                 }
             }
             if let Some(n) = self_mints.iter().find(|n| forbidden.contains(*n)) {
-                if first_dirty.is_none() {
-                    first_dirty = Some(n.clone());
-                }
+                note(PairDirt::Collision(n.clone()), &mut first_dirty);
             } else {
                 clean.push((vi, ri));
             }
@@ -1570,9 +1838,9 @@ impl<'c> WorldFacts<'c> {
         match (clean.is_empty(), first_dirty) {
             // the window/aspect rungs guarantee a non-empty witness list, so
             // an empty clean list means every pair was dirty and the first
-            // dirty name is on record (the home fallback is defensive only)
-            (true, Some(n)) => Err(n),
-            (true, None) => Err(home.to_string()),
+            // dirty reason is on record (the home fallback is defensive only)
+            (true, Some(d)) => Err(d),
+            (true, None) => Err(PairDirt::Collision(home.to_string())),
             (false, _) => Ok(clean),
         }
     }
@@ -1623,6 +1891,40 @@ impl<'c> WorldFacts<'c> {
             }
         }
         None
+    }
+}
+
+/// Why ONE witness pair of a completion trigger cannot host the body's
+/// firing — the per-pair dirtiness the draft rung filters on, with the
+/// cross-list channels beside the original draft collision (one enum so the
+/// first dirty reason is on record for the `--why` table).
+#[derive(Debug, Clone)]
+pub(crate) enum PairDirt {
+    /// the body's mint collides with a name the completion draft already
+    /// holds (the locked home, the recipe's first-application mints, or a
+    /// sibling trigger's mint).
+    Collision(String),
+    /// the pair's completion may refuse through the shared §6.7 chain
+    /// channel (a trigger-body pin before the parked replay, a sibling
+    /// body's second pin, or a pin whose candidate carries a top-level
+    /// REFUSE).
+    ChainRefusal,
+    /// the pair's completion (or this body's own firing) may refuse on a
+    /// cross-list-held non-stackable mint.
+    CollisionRefusal,
+    /// the pair's completing recipe kills the locked home before the
+    /// trigger phase, and the phase skips dead cards.
+    HomeKilled,
+}
+
+impl PairDirt {
+    fn into_blocker(self, home: String) -> CardBlocker {
+        match self {
+            PairDirt::Collision(name) => CardBlocker::CompleteDraftCollision { name },
+            PairDirt::ChainRefusal => CardBlocker::ChainSlotInterference,
+            PairDirt::CollisionRefusal => CardBlocker::CollisionRefusal,
+            PairDirt::HomeKilled => CardBlocker::CompleteHomeKilled { home },
+        }
     }
 }
 

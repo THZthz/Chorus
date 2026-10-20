@@ -186,6 +186,8 @@ pub fn try_inspect_content(
                             max: Some(2),
                             query: Some("kind:character".into()),
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         },
                         chorus::content::SlotDef {
                             role: "object".into(),
@@ -193,6 +195,8 @@ pub fn try_inspect_content(
                             max: Some(1),
                             query: None,
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         },
                     ],
                     duration: 0,

@@ -40,6 +40,8 @@ fn pace_rig() -> (chorus::core::dict::Dictionary, chorus::content::CompiledConte
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 30,
                 recipes: vec![RecipeDef {
@@ -210,6 +212,8 @@ fn refusal_reads_the_authored_gate_and_the_turn_rolls_back() {
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 30,
                 recipes: vec![RecipeDef {

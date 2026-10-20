@@ -473,6 +473,8 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -576,6 +578,8 @@ fn actors_slot() -> SlotDef {
         max: Some(1),
         query: Some("kind:character".into()),
         shown: None,
+        greedy: false,
+        consuming: false,
     }
 }
 
@@ -1164,6 +1168,8 @@ fn wait_content(
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 60,
                     recipes: vec![default_recipe(&["NARRATE(\"{actors} wait.\")"])],

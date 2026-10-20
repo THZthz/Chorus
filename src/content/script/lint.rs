@@ -18,13 +18,13 @@ use crate::content::{
 use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::predicate::{parse_predicate, Pred, ValExpr};
-use crate::core::query::{CmpOp, Query, QueryTerm};
+use crate::core::query::{match_query, parse_query, CmpOp, Query, QueryTerm};
 use crate::core::r#ref::Ref;
 use crate::core::regex_util::{grp_text, static_regex};
 use crate::core::roles::role_names;
 use crate::core::sentence::{Arg, Outcome};
 use crate::core::text::{is_dsl_ws_char, DSL_WS_CLASS};
-use crate::core::types::Aspects;
+use crate::core::types::{Aspects, Entity};
 use crate::error::Result;
 
 /// The count-gate scan
@@ -98,6 +98,24 @@ fn expr_reads_held(x: &ValExpr) -> bool {
         }
         _ => false,
     }
+}
+
+/// The name/kind/aspects probe the greedy slot-fit advisory matches against
+/// (a descriptor stand-in: no attrs, no life — the query vocabulary is
+/// exactly these three faces, §4.5).
+fn slot_probe(kind: &str, aspects: &Aspects, query: &Query) -> bool {
+    let probe = Entity {
+        id: String::new(),
+        kind: kind.to_string(),
+        name: String::new(),
+        aspects: aspects.clone(),
+        attrs: Default::default(),
+        born_action: Some(0),
+        dead_action: None,
+        stackable: false,
+        desc: None,
+    };
+    match_query(&probe, query)
 }
 
 /// Severity class of one lint finding (E11's two-class design).
@@ -206,6 +224,39 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                     "verb {name}: declares a held slot but no recipe reads it — no hold can flip the deferred selection (§6.1, §6.4)"
                 ),
             });
+        }
+        // the greedy slot-fit advisory (§6.1, §13.2): a greedy held slot
+        // whose query can never match any initial-or-mintable descriptor —
+        // the pull is dead content the never-matching-`when` check cannot
+        // see (the slot's min being 0). The descriptor universe is the
+        // declared entity lines plus the prototype mints, probed by
+        // name/kind/aspects alone (the query vocabulary).
+        for s in &verb.slots {
+            if s.role != "held" || !s.greedy {
+                continue;
+            }
+            let Some(q) = s.query.as_deref().filter(|q| !q.is_empty()) else {
+                continue; // a query-less greedy is the compile error's face
+            };
+            let Ok(query) = parse_query(q, eff) else {
+                continue; // the compile already rejected a malformed query
+            };
+            let fits = |kind: &str, aspects: &Aspects| slot_probe(kind, aspects, &query);
+            let any_initial = script.entities.iter().any(|e| fits(&e.kind, &e.aspects));
+            let any_mintable = script.content.prototypes.as_ref().is_some_and(|ps| {
+                ps.values().any(|p| {
+                    let empty = Aspects::new();
+                    fits(&p.kind, p.aspects.as_ref().unwrap_or(&empty))
+                })
+            });
+            if !any_initial && !any_mintable {
+                findings.push(LintFinding {
+                    severity: LintSeverity::Warning,
+                    message: format!(
+                        "verb {name}: the greedy held slot's query matches no declared or mintable card — the pull is dead content (§6.1)"
+                    ),
+                });
+            }
         }
     }
 

@@ -111,7 +111,15 @@ fn slot_trigger(id: &str, tick: i64, once: bool, out: &[&str]) -> TriggerDef {
 }
 
 fn object_slot(query: &str) -> SlotDef {
-    SlotDef { role: "object".into(), min: 1, max: Some(1), query: Some(query.into()), shown: None }
+    SlotDef {
+        role: "object".into(),
+        min: 1,
+        max: Some(1),
+        query: Some(query.into()),
+        shown: None,
+        greedy: false,
+        consuming: false,
+    }
 }
 
 fn recipe(id: &str, out: &[&str]) -> RecipeDef {

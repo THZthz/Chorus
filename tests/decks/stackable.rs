@@ -267,6 +267,8 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -316,6 +318,8 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -379,6 +383,8 @@ fn a_non_stackable_spawn_onto_an_existing_pool_name_rejects_the_shared_namespace
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -464,6 +470,8 @@ fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_n
                             max: Some(1),
                             query: Some("kind:character".into()),
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         },
                         SlotDef {
                             role: "object".into(),
@@ -471,6 +479,8 @@ fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_n
                             max: Some(1),
                             query: None,
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         },
                     ],
                     duration: 0,
@@ -540,6 +550,8 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                             max: Some(1),
                             query: Some("kind:character".into()),
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         }],
                         duration: 0,
                         recipes: vec![RecipeDef {
@@ -565,6 +577,8 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                                 max: Some(1),
                                 query: Some("kind:character".into()),
                                 shown: None,
+                                greedy: false,
+                                consuming: false,
                             },
                             SlotDef {
                                 role: "object".into(),
@@ -572,6 +586,8 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                                 max: Some(1),
                                 query: None,
                                 shown: None,
+                                greedy: false,
+                                consuming: false,
                             },
                         ],
                         duration: 0,
@@ -797,6 +813,8 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
                             max: Some(1),
                             query: Some("kind:character".into()),
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         }],
                         duration: 0,
                         recipes: vec![RecipeDef {
@@ -821,6 +839,8 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
                             max: Some(1),
                             query: Some("kind:character".into()),
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         }],
                         duration: 30, // one slot per wait: each advance crosses exactly one expiry crossing
                         recipes: vec![RecipeDef {
@@ -924,6 +944,8 @@ fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
                             max: Some(1),
                             query: Some("kind:character".into()),
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         },
                         SlotDef {
                             role: "object".into(),
@@ -931,6 +953,8 @@ fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
                             max: Some(1),
                             query: None,
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         },
                     ],
                     duration: 0,
@@ -1039,6 +1063,8 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -1136,6 +1162,8 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
                             max: Some(1),
                             query: Some("kind:character".into()),
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         },
                         SlotDef {
                             role: "object".into(),
@@ -1143,6 +1171,8 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
                             max: Some(1),
                             query: None,
                             shown: None,
+                            greedy: false,
+                            consuming: false,
                         },
                     ],
                     duration: 0,
@@ -1227,6 +1257,8 @@ fn gate(dict: &Dictionary) -> CompiledContent {
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![
@@ -1304,6 +1336,8 @@ fn count_dread_and_total_dread_are_load_errors_naming_the_valid_forms() {
                     max: Some(1),
                     query: None,
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {

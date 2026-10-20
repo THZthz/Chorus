@@ -1093,6 +1093,8 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {
@@ -1450,6 +1452,8 @@ fn the_fork_load_checks_pin_homes_and_arg_form() {
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {

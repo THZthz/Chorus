@@ -14,7 +14,7 @@ use crate::core::clock::{MIN_PER_TICK, TICKS_PER_DAY};
 use crate::core::dict::Dictionary;
 use crate::core::predicate::RoleBindings;
 use crate::core::r#ref::id_ref;
-use crate::core::roles::ROLES;
+use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::{Arg, Outcome};
 use crate::core::types::{clone_state, AttrValue, OpenWindow, State};
 use crate::error::{ChorusError, Result};
@@ -440,6 +440,16 @@ fn fire_window(
         &mut ctx,
         &mut concrete,
     );
+    // §6.7 (v0.9.9): the consuming burn — the surviving held cards of a
+    // consuming slot die HERE, between the recipe's own outcomes and the
+    // completion-trigger phase (CS-faithful: the consumed card is gone
+    // before CompleteState's induction pass, so a burned card fires no
+    // `on complete`). The burns are engine-written `DESTROY #id` concrete
+    // rows appended to the COMPLETE row's outcome list — the fold replays
+    // them with no new machinery (the completion-trigger rows' precedent).
+    if !refused {
+        refused = burn_consuming_held(content, w, &mut ctx, &mut concrete);
+    }
     if !refused {
         refused = fire_completion_triggers(content, w, recipe, &mut ctx, &mut concrete);
     }
@@ -488,6 +498,41 @@ fn fire_window(
         record.recipes = vec![recipe.id.clone()];
     }
     Ok(FireWindowResult { state: out, record, advance_extra, extra_records })
+}
+
+/// §6.7: the consuming slot's burn face — every held card the window's
+/// completion bindings bound that is STILL ALIVE at burn time is destroyed.
+/// The burn addresses the ids the bindings resolved BEFORE the recipe's own
+/// outcomes ran (the same ids `DESTROY held` concretizes against), never a
+/// re-resolution of the window's refs: a name-addressed hold re-resolved now
+/// would re-address the pool, and a `DESTROY held, SPAWN <same name>` recipe
+/// would burn the minted successor. The living-set intersection keeps the
+/// survivor-only face: a held card the outcomes already consumed no-ops (a
+/// REPLACE's successor is not a binding), a survivor burns even when a
+/// same-name copy now lives. Returns true when a burn refused the window
+/// (an application failure is not a gate — the §6.7 window-refuse, the
+/// recipe loop's discipline).
+fn burn_consuming_held(
+    content: &CompiledContent,
+    w: &OpenWindow,
+    ctx: &mut ApplyCtx,
+    concrete: &mut Vec<Outcome>,
+) -> bool {
+    let consuming = content
+        .verbs
+        .get(&w.verb)
+        .and_then(|v| v.slot_by_role.get("held"))
+        .is_some_and(|s| s.consuming);
+    if !consuming {
+        return false;
+    }
+    let bound = ctx.bindings.get(&Role::Held).map(Vec::as_slice).unwrap_or(&[]);
+    let burns: Vec<Outcome> = bound
+        .iter()
+        .filter(|id| ctx.state.entities.get(*id).is_some_and(|e| e.dead_action.is_none()))
+        .map(|id| Outcome::concrete("DESTROY", vec![Arg::Ref { r#ref: id_ref(id.clone()) }]))
+        .collect();
+    apply_outcomes_with_refuse(burns.iter(), ctx, concrete)
 }
 
 /// §6.7: the completion-trigger phase — the window's committed locked

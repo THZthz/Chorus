@@ -203,3 +203,57 @@ fn hold_for_verb_disambiguates_and_the_bin_routes_the_word() {
     assert_eq!(t2.kind, TurnKind::Error);
     assert!(last_line(&t2).contains("wish cannot take the hold"), "{}", last_line(&t2));
 }
+
+/// The slot class (v0.9.9) at the REPL: a `held: 0..2` station takes a
+/// second hold, the processing line names both, the third hold meets the
+/// engine's at-max refusal, and `explain` names the bindings.
+#[test]
+fn the_slot_class_holds_to_its_fill_at_the_repl() {
+    let mut g = Game::from_script(
+        "\
+script: Held Range
+player: ANA
+start: 0:0
+
+entities:
+  CARREL is place
+  ANA is character at CARREL
+  BOOK is text at CARREL
+  CHALICE is item with quest:1 at CARREL
+  RELIC is item with quest:2 at CARREL
+  CROWN is item with quest:3 at CARREL
+
+verbs:
+  STUDY:
+    actors: 1 kind:character
+    object: 1 kind:text
+    held: 0..2 aspect:quest
+    duration: 30m
+    recipes:
+      study.twin when count(held) >= 2 -> NARRATE \"twins.\"
+      default -> NARRATE \"plain.\"
+",
+        core_dictionary(),
+    )
+    .expect("the script compiles");
+    g.handle_line("study the book").unwrap();
+    let t = g.hold("the chalice").unwrap();
+    assert_eq!(t.kind, TurnKind::Action, "{}", last_line(&t));
+    let t = g.hold("the relic").unwrap();
+    assert_eq!(t.kind, TurnKind::Action, "{}", last_line(&t));
+    // the processing line names both bindings
+    let after = g.after_turn().unwrap();
+    assert!(after.iter().any(|l| l.contains("(holding CHALICE, RELIC)")), "{after:?}");
+    // the third fitting card meets the at-max refusal
+    let t = g.hold("the crown").unwrap();
+    assert_eq!(t.kind, TurnKind::Error);
+    assert!(
+        last_line(&t).contains("STUDY already holds its fill — the held slot is full"),
+        "{}",
+        last_line(&t)
+    );
+    // undo takes exactly the last hold back: one card rides out
+    g.undo().unwrap();
+    let after = g.after_turn().unwrap();
+    assert!(after.iter().any(|l| l.contains("(holding CHALICE)")), "{after:?}");
+}

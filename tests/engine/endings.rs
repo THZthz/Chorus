@@ -61,6 +61,8 @@ fn wait_content_raw(out: &[&str]) -> ContentRaw {
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 60,
                 recipes: vec![RecipeDef {
@@ -185,6 +187,8 @@ mod the_endings_script_section {
                                 max: Some(1),
                                 query: None,
                                 shown: None,
+                                greedy: false,
+                                consuming: false,
                             }],
                             duration: 0,
                             recipes: vec![RecipeDef {
@@ -286,6 +290,8 @@ mod the_endings_script_section {
                                 max: Some(1),
                                 query: None,
                                 shown: None,
+                                greedy: false,
+                                consuming: false,
                             }],
                             duration: 0,
                             recipes: vec![RecipeDef {

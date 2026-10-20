@@ -162,20 +162,29 @@ fn eval_expr_interval(
     match v {
         ValExpr::Int { v } => Ok((*v, Some(*v))),
         // §6.7's held slot, the arrangeable face (§13.1): the hold is a
-        // player step the analyzer can arrange, like a commit — a fitting
-        // descriptor in the available world reads the count as exactly 1
-        // (the hold arranged; a require-held gate then decides True,
-        // provable), none reads exactly 0 (the gate decides False — the
-        // hold alone cannot satisfy it: never claim Proven off an
-        // unarrangeable hold). No window model at all (a chain-pinned verb's
-        // merged-gate walk, a trigger's empty bindings) reads the full-open
-        // pair — Unknown under every op, the widening-only invariant.
+        // player step the analyzer can arrange, like a commit. The arranged
+        // count is min(slot max, fitting descriptors) — the interval's floor
+        // is the arranged count (a `>= k` gate at or under it proves), the
+        // ceiling the slot's OWN declared max (a gate above it reads False —
+        // the hold can never exceed the slot: never claim Proven off a gate
+        // the hold alone cannot satisfy), and the band between stays Unknown
+        // (mints may grow the fitting pool). No fitting descriptor reads the
+        // floor 0; an unbounded `0..` slot has no ceiling. No window model at
+        // all (a chain-pinned verb's merged-gate walk, a trigger's empty
+        // bindings) reads the full-open pair — Unknown under every op, the
+        // widening-only invariant; no declared held slot reads exactly 0
+        // (the scope is always empty there).
         ValExpr::Count { role } if role == "held" => match bound {
             None => Ok((i64::MIN, None)),
             Some(b) => {
-                let fits =
-                    b.slots.iter().find(|s| s.role == "held").is_some_and(|s| !s.cards.is_empty());
-                Ok(if fits { (1, Some(1)) } else { (0, Some(0)) })
+                let Some(slot) = b.slots.iter().find(|s| s.role == "held") else {
+                    return Ok((0, Some(0)));
+                };
+                let arranged = match slot.max {
+                    None => slot.cards.len() as i64,
+                    Some(mx) => std::cmp::min(mx, slot.cards.len() as i64),
+                };
+                Ok((arranged, slot.max))
             }
         },
         ValExpr::CountQuery { query } => {

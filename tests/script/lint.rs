@@ -1835,11 +1835,13 @@ verbs:
     assert!(findings.iter().all(|f| !f.message.contains("rite.live")), "{findings:?}");
 }
 
-/// The held slot takes exactly 0..1 (§6.1) — any other cardinality is a
-/// load error naming the verb, never a slot the hold step could fill.
+/// The held slot is a slot class (§6.1): min stays 0 (a hold is optional
+/// per card) and the max must leave room for one binding — a finite max
+/// ≥ 1, or the unbounded `0..`. Any other cardinality is a load error
+/// naming the verb.
 #[test]
-fn the_held_slot_cardinality_is_exactly_0_1() {
-    for line in ["held: 1", "held: 0..2", "held: 1..", "held: 2"] {
+fn the_held_slot_min_is_0_and_its_max_leaves_room_for_one() {
+    for line in ["held: 1", "held: 0..0", "held: 1..", "held: 2", "held: 2..3"] {
         assert_err_msg(
             compile(&base(&format!(
                 "
@@ -1852,20 +1854,138 @@ verbs:
       default -> NARRATE \"x.\"
 "
             ))),
-            r"the held slot takes exactly '0\.\.1'",
+            r"the held slot takes '0\.\.N' with N >= 1, or the unbounded '0\.\.'",
         );
     }
-    // the legal spelling compiles clean
-    assert!(compile(&base(
-        "
+    // the widened legal surface: the subsumed 0..1 plus the real ranges
+    for line in [
+        "held: 0..1 kind:item",
+        "held: 0..2 kind:item",
+        "held: 0..3 kind:item",
+        "held: 0.. kind:item",
+    ] {
+        assert!(
+            compile(&base(&format!(
+                "
 verbs:
   RITE:
     actors: 1 kind:character
-    held: 0..1 kind:item
+    {line}
     duration: 0m
     recipes:
       default -> NARRATE \"x.\"
 "
-    ))
-    .is_ok());
+            )))
+            .is_ok(),
+            "{line} compiles"
+        );
+    }
+}
+
+/// The held-only flags (§6.1): `greedy` needs a query and a finite max;
+/// both flags are load errors on any non-held role; `held` + `ambient`
+/// stays the ambient no-slots error.
+#[test]
+fn the_held_flags_have_their_load_rules() {
+    let rite = |slot_line: &str| {
+        compile(&base(&format!(
+            "
+verbs:
+  RITE:
+    actors: 1 kind:character
+    {slot_line}
+    duration: 0m
+    recipes:
+      default -> NARRATE \"x.\"
+"
+        )))
+    };
+    // greedy without a query
+    assert_err_msg(rite("held: 0..1 greedy"), r"the greedy held slot needs a query");
+    // an unbounded greedy
+    assert_err_msg(rite("held: 0.. greedy kind:item"), r"the greedy held slot needs a finite max");
+    // the flags on a non-held role
+    assert_err_msg(
+        rite("with: 0..1 greedy kind:item"),
+        r"'greedy' is a held-only flag — slot with cannot take it",
+    );
+    assert_err_msg(
+        rite("with: 0..1 consuming kind:item"),
+        r"'consuming' is a held-only flag — slot with cannot take it",
+    );
+    // the legal compositions parse: both flags, either order (min stays 0)
+    for line in ["held: 0..1 greedy consuming kind:item", "held: 0..2 consuming greedy kind:item"] {
+        assert!(rite(line).is_ok(), "{line} compiles");
+    }
+    // held + ambient stays the no-slots error (the ambient slot ban)
+    let text = "
+verbs:
+  TIME:
+    ambient
+    duration: 30m
+    recipes:
+      default -> NARRATE \"tick.\"
+
+  RITE:
+    ambient
+    held: 0..1 kind:item
+    duration: 0m
+    recipes:
+      default -> NARRATE \"x.\"
+";
+    assert_err_msg(compile(&base(text)), r"an ambient verb declares no slots");
+}
+
+/// The greedy slot-fit advisory (§13.2): a greedy held slot whose query
+/// matches no declared or mintable card warns — the pull is dead content
+/// the slot's min-0 hides from every other check. A fitting declaration
+/// stays silent.
+#[test]
+fn a_greedy_slot_query_matching_no_card_warns() {
+    // the query's aspect is declared (no unwritten-read finding beside it)
+    // but its threshold passes nothing — MOTE's spark:1 fails spark>=99 and
+    // no prototype mints a fitting card either
+    let findings = findings_for(
+        "
+  MOTE is item with spark:1
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    held: 0..1 greedy kind:item aspect:spark>=99
+    duration: 0m
+    recipes:
+      rite.grab when count(held) >= 1 -> NARRATE \"grabbed.\"
+      default -> NARRATE \"plain.\"
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert_eq!(w[0].severity, LintSeverity::Warning);
+    assert!(
+        w[0]
+            .message
+            .contains("verb RITE: the greedy held slot's query matches no declared or mintable card — the pull is dead content (§6.1)"),
+        "{w:?}"
+    );
+}
+
+#[test]
+fn a_greedy_slot_with_a_fitting_card_stays_silent() {
+    // MOTE's spark:1 fits spark>=1 — the pull is live content, no warning
+    let findings = findings_for(
+        "
+  MOTE is item with spark:1
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    held: 0..1 greedy kind:item aspect:spark>=1
+    duration: 0m
+    recipes:
+      rite.grab when count(held) >= 1 -> NARRATE \"grabbed.\"
+      default -> NARRATE \"plain.\"
+",
+    );
+    assert!(warnings_of(&findings).is_empty(), "{findings:?}");
 }

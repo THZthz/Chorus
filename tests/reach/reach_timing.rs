@@ -84,6 +84,8 @@ fn actor_slot() -> SlotDef {
         max: Some(1),
         query: Some("kind:character".into()),
         shown: None,
+        greedy: false,
+        consuming: false,
     }
 }
 

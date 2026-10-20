@@ -521,6 +521,8 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                     max: Some(1),
                     query: None,
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {
@@ -588,6 +590,8 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                     max: Some(1),
                     query: None,
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {
@@ -638,6 +642,8 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                     max: Some(1),
                     query: None,
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {
@@ -682,6 +688,8 @@ fn draw_base_raw(out: &[&str]) -> ContentRaw {
                     max: Some(1),
                     query: None,
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {
@@ -1297,6 +1305,8 @@ fn drift_raw(seed: i64, spec: &[&str]) -> ContentRaw {
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {
@@ -1409,6 +1419,8 @@ fn drift_in_the_defaultcard_alone_fires_too_past_the_period_the_assertion_still_
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {

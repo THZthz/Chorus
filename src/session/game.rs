@@ -436,23 +436,32 @@ impl Game {
         };
         let held_ref = Ref::Name { kind: None, name: card.name.clone() };
         // the target station(s): every open DEFERRED window the verb filter
-        // admits — the engine re-checks fit and pins with its own precise
-        // messages, this scan only picks between stations and reports the
-        // ambiguity (among the stations the card actually fits)
-        let candidates: Vec<&OpenWindow> = self
+        // admits — the under-fill stations first (§6.7's at-max rule picks
+        // between stations), falling back to the full ones so the engine's
+        // own precise refusal speaks. The engine re-checks fit and pins with
+        // its own messages; this scan only picks between stations and
+        // reports the ambiguity (among the stations the card actually fits).
+        let deferred: Vec<&OpenWindow> = self
             .state
             .windows
             .values()
-            .filter(|w| {
-                w.recipe.is_empty()
-                    && w.refs.get(&Role::Held).is_none_or(|v| v.is_empty())
-                    && verb_filter.as_deref().is_none_or(|f| w.verb == f)
-            })
+            .filter(|w| w.recipe.is_empty() && verb_filter.as_deref().is_none_or(|f| w.verb == f))
             .collect();
+        let under_fill = |w: &OpenWindow| {
+            self.content.verbs.get(&w.verb).and_then(|v| v.slot_by_role.get("held")).is_some_and(
+                |s| {
+                    let count = w.refs.get(&Role::Held).map_or(0, Vec::len) as i64;
+                    s.max.is_none_or(|max| count < max)
+                },
+            )
+        };
+        let preferred: Vec<&OpenWindow> =
+            deferred.iter().copied().filter(|w| under_fill(w)).collect();
+        let candidates: Vec<&OpenWindow> = if preferred.is_empty() { deferred } else { preferred };
         if candidates.is_empty() {
             let why = match verb_filter.as_deref() {
                 Some(v) => format!(
-                    "{} cannot take the hold — it is not open, not held-capable, already holds, or the card does not fit",
+                    "{} cannot take the hold — it is not open, not held-capable, already at its fill, or the card does not fit",
                     super::render::display_name(v)
                 ),
                 None => "no open station can take the hold — `processing` names what is cooking"
@@ -1062,27 +1071,37 @@ impl Game {
             }
         };
         let mut lines = explain_verb(v, &bindings, &self.state, show_all)?;
-        // the held face (§6.7): what the station holds, or the hold's reach —
-        // a held-capable verb's selection is deferred (§6.4), so the marks
-        // above ran against the empty held scope
+        // the held face (§6.7): what the station holds (a slot class —
+        // every bound card), or the hold's reach — a held-capable verb's
+        // selection is deferred (§6.4), so the marks above ran against the
+        // empty held scope
         if v.slot_by_role.contains_key("held") {
             let held = self
                 .state
                 .windows
                 .values()
                 .find(|w| w.verb == v.name)
-                .and_then(|w| w.refs.get(&Role::Held).and_then(|rv| rv.first()))
-                .and_then(|r| self.binding_id(r))
-                .and_then(|id| self.state.entities.get(&id).map(|e| pretty(&e.name)));
-            match held {
-                Some(name) => lines.push(format!(
-                    "held: {name} (bound — the completion reads it; releases when the window closes)"
-                )),
-                None => lines.push(
+                .map(|w| w.refs.get(&Role::Held).cloned().unwrap_or_default())
+                .unwrap_or_default();
+            let names: Vec<String> = held
+                .iter()
+                .filter_map(|r| self.binding_id(r))
+                .filter_map(|id| self.state.entities.get(&id).map(|e| pretty(&e.name)))
+                .collect();
+            match names.as_slice() {
+                [] => lines.push(
                     "held: empty — `hold <card>` while the station processes can flip the \
                      deferred selection (§6.4)"
                         .to_string(),
                 ),
+                [one] => lines.push(format!(
+                    "held: {one} (bound — the completion reads it; releases when the window closes)"
+                )),
+                many => lines.push(format!(
+                    "held: {} ({} cards — bound; the completion reads them; releases when the window closes)",
+                    many.join(", "),
+                    many.len()
+                )),
             }
         }
         Ok(lines)
@@ -1224,8 +1243,8 @@ impl Game {
     /// area's "processing:" line (v0.5). The (end, begin_id) order is the
     /// engine's frozen due-window order (the advance pass's sort in
     /// `engine::advance`, minus the clause tiebreak a rendering never needs).
-    /// A window holding a card (§6.7) names it: `study until 23:00 (holding
-    /// the chalice)`.
+    /// A window holding cards (§6.7 — the held slot's bindings, a slot
+    /// class) names them: `study until 23:00 (holding the chalice)`.
     #[must_use]
     pub fn processing(&self) -> Vec<String> {
         let mut windows: Vec<&OpenWindow> = self.state.windows.values().collect();
@@ -1233,16 +1252,29 @@ impl Game {
         windows
             .iter()
             .map(|w| {
-                let held = w.refs.get(&Role::Held).and_then(|v| v.first()).and_then(|r| match r {
-                    Ref::Name { name, .. } => Some(pretty(name)),
-                    Ref::Id { id } => self.state.entities.get(id).map(|e| pretty(&e.name)),
-                    Ref::Param { name } => Some(pretty(name)),
-                });
-                match held {
-                    Some(name) => {
-                        format!("{} until {} (holding {name})", display_name(&w.verb), hhmm(w.end))
-                    }
-                    None => format!("{} until {}", display_name(&w.verb), hhmm(w.end)),
+                let held: Vec<String> = w
+                    .refs
+                    .get(&Role::Held)
+                    .map(|v| {
+                        v.iter()
+                            .filter_map(|r| match r {
+                                Ref::Name { name, .. } => Some(pretty(name)),
+                                Ref::Id { id } => {
+                                    self.state.entities.get(id).map(|e| pretty(&e.name))
+                                }
+                                Ref::Param { name } => Some(pretty(name)),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                match held.as_slice() {
+                    [] => format!("{} until {}", display_name(&w.verb), hhmm(w.end)),
+                    names => format!(
+                        "{} until {} (holding {})",
+                        display_name(&w.verb),
+                        hhmm(w.end),
+                        names.join(", ")
+                    ),
                 }
             })
             .collect()

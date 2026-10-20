@@ -32,6 +32,13 @@ pub struct SlotDef {
     pub query: Option<String>,
     /// default true (§6.2) — resolved at compile
     pub shown: Option<bool>,
+    /// §6.1, held-only: the engine pulls the oldest fitting cards at window
+    /// begin. A load error on a non-held role.
+    pub greedy: bool,
+    /// §6.1, held-only: the surviving held cards burn at the window's
+    /// completion, between the recipe outcomes and the trigger phase. A load
+    /// error on a non-held role.
+    pub consuming: bool,
 }
 
 /// An authored recipe.
@@ -277,6 +284,10 @@ pub struct CompiledSlot {
     pub max: Option<i64>,
     pub shown: bool,
     pub query: Option<Query>,
+    /// §6.1, held-only: the begin pull (greedy) and the completion burn
+    /// (consuming) — both load-rejected on a non-held role
+    pub greedy: bool,
+    pub consuming: bool,
 }
 
 /// A compiled verb.

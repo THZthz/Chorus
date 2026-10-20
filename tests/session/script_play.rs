@@ -569,6 +569,8 @@ mod lenient_input_routes_the_new_core_verbs {
             max,
             query: Some(query.to_string()),
             shown: None,
+            greedy: false,
+            consuming: false,
         };
         let raw = ContentRaw {
             verbs: [

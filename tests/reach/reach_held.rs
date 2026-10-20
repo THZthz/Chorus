@@ -65,7 +65,15 @@ fn analyze(
 }
 
 fn slot(role: &str, min: i64, max: Option<i64>, query: Option<&str>) -> SlotDef {
-    SlotDef { role: role.to_string(), min, max, query: query.map(str::to_string), shown: None }
+    SlotDef {
+        role: role.to_string(),
+        min,
+        max,
+        query: query.map(str::to_string),
+        shown: None,
+        greedy: false,
+        consuming: false,
+    }
 }
 
 /// A RITE verb whose object is a rite and whose held slot takes a quested
@@ -208,4 +216,72 @@ fn the_held_slot_rides_the_bound_scope_sum() {
     // (no hold) fails the gate, so it stays Unknown → the site unproven —
     // the widening-only invariant (Unknown never fabricates Proven)
     assert_eq!(report.verdict, CardVerdict::Unproven, "{:?}", report.verdict);
+}
+
+/// T-H9: the arranged-count face over the DECLARED range (v0.9.9) — a
+/// `count(held) >= 2` gate on a `held: 0..2` slot with two fitting
+/// descriptors proves (the analyzer arranges the full fill), while the same
+/// gate on a `held: 0..1` twin reads False (the hold can never exceed the
+/// slot — never Proven off a gate the hold alone cannot satisfy).
+#[test]
+fn the_arranged_count_face_reads_the_declared_range() {
+    let verb = |max: i64| VerbContent {
+        slots: vec![
+            slot("actors", 1, Some(1), Some("kind:character")),
+            slot("object", 1, Some(1), Some("kind:rite")),
+            slot("held", 0, Some(max), Some("kind:item aspect:quest>=1")),
+        ],
+        duration: 0,
+        recipes: vec![
+            RecipeDef {
+                id: Some("rite.prize".to_string()),
+                when: Some("count(held) >= 2".to_string()),
+                out: vec!["SPAWN PRIZE".to_string()],
+                ..RecipeDef::default()
+            },
+            RecipeDef {
+                id: None,
+                when: None,
+                out: vec!["NARRATE \"plain.\"".to_string()],
+                ..RecipeDef::default()
+            },
+        ],
+        ambient: false,
+    };
+    let state = state_with(vec![
+        ent("MARCH", "character", &[]),
+        ent("RITE_OF_DAWN", "rite", &[]),
+        ent("CHALICE", "item", &[("quest", 1)]),
+        ent("RELIC", "item", &[("quest", 1)]),
+    ]);
+    // 0..2 with two fitting descriptors: the gate proves
+    let wide = compile(&raw_rite(verb(2)));
+    let report = analyze(&wide, &state, "PRIZE");
+    assert_eq!(report.verdict, CardVerdict::Obtainable, "{:?}", report.verdict);
+    assert_eq!(report.existence, Existence::Proven);
+    // 0..1: the hold can never carry two — the gate reads False, the mint
+    // stays unproven (the honest candidate)
+    let narrow = compile(&raw_rite(verb(1)));
+    let report = analyze(&narrow, &state, "PRIZE");
+    assert_eq!(report.verdict, CardVerdict::Unproven, "{:?}", report.verdict);
+    assert_eq!(report.existence, Existence::Candidate);
+}
+
+/// T-H9 (the middle band): the slot has room for k but the world offers
+/// fewer fitting descriptors — the gate stays Unknown (mints may grow the
+/// fitting pool), which only ever demotes.
+#[test]
+fn the_band_between_arranged_and_max_stays_unknown() {
+    let content =
+        compile(&raw_rite(rite_with_held(Some("kind:item aspect:quest>=9"), "count(held) >= 1")));
+    let state = state_with(vec![
+        ent("MARCH", "character", &[]),
+        ent("RITE_OF_DAWN", "rite", &[]),
+        ent("CHALICE", "item", &[("quest", 1)]),
+    ]);
+    let report = analyze(&content, &state, "PRIZE");
+    // arranged 0, slot max 1: neither corner decides — the analyzer keeps
+    // the site unproven without claiming the gate dead
+    assert_eq!(report.verdict, CardVerdict::Unproven, "{:?}", report.verdict);
+    assert_eq!(report.existence, Existence::Candidate);
 }

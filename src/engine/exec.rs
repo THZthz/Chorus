@@ -10,7 +10,8 @@ use crate::core::clock::{
 use crate::core::dict::Dictionary;
 use crate::core::parse::parse_sentence;
 use crate::core::predicate::RoleBindings;
-use crate::core::r#ref::Ref;
+use crate::core::query::match_query;
+use crate::core::r#ref::{id_ref, Ref};
 use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::{Clause, Outcome};
 use crate::core::types::{clone_state, OpenWindow, State};
@@ -23,8 +24,8 @@ use super::record::{
     ExecResult, Step,
 };
 use super::validate::{
-    busy_reason, clause_refs, defers_selection, resolve_ref, resolve_role_refs, select_recipe,
-    validate_hold, validate_slots, Prepared, COMMITTED_ROLES,
+    busy_reason, clause_refs, defers_selection, hold_room, resolve_ref, resolve_role_refs,
+    select_recipe, validate_hold, validate_slots, HoldRoom, Prepared, COMMITTED_ROLES,
 };
 
 /// minutes in a day (144 ticks of 10)
@@ -231,6 +232,83 @@ pub fn execute_step(
     register_windows(&begin, &mut draft, dict, content)?;
     let mut records = advance;
     records.push(begin);
+    // §6.7: the greedy pull — immediately after registration, in clause
+    // order: each clause whose verb declares a GREEDY held slot and whose
+    // window is DEFERRED (the empty recipe entry — a chain-pinned follow-up
+    // refuses holds, so it refuses pulls) pulls the OLDEST living, unlocked,
+    // query-fitting cards up to the slot's max, in birth order (the frozen
+    // pool discipline — CS pulls randomly; chorus is deterministic, a
+    // documented reduction). Each pull logs an ordinary HOLD row (trigger =
+    // "greedy" — a field every HOLD-row reader never reads, the ambient
+    // BEGIN row's precedent) and binds through the ONE bind_hold path, so
+    // the fold replays it with no new machinery. Best-effort: fewer fitting
+    // cards, fewer pulls — never a refusal, never a clock move.
+    let mut pull_id = next_id;
+    for (ci, p) in prepared.iter().enumerate() {
+        let Some(slot) = p.verb.slot_by_role.get("held") else {
+            continue;
+        };
+        if !slot.greedy {
+            continue;
+        }
+        // deferred windows only: a pinned follow-up (recipe already
+        // selected) refuses holds, so it refuses pulls
+        if p.recipe.is_some() {
+            continue;
+        }
+        if slot.max.is_none() {
+            continue; // an unbounded greedy is a load error — never compiled
+        }
+        let key = format!("{}:{}", next_id, ci);
+        // the candidates in birth order: living, query-fitting, not in any
+        // OTHER window's lock — the §6.7 busy rule, the hold's own face. A
+        // lock held by THIS window is the cross-role case (legal). Capacity
+        // and one-binding-per-card are not decided here: every candidate
+        // rides hold_room below, the ONE rule the hold step and the fold run.
+        let mut candidates: Vec<String> = Vec::new();
+        for e in draft.entities.values() {
+            if e.dead_action.is_some() {
+                continue;
+            }
+            if let Some(q) = &slot.query {
+                if !match_query(e, q) {
+                    continue;
+                }
+            }
+            let busy = draft
+                .windows
+                .iter()
+                .any(|(k, w2)| k != &key && w2.locked.iter().any(|id| id == &e.id));
+            if !busy {
+                candidates.push(e.id.clone());
+            }
+        }
+        for id in candidates {
+            // the ONE capacity rule — the same at-max fill and
+            // one-binding-per-card read `execute_hold` and the fold's
+            // HOLD-row replay run, so the pull's arithmetic cannot drift
+            // from them (each accepted pull binds through bind_hold before
+            // the next candidate is decided, and hold_room counts the
+            // window's own held refs). The station is the clone: hold_room
+            // reads it beside `&draft`, the bind mutates after.
+            let Some(station) = draft.windows.get(&key).cloned() else {
+                continue; // unreachable — register_windows inserted every clause
+            };
+            match hold_room(content, &draft, &station, &id) {
+                HoldRoom::Room => {}
+                HoldRoom::Full => break, // the slot took its fill
+                // unreachable: the candidates are distinct entities and the
+                // duplicate face reads the refs grown by the binds above
+                HoldRoom::Duplicate => continue,
+            }
+            pull_id += 1;
+            let held = id_ref(id.clone());
+            let mut record = make_hold_record(pull_id, start_min, &p.verb.name, &key, &held, dict)?;
+            record.trigger = Some("greedy".to_string());
+            bind_hold(&key, &id, &held, &mut draft);
+            records.push(record);
+        }
+    }
     Ok(ExecResult { records, state: draft, rejected: None })
 }
 
@@ -410,14 +488,15 @@ pub(super) fn register_windows(
 /// §6.7: the ONE held-binding path play and fold share — the held ref enters
 /// the window's refs as the `held` role (the completion re-resolves it like
 /// every binding) and the card's id joins the locked set (the §6.7 busy rule
-/// covers it for the window's remainder). Callers own the validity checks
-/// (`execute_hold` at play; the fold trusts its logged HOLD row and only
-/// asserts the window is there to bind).
+/// covers it for the window's remainder). The held slot is a class (§6.1):
+/// the binding APPENDS, up to the slot's declared max. Callers own the
+/// validity checks (`execute_hold` at play; the fold trusts its logged HOLD
+/// row and only asserts the window is there to bind).
 pub(super) fn bind_hold(window_key: &str, held_id: &str, held: &Ref, state: &mut State) {
     let Some(w) = state.windows.get_mut(window_key) else {
         return;
     };
-    w.refs.insert(Role::Held, vec![held.clone()]);
+    w.refs.entry(Role::Held).or_default().push(held.clone());
     w.locked.push(held_id.to_string());
 }
 
@@ -486,17 +565,36 @@ pub fn execute_hold(
             state_in,
         ));
     }
-    // one held card per window, bound at most once (§6.7: no mid-window eviction)
-    if w.refs.get(&Role::Held).is_some_and(|v| !v.is_empty()) {
-        return Ok(rejected(
-            format!("{verb_name} already holds a card — one binding per window (§6.7)"),
-            state_in,
-        ));
-    }
+    // the card must be alive and fit the query — the id the fill and
+    // duplicate checks read below
     let held_id = match validate_hold(verb, &held, &state_in) {
         Ok(id) => id,
         Err(e) => return Ok(rejected(e.msg, state_in)),
     };
+    // §6.7: the at-max fill check — the window's held count against the
+    // verb's own slot range, the ONE rule the fold mirrors; a full slot
+    // rejects (no mid-window eviction), and a card this window already
+    // binds rejects (one binding per card)
+    match hold_room(content, &state_in, &w, &held_id) {
+        HoldRoom::Full => {
+            return Ok(rejected(
+                format!("{verb_name} already holds its fill — the held slot is full (§6.7)"),
+                state_in,
+            ))
+        }
+        HoldRoom::Duplicate => {
+            let name = state_in
+                .entities
+                .get(&held_id)
+                .map(|e| e.name.replace('_', " "))
+                .unwrap_or_default();
+            return Ok(rejected(
+                format!("{verb_name} already holds {name} — one binding per card (§6.7)"),
+                state_in,
+            ));
+        }
+        HoldRoom::Room => {}
+    }
     // the §6.7 busy rule: the card may not sit in any OTHER open window's
     // lock (a lock held by THIS window is the §6.3 cross-role case — a card
     // bound here twice, once committed and once held, is legal)

@@ -26,7 +26,6 @@ fn count_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^([0-9]+)(?:\.\.([0-9]+)?)?$"))
 }
-
 /// `/^default\b/`
 fn default_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -81,13 +80,48 @@ pub(super) fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotD
         None if count_spec.ends_with("..") => None, // unbounded
         None => Some(min),
     };
+    // §6.1: the slot flags — `greedy` / `consuming` sit between the count and
+    // the query, in any order and composition. They are held-only (the
+    // compile rejects them on any other role, §6.1); the query is whatever
+    // follows the flags, sliced from the original text so its bytes ride
+    // untouched.
+    let rest_all = grp_opt(&m, 2).unwrap_or_default();
+    let mut greedy = false;
+    let mut consuming = false;
+    let mut pos = 0usize;
+    let query_start = loop {
+        // skip whitespace, then test one token for a flag keyword
+        while let Some(ch) = rest_all[pos..].chars().next() {
+            if is_dsl_ws_char(ch) {
+                pos += ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+        let tok_end = rest_all[pos..].find(is_dsl_ws_char).map_or(rest_all.len(), |end| pos + end);
+        match &rest_all[pos..tok_end] {
+            "greedy" if !greedy => {
+                greedy = true;
+                pos = tok_end;
+            }
+            "consuming" if !consuming => {
+                consuming = true;
+                pos = tok_end;
+            }
+            _ => break pos,
+        }
+    };
+    let query =
+        rest_all.get(query_start..).map(str::trim).filter(|q| !q.is_empty()).map(str::to_string);
     Ok(SlotDef {
         // validated above via Role::from_lower — every slot role binds
         role: role.to_string(),
         min,
         max,
-        query: grp_opt(&m, 2).map(str::to_string),
+        query,
         shown: None,
+        greedy,
+        consuming,
     })
 }
 

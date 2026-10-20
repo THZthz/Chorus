@@ -246,6 +246,8 @@ fn the_dur_compiles_through_the_script_and_the_raw_face_alike() {
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 30,
                 recipes: vec![RecipeDef {

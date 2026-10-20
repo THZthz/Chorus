@@ -194,10 +194,13 @@ Notes:
   `A is RELTYPE of B` — e.g. `FIREBOX is south of GUARD_VAN` (§2.7).
   Another order is a load error naming the line:
   `Error: line 5: bad aspect spec 'shiny:1 stackable' (expected aspect:level)`.
-- A verb block declares **slots**: `role: count [query]`. The six roles are
-  `actors object with at about to`. Counts: `1`, `2`, `1..2`, `2..`, `0..1`.
+- A verb block declares **slots**: `role: count [flag]… [query]`. The six
+  clause roles are `actors object with at about to`; the seventh, `held`,
+  is bound mid-window (§6.1, §6.7). Counts: `1`, `2`, `1..2`, `2..`, `0..1`.
   A query filters each member — `kind:text`, `aspect:tome>=1`, `state:sealed`,
-  `name:X`, `-aspect:winter` (negation).
+  `name:X`, `-aspect:winter` (negation). Two held-only flags sit between the
+  count and the query: `greedy` (the station pulls fitting cards at begin)
+  and `consuming` (the held cards burn at completion).
 - `duration:` is how long the station processes before outcomes apply.
 - The recipe is the whole logic. Here there is only a `default` — it always
   fires. `NARRATE` writes a journal line; `{actors}`/`{object}` are filled in

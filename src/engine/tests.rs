@@ -28,6 +28,8 @@ mod smoke {
                 max: Some(1),
                 query: Some("kind:character".into()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             }],
             duration,
             recipes: vec![RecipeDef {
@@ -181,6 +183,8 @@ mod smoke {
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     },
                     SlotDef {
                         role: "object".into(),
@@ -188,6 +192,8 @@ mod smoke {
                         max: Some(1),
                         query: None,
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     },
                     SlotDef {
                         role: "at".into(),
@@ -195,6 +201,8 @@ mod smoke {
                         max: Some(1),
                         query: Some("kind:place".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     },
                 ],
                 duration: 30,
@@ -311,8 +319,18 @@ mod smoke {
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 },
-                SlotDef { role: "object".into(), min: 1, max: Some(1), query: None, shown: None },
+                SlotDef {
+                    role: "object".into(),
+                    min: 1,
+                    max: Some(1),
+                    query: None,
+                    shown: None,
+                    greedy: false,
+                    consuming: false,
+                },
             ],
             duration: 0,
             recipes: vec![RecipeDef {
@@ -394,6 +412,8 @@ mod smoke {
                 max: Some(1),
                 query: Some("kind:character".into()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             }],
             duration: 0,
             recipes: vec![RecipeDef {
@@ -449,6 +469,8 @@ mod smoke {
                 max: Some(1),
                 query: Some("kind:character".into()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             }],
             duration: 0,
             recipes: vec![RecipeDef {
@@ -519,6 +541,8 @@ mod smoke {
             max: Some(1),
             query: Some("kind:character".into()),
             shown: None,
+            greedy: false,
+            consuming: false,
         }],
         duration: 30,
         recipes: vec![RecipeDef {

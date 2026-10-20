@@ -282,21 +282,53 @@ fn compile_verb(
                 )));
             }
         }
-        // §6.1: the held slot takes exactly 0..1 — one held card per window,
-        // bound at most once (§6.7). Any other cardinality fails loud instead
-        // of compiling a slot the hold step could never legally fill.
-        if s.role == "held" && (s.min != 0 || s.max != Some(1)) {
+        // §6.1: `greedy`/`consuming` are held-only flags — on any other role
+        // they would compile a slot whose faces (the begin pull, the
+        // completion burn) have no home.
+        if s.role != "held" {
+            for (flag, set) in [("greedy", s.greedy), ("consuming", s.consuming)] {
+                if set {
+                    return Err(ChorusError::new(format!(
+                        "verb {name}: '{flag}' is a held-only flag — slot {} cannot take it (§6.1)",
+                        s.role
+                    )));
+                }
+            }
+        }
+        // §6.1: the held slot is a real slot class now — min stays 0 (a hold
+        // is optional per card) and the max must leave room for one binding
+        // (a finite max >= 1, or the unbounded `0..`). `held: 1 …`,
+        // `held: 1.. …` and `held: 0..0` fail loud instead of compiling a
+        // slot the hold step could never legally fill.
+        if s.role == "held" && (s.min != 0 || s.max == Some(0)) {
             return Err(ChorusError::new(format!(
-                "verb {name}: the held slot takes exactly '0..1' (one held card per window, §6.1), got '{}..{}'",
+                "verb {name}: the held slot takes '0..N' with N >= 1, or the unbounded '0..' — a hold is optional per card and the slot must have room for one (§6.1), got '{}..{}'",
                 s.min,
                 s.max.map_or("∞".to_string(), |m| m.to_string())
             )));
+        }
+        // §6.1: a greedy slot pulls fitting cards at window begin — pulling
+        // needs a rule (a query) and a bound (a finite max; an unbounded
+        // greedy vacuums the table).
+        if s.role == "held" && s.greedy {
+            if s.query.as_deref().is_none_or(|q| q.is_empty()) {
+                return Err(ChorusError::new(format!(
+                    "verb {name}: the greedy held slot needs a query — pulling \"any card\" is not a rule (§6.1)"
+                )));
+            }
+            if s.max.is_none() {
+                return Err(ChorusError::new(format!(
+                    "verb {name}: the greedy held slot needs a finite max — an unbounded pull vacuums the table (§6.1)"
+                )));
+            }
         }
         let compiled = CompiledSlot {
             role: s.role.clone(),
             min: s.min,
             max: s.max,
             shown: s.shown.unwrap_or(true),
+            greedy: s.greedy,
+            consuming: s.consuming,
             // the frozen truthiness of an empty string:
             // '' is FALSY, so a hand-built ContentRaw with
             // query: '' compiles to NO query (not a parse error); parse-
@@ -810,6 +842,8 @@ mod tests {
                         max: Some(1),
                         query: Some(String::new()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {

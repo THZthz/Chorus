@@ -105,6 +105,8 @@ fn rig_verb(recipes: &[&str]) -> IndexMap<String, VerbContent> {
                 max: Some(1),
                 query: Some("kind:character".to_string()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             }],
             duration: 0,
             recipes: recipes

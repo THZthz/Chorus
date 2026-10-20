@@ -24,8 +24,12 @@
 //! `unique` draw to the prototype loop (p=0.15, AFTER the stackable draw,
 //! one roll per prototype always — the roll happens even when `stackable`
 //! already landed, and wins only on a non-stackable prototype: the grammar
-//! rejects `unique` + `stackable` on one line). Every recorded
-//! fuzz run taken before v11 is therefore NOT reproducible
+//! rejects `unique` + `stackable` on one line); v12 added the §6.1 held
+//! draw to the verb block (p=0.15, AFTER the non-actor slots: a range from
+//! {0..1, 0..2, 0..3}, a query from the aspect pool, the greedy/consuming
+//! flags drawn after — the held verb defers selection and the campaign's
+//! step enumeration gained HOLD steps, `all_candidates`). Every recorded
+//! fuzz run taken before v12 is therefore NOT reproducible
 //! seed-for-seed; reproduce against the matching generator version. What
 //! stays pinned is that the generator is a pure function of its seed — the
 //! same seed builds the same scenario, draw for draw, under ONE version.
@@ -51,7 +55,7 @@ use crate::core::sentence::{empty_clause, Clause};
 use crate::core::types::{add_entity, new_state, AspectVal, Entity, State};
 #[allow(unused_imports)]
 // ActionRecord only flows through drive_fuzz_seed (unused by the fuzz bin)
-use crate::engine::{ActionRecord, Step};
+use crate::engine::{execute_hold, ActionRecord, Step};
 use crate::error::Result;
 use crate::lcg::Lcg;
 
@@ -500,6 +504,8 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 max: Some(1),
                 query: Some("kind:character".to_string()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             }],
             duration: 30,
             recipes: vec![RecipeDef {
@@ -544,6 +550,8 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 max: Some(1),
                 query: Some("kind:character".to_string()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             });
             let n_slots = int(ctx.r, 3); // 0–2 non-actor slots
             for _ in 0..n_slots {
@@ -566,6 +574,32 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                     max: Some(if double { 2 } else { 1 }),
                     query: if query.is_empty() { None } else { Some(query) },
                     shown: None,
+                    greedy: false,
+                    consuming: false,
+                });
+            }
+            // §6.1 (v12 NEW draw, p=0.15, AFTER the non-actor slots): the
+            // verb declares a HELD slot — the §6.4 deferral rides it. Range
+            // from {0..1, 0..2, 0..3} (the drawn max), query from the aspect
+            // pool (a threshold the initial entities — aspect a 0..3, b
+            // 0..2 — can meet), then the two flags, greedy then consuming,
+            // each p=0.25 — both land only on this held role (the load
+            // rejects them on any other), and the greedy requirements (a
+            // query, a finite max) hold by construction.
+            if ctx.r.next_f64() < 0.15 {
+                let max = 1 + int(ctx.r, 3) as i64;
+                let a = pick_str(ctx.r, &ASPECTS);
+                let bound = 1 + int(ctx.r, 2) as i64;
+                let greedy = ctx.r.next_f64() < 0.25;
+                let consuming = ctx.r.next_f64() < 0.25;
+                slots.push(SlotDef {
+                    role: "held".to_string(),
+                    min: 0,
+                    max: Some(max),
+                    query: Some(format!("aspect:{a}>={bound}")),
+                    shown: None,
+                    greedy,
+                    consuming,
                 });
             }
         }
@@ -822,6 +856,23 @@ pub fn choose_step<'a>(r: &mut Lcg, steps: &'a [Step]) -> &'a Step {
     &steps[i]
 }
 
+/// One enumerated candidate of the differential campaign (v12): a committed
+/// step, or a `hold <card>` against an open deferred held-capable station —
+/// the campaign's step enumeration gained the holds (§6.1).
+#[derive(Clone)]
+pub enum Candidate {
+    Step(Step),
+    Hold { verb: String, held: Ref },
+}
+
+/// the same one-uniform-draw shape as [`choose_step`], over the widened v12
+/// list.
+#[must_use]
+pub fn choose_candidate<'a>(r: &mut Lcg, cands: &'a [Candidate]) -> &'a Candidate {
+    let i = r.next_int(cands.len());
+    &cands[i]
+}
+
 // ---------- the exploration candidate space -------------------------------
 
 /// All k-element subsets of `arr`, in combinatorial order.
@@ -1020,6 +1071,61 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
             j += 1;
         }
         i += 1;
+    }
+    out
+}
+
+/// The per-window cap on enumerated holds (v12): the explorer stays finite
+/// — at most this many fitting cards per open deferred station, in birth
+/// order.
+const HOLD_CANDIDATE_CAP: i64 = 4;
+
+/// The v12 candidate space: [`candidates`] plus the HOLD steps — per open
+/// DEFERRED held-capable window (the empty recipe entry; a pinned window
+/// refuses holds, §6.7) whose held slot is under its declared max, one hold
+/// per fitting card. The pull/hold validity the engine runs filters the
+/// rest: a candidate the engine rejects is skipped by the driver, exactly
+/// like a rejected step.
+pub fn all_candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Vec<Candidate> {
+    let mut out: Vec<Candidate> =
+        candidates(content, dict, s).into_iter().map(Candidate::Step).collect();
+    for w in s.windows.values() {
+        if !w.recipe.is_empty() {
+            continue;
+        }
+        let Some(slot) = content.verbs.get(&w.verb).and_then(|v| v.slot_by_role.get("held")) else {
+            continue;
+        };
+        let taken = w.refs.get(&crate::core::roles::Role::Held).map_or(0, Vec::len) as i64;
+        let room = match slot.max {
+            None => HOLD_CANDIDATE_CAP,
+            Some(max) => (max - taken).min(HOLD_CANDIDATE_CAP),
+        };
+        let mut n: i64 = 0;
+        for e in s.entities.values() {
+            if n >= room {
+                break;
+            }
+            if e.dead_action.is_some() {
+                continue;
+            }
+            if let Some(q) = &slot.query {
+                if !match_query(e, q) {
+                    continue;
+                }
+            }
+            // the §6.7 busy rule: a lock held by THIS window is the
+            // cross-role case; any other window's lock skips the card
+            let busy = s
+                .windows
+                .iter()
+                .any(|(k, w2)| k != &w.key && w2.locked.iter().any(|id| id == &e.id));
+            if busy {
+                continue;
+            }
+            n += 1;
+            out.push(Candidate::Hold { verb: w.verb.clone(), held: id_ref(e.id.clone()) });
+        }
     }
     out
 }
@@ -1271,7 +1377,7 @@ pub fn explore(
         if steps >= max_steps || s.ended.is_some() {
             continue;
         }
-        for step in candidates(content, dict, &s) {
+        for cand in all_candidates(content, dict, &s) {
             // the first-record id reads the counter BEFORE the id generator
             // closure ever runs; the closure increments per minted id.
             let first = 1 + id_counter;
@@ -1282,7 +1388,14 @@ pub fn explore(
             };
             // settle consumes the state; the rejected branch rides the
             // rollback clone back (the caller's `s` is left untouched)
-            let res = settle_step(content, dict, s.clone(), step, first, Some(&mut gen))?;
+            let res = match cand {
+                Candidate::Step(step) => {
+                    settle_step(content, dict, s.clone(), step, first, Some(&mut gen))?
+                }
+                Candidate::Hold { verb, held } => {
+                    execute_hold(content, dict, s.clone(), &verb, held, first)?
+                }
+            };
             if res.rejected.is_some() {
                 continue;
             }
@@ -1444,11 +1557,16 @@ pub fn drive_fuzz_seed(seed: u32, k: usize, attempt_cap: usize) -> Result<FuzzRu
     let mut attempts = 0usize;
     while applied < k && attempts < attempt_cap {
         attempts += 1;
-        let steps = candidates(&content, &dict, &state);
-        let step = choose_step(&mut sel, &steps).clone();
+        let cands = all_candidates(&content, &dict, &state);
+        let cand = choose_candidate(&mut sel, &cands).clone();
         // settle consumes the state; the rejected branch rides the rollback
         // clone back (the rejected attempt leaves `state` untouched)
-        let res = settle_step(&content, &dict, state, step, id, None)?;
+        let res = match cand {
+            Candidate::Step(step) => settle_step(&content, &dict, state, step, id, None)?,
+            Candidate::Hold { verb, held } => {
+                execute_hold(&content, &dict, state, &verb, held, id)?
+            }
+        };
         state = res.state;
         if res.rejected.is_some() {
             continue;

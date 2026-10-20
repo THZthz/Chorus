@@ -55,6 +55,8 @@ mod authored_expiry_triggers {
                 max: Some(1),
                 query: Some("kind:character".to_string()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             }],
             duration: 60,
             recipes: vec![RecipeDef {
@@ -428,6 +430,8 @@ mod set_expires_duration_forms {
                     max: Some(1),
                     query: Some("kind:character".to_string()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {
@@ -562,6 +566,8 @@ mod set_expires_duration_forms {
                                 max: Some(1),
                                 query: Some("kind:character".to_string()),
                                 shown: None,
+                                greedy: false,
+                                consuming: false,
                             }],
                             duration: 0,
                             recipes: vec![RecipeDef {
@@ -586,6 +592,8 @@ mod set_expires_duration_forms {
                                 max: Some(1),
                                 query: Some("kind:character".to_string()),
                                 shown: None,
+                                greedy: false,
+                                consuming: false,
                             }],
                             duration: 60,
                             recipes: vec![RecipeDef {

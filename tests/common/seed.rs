@@ -30,6 +30,8 @@ pub fn seed_content() -> ContentRaw {
         max,
         query: query.map(str::to_string),
         shown: None,
+        greedy: false,
+        consuming: false,
     };
     let recipe = |id: Option<&str>, when: Option<&str>, out: &[&str]| RecipeDef {
         id: id.map(str::to_string),

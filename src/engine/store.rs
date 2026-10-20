@@ -122,6 +122,8 @@ mod tests {
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 30,
                     recipes: vec![RecipeDef {

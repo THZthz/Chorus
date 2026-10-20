@@ -320,10 +320,12 @@ fn scenario_pred_has(seed: u32, f: &dyn Fn(&Pred) -> bool) -> bool {
 }
 
 #[test]
-fn seed_9_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deterministic() {
-    assert!(scenario_has_aspect_world_form(9));
-    assert!(scenario_has_closed_aspect_count_form(9));
-    assert_seed_deterministic(9);
+fn seed_5_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deterministic() {
+    // (seed re-pinned under generator v12: the held draw shifted the draw
+    // order)
+    assert!(scenario_has_aspect_world_form(5));
+    assert!(scenario_has_closed_aspect_count_form(5));
+    assert_seed_deterministic(5);
 }
 
 #[test]
@@ -367,21 +369,23 @@ fn scenario_has_ambient_verb(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_2_carries_an_ambient_verb_and_stays_deterministic() {
-    assert!(scenario_has_ambient_verb(2));
-    assert_seed_deterministic(2);
+fn seed_3_carries_an_ambient_verb_and_stays_deterministic() {
+    // (seed re-pinned under generator v12: the held draw shifted the draw
+    // order)
+    assert!(scenario_has_ambient_verb(3));
+    assert_seed_deterministic(3);
 }
 
 #[test]
-fn seed_24_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
+fn seed_18_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
     // the v9 sum-scope probe rides this seed too: a `when` whose comparison
     // names `total(bound, aspect:a)` or `total(table, aspect:b)` — the
     // analyzer's window-model and world-sum interval faces, exercised by the
-    // same differential sweep. (Seed re-pinned under generator v11: the
-    // unique draw shifted the draw order.)
-    assert!(scenario_has_sum_scope_when(24));
-    assert!(scenario_recipe_run_crosses_verbs(24));
-    assert_seed_deterministic(24);
+    // same differential sweep. (Seed re-pinned under generator v12: the
+    // held draw shifted the draw order.)
+    assert!(scenario_has_sum_scope_when(18));
+    assert!(scenario_recipe_run_crosses_verbs(18));
+    assert_seed_deterministic(18);
 }
 
 // The v8 recipe `dur` band: a minority of recipes complete under a window of
@@ -429,11 +433,28 @@ fn scenario_event_body_chains(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_20_carries_an_event_body_chain_op_and_stays_deterministic() {
-    // (seed re-pinned under generator v11: the unique draw shifted the draw
+fn seed_1_carries_an_event_body_chain_op_and_stays_deterministic() {
+    // (seed re-pinned under generator v12: the held draw shifted the draw
     // order)
-    assert!(scenario_event_body_chains(20));
-    assert_seed_deterministic(20);
+    assert!(scenario_event_body_chains(1));
+    assert_seed_deterministic(1);
+}
+
+// The v12 held draw (§6.1): a verb whose block drew a HELD slot — the
+// deferral mark, and on this seed a greedy/consuming flag drawn with it —
+// so the campaign's HOLD steps fire and the fold replays them.
+fn scenario_has_flagged_held_slot(seed: u32) -> bool {
+    gen_scenario(seed)
+        .raw
+        .verbs
+        .values()
+        .any(|v| v.slots.iter().any(|s| s.role == "held" && (s.greedy || s.consuming)))
+}
+
+#[test]
+fn seed_1_also_carries_a_flagged_held_slot_and_stays_deterministic() {
+    assert!(scenario_has_flagged_held_slot(1));
+    assert_seed_deterministic(1);
 }
 
 // The v11 unique draw (§4.2): a prototype rolled unique — never stackable —

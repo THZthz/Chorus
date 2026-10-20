@@ -6,14 +6,14 @@ use std::collections::HashSet;
 
 use indexmap::IndexMap;
 
-use crate::content::{CompiledRecipe, CompiledVerb};
+use crate::content::{CompiledContent, CompiledRecipe, CompiledVerb};
 use crate::core::clock::clock_from_abs_min;
 use crate::core::predicate::{eval_pred, PredCtx, RoleBindings};
 use crate::core::query::match_query;
 use crate::core::r#ref::Ref;
 use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::Clause;
-use crate::core::types::{get_alive, oldest_named, Entity, State};
+use crate::core::types::{get_alive, oldest_named, Entity, OpenWindow, State};
 use crate::error::{ChorusError, Result};
 
 // ---------- role binding & slot validation (§6.1) ----------
@@ -54,8 +54,8 @@ pub(super) fn defers_selection(verb: &CompiledVerb) -> bool {
 
 /// §6.7: the held slot's validity face for a `hold <card>` step — the card
 /// must resolve to a LIVING entity and fit the held slot's query (the slot's
-/// `0..1` cardinality is enforced by the compile guard and the at-most-once
-/// hold rule, not here). Returns the entity id.
+/// capacity is the at-max fill rule [`hold_room`], not here). Returns the
+/// entity id.
 pub(super) fn validate_hold(verb: &CompiledVerb, r: &Ref, state: &State) -> Result<String> {
     let Some(slot) = verb.slot_by_role.get("held") else {
         return Err(ChorusError::new(format!("{} has no held slot", verb.name)));
@@ -73,6 +73,53 @@ pub(super) fn validate_hold(verb: &CompiledVerb, r: &Ref, state: &State) -> Resu
         }
     }
     Ok(e.id.clone())
+}
+
+/// Whether an open window can take one more held card (§6.7): the at-max
+/// fill face of the held slot. The ONE capacity rule play (`execute_hold`)
+/// and fold (the HOLD-row replay) run — the current held count read off the
+/// window's refs against the VERB'S OWN slot range, so the two paths cannot
+/// drift. A card this window's held role already binds refuses again (one
+/// binding per card).
+pub(super) enum HoldRoom {
+    /// the binding may land
+    Room,
+    /// the slot is at its declared max (or the verb declares no held slot —
+    /// unbindable either way)
+    Full,
+    /// the card is already bound in this window's held role
+    Duplicate,
+}
+
+pub(super) fn hold_room(
+    content: &CompiledContent,
+    state: &State,
+    w: &OpenWindow,
+    held_id: &str,
+) -> HoldRoom {
+    if let Some(held_refs) = w.refs.get(&Role::Held) {
+        for r in held_refs {
+            // the bound refs resolve like every binding — a dead one drops
+            if let Ok(Some(e)) = resolve_ref(state, r) {
+                if e.id == held_id {
+                    return HoldRoom::Duplicate;
+                }
+            }
+        }
+    }
+    let count = w.refs.get(&Role::Held).map_or(0, Vec::len) as i64;
+    match content.verbs.get(&w.verb).and_then(|v| v.slot_by_role.get("held")) {
+        // no held slot: nothing can ever bind (content drift, loud on both
+        // paths)
+        None => HoldRoom::Full,
+        Some(slot) => {
+            if slot.max.is_some_and(|max| count >= max) {
+                HoldRoom::Full
+            } else {
+                HoldRoom::Room
+            }
+        }
+    }
 }
 
 /// Slot validation. Error texts come WITHOUT the `<verb>: ` prefix; the

@@ -85,6 +85,8 @@ fn wait_verb(out: &[&str]) -> (String, VerbContent) {
                 max: Some(1),
                 query: Some("kind:character".into()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             }],
             duration: 0,
             recipes: vec![RecipeDef {
@@ -138,6 +140,8 @@ fn a_unique_never_proves_twice_from_its_own_deck_the_second_position_is_dead() {
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -162,6 +166,8 @@ fn a_unique_never_proves_twice_from_its_own_deck_the_second_position_is_dead() {
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -267,6 +273,8 @@ fn the_count_clamp_keeps_the_in_play_mint_plus_deck_composition_at_one_living_co
                         max: Some(1),
                         query: Some("kind:character".into()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     }],
                     duration: 0,
                     recipes: vec![RecipeDef {

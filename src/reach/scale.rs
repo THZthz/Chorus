@@ -214,6 +214,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                 max: Some(1),
                 query: Some("kind:character".to_string()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             }],
             duration: 30,
             recipes: vec![RecipeDef {
@@ -292,6 +294,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                 max: Some(1),
                 query: Some("kind:character".to_string()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             },
             SlotDef {
                 role: "object".to_string(),
@@ -299,6 +303,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                 max: Some(1),
                 query: Some(query.to_string()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             },
         ];
         if ctx.rnd.next_f64() < 0.5 {
@@ -309,6 +315,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                 max: Some(1),
                 query: Some(format!("aspect:{a}>=2")),
                 shown: None,
+                greedy: false,
+                consuming: false,
             });
         }
         // duration picked from the weighted pool [0, 30, 60, 60, 60]

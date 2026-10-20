@@ -58,6 +58,8 @@ fn actor_slot() -> SlotDef {
         max: Some(1),
         query: Some("kind:character".into()),
         shown: None,
+        greedy: false,
+        consuming: false,
     }
 }
 
@@ -68,6 +70,8 @@ fn object_slot(query: Option<&str>) -> SlotDef {
         max: Some(1),
         query: query.map(|s| s.to_string()),
         shown: None,
+        greedy: false,
+        consuming: false,
     }
 }
 
@@ -700,6 +704,8 @@ fn stations_and_committed_locks_gate_phase_two() {
                 max: Some(1),
                 query: Some("kind:character".into()),
                 shown: None,
+                greedy: false,
+                consuming: false,
             },
             object_slot(None),
         ],

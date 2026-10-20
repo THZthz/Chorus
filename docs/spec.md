@@ -64,6 +64,7 @@ projection of that data, never the source of truth.
 43. **v0.9.6** — unique cards: a prototype line may carry `unique` (§4.2 — `unique` + `stackable` on one line is a load error, an entity line rejects `unique`); a unique mint whose name has a LIVING copy (locked included) is skipped — no new copy, the incumbent stays (CS B9's retire-the-incumbent deliberately not copied), the concrete SPAWN row still logs and the fold replays it through the same living-check, and the name records PERMANENTLY in the manifested set (a fold-rebuilt projection, §7); the deck draw filters lazily — a manifested-unique position and any later occurrence of a unique name are consumed within the serving draw, `reset`'s reshuffle skips them too, true exhaustion falls to `defaultcard`/exhaustion per the deck's own config, and the cursor counts consumed positions (§4.4); the deck livelock advisory exempts unique entries (§13.2); the analyzer models the skip — dead positions, live-position reach, the one-living-copy count clamp (§13.1; in-play mints mark manifested from v0.9.7, §13.1); the fuzz generator draws unique prototypes (v11).
 44. **v0.9.7** — the reach analyzer's chain model closes its five ledgered gaps (§13.3): the completing-recipe selection rule demands EVERY earlier `when` decidably False (§13.1); the dead-verb demotion exempts chain-pinned verbs — the §6.7 follow-up path skips `validate_slots` (§13.1); the census records a list-level chain-slot refusal — a pin-capable RUN/FORK followed by another chain op, event channels exempt — demoted at the ladder's `ChainPinRefusal` rung (§13.1); a proven in-play SPAWN/REPLACE of a unique name marks it manifested (`minted_manifested`), and the once-draw + in-play-mint composition agrees with play (§13.1); two Wave-4 residual classes are triaged (§13.3).
 45. **v0.9.8** — the reach analyzer's cross-list model closes the Wave-4 residual ocean, all sixteen failing seeds of the 200–3199 campaign window (§13.3): the census computes ONE cross-list interference map over the whole content — per list the candidate owners of its RUN/FORK ops and its top-level (seg-0) REFUSE face, per name its minting lists, non-reusable minters and engine-timed holder sources (slot/expire bodies, ambient recipes; fallback arms excluded) — and the fixpoint consumes it per completion (§13.1): the shared §6.7 chain channel joins across lists (`ChainSlotInterference` — a second pin, or a pin whose candidate carries a top-level REFUSE, refuses the parent window); the §5.1 mint check's LIVING-HOLDER side joins across lists (`CollisionRefusal` — recipe arms blanket, slot arms timing-refined to the first crossing, expire arms blanket, the witness-pair filter per pair, and the draft-occupant test widened to the holder side); the completing recipe's own outcomes killing the locked home void the witness pair (`CompleteHomeKilled`); the ambient gate's window-bound sum reads exactly 0 over the sweep's empty bindings; and an earlier unconditional same-list mint of a unique name marks the later site `UniqueSkipped` (§13.1).
+46. **v0.9.9** — held-N, the held slot becomes a slot class: the slot line takes two held-only flags between the count and the query — `greedy` (the engine pulls the oldest living, unlocked, query-fitting cards at window begin, in birth order, up to the slot's max; each pull an ordinary HOLD row with the unread `trigger: greedy` mark; best-effort, never a refusal, never a clock move) and `consuming` (the surviving held cards burn at completion, between the recipe outcomes and the completion-trigger phase, as engine-written `DESTROY #id` concrete rows on the COMPLETE row) (§6.1, §6.7); the held `0..1`-exactness guard becomes the min-0 rule — any finite max ≥ 1 and the unbounded `0..` are legal, `held: 1 …`/`held: 1.. …`/`held: 0..0 …` are load errors, and per-recipe held declarations stay unrepresentable (§6.1); the hold step's at-most-once becomes the at-max fill check — the window's held count against the verb's own slot range, mirrored in the fold through the SAME content-keyed rule (a hand-built HOLD row into a full window is loud drift), `bind_hold` appends, and a card the window already binds refuses (one binding per card) (§6.7); the reach arrangeable-hold face reads the declared range — the arranged count is min(slot max, fitting descriptors), a threshold above the slot max reads False, the band between stays Unknown (§13.1); the lint gains the greedy slot-fit advisory and the count-cardinality domain widens to the declared range (§13.2); the fuzz generator draws the held band and the campaign's step enumeration gains HOLD steps (v12).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -297,14 +298,20 @@ Each verb declares which roles it needs:
 Roles: `actors` (subject, an unordered set) · `object` (direct) ·
 `with` (instruments) · `at` (where) · `about` (topic) · `to` (recipient).
 
-**The seventh role — `held` (v0.9.3).** A verb may declare one extra slot
-`held: 0..1 <query>` (§6.1); the card bound there rides the same role
-namespace as the six clause roles everywhere — `held.aspect.k` and
-`count(held)` read it in `when:` (§6.3), `DESTROY held` consumes it in
-outcomes (§4.4's role refs), and `total(bound, …)` sums it. Unlike the six,
-`held` is never authored in a clause: a `hold <card>` step (§11) binds it
-into an open station mid-window (§6.7), so a commit-time sentence carries no
-`held` position and the log carries the binding as its own HOLD row (§5.1).
+**The seventh role — `held` (v0.9.3; the slot class since v0.9.9).** A verb
+may declare one extra slot `held: 0..N <query>` (§6.1 — any `0..N` range,
+plus the held-only `greedy`/`consuming` flags); the cards bound there ride
+the same role namespace as the six clause roles everywhere — `held.aspect.k`
+(reads the FIRST held card, exactly as `with.aspect.k` reads the first
+`with` card) and `count(held)` (the window's bound count) read it in
+`when:` (§6.3), `DESTROY held` consumes every bound card in outcomes
+(§4.4's role refs), and `total(bound, …)` sums them. Unlike the six,
+`held` is never authored in a clause: a `hold <card>` step (§11) binds into
+an open station mid-window (§6.7) — one card per hold, up to the slot's
+declared range — so a commit-time sentence carries no `held` position and
+the log carries each binding as its own HOLD row (§5.1). A greedy slot
+fills itself at begin (§6.7's pull); a consuming slot burns its survivors
+at completion.
 
 **ACTORS is an unordered set** — one or more characters. `A, B TALK …` and
 `B, A TALK …` are the *same* action. The engine composes refs in canonical
@@ -531,11 +538,12 @@ wait       = "WAIT" duration ;                   (* ENGINE-WRITTEN: one advance 
                                                     the span that moved `now` (§6.7); WAIT is
                                                     reserved (a core verb), so this sits before
                                                     the action fallthrough *)
-hold       = "HOLD" verbo ref ;                  (* ENGINE-WRITTEN: one held binding (§6.7) —
-                                                    the verb names the open held-capable station,
-                                                    the ref the card bound into its held slot;
-                                                    HOLD is reserved (§5.1), so this sits before
-                                                    the action fallthrough *)
+hold       = "HOLD" verbo ref ;                  (* ENGINE-WRITTEN: one held binding — a hold
+                                                    step or a greedy pull (§6.7) — the verb names
+                                                    the open held-capable station, the ref the card
+                                                    bound into its held slot; HOLD is reserved
+                                                    (§5.1), so this sits before the action
+                                                    fallthrough *)
 clock      = int ":" int ;                       (* "day:tick", day 0-based, tick 0..143; 1 tick = 10 min *)
 action     = clause { ";" clause } [ "->" outcomes ] ;
 event      = "EVENT" trigger-id [ "->" outcomes ] ;
@@ -770,11 +778,12 @@ A slot declares a **role**, a **count**, an optional visibility flag, and a
 query every member must satisfy. One slot per line (script syntax, §10):
 
 ```
-slot  := role ":" count [ query ]
+slot  := role ":" count { flag } [ query ]
 role  := "actors" | "object" | "with" | "at" | "about" | "to" | "held"
                                                           (* §4.3's six clause roles
                                                              plus `held`, exact lowercase *)
 count := int [ ".." [ int ] ]                    (* "1", "2", "1..2", "2..", "0..1" *)
+flag := "greedy" | "consuming"                   (* held-only, any order — §6.7's pull and burn *)
 ```
 
 A slot with `max < min` is a compile error, and so is a slot query naming
@@ -784,14 +793,45 @@ A slot key outside the seven-role vocabulary is a load error naming the valid
 roles (§10's "failing loudly at load time") — never a slot that compiles and
 silently never matches.
 
-**The held slot (v0.9.3)** takes exactly `0..1` — any other cardinality
-(`held: 1 …`, `held: 0..2 …`, `held: 1.. …`) is a load error naming the verb:
-one held card per window, bound at most once (§6.7). The slot carries a query
+**The held slot (v0.9.3; the slot class since v0.9.9)** keeps min `0` — a
+hold is optional per card — and its max is any finite `≥ 1` or the
+unbounded `0..`: `held: 1 …`, `held: 1.. …` and `held: 0..0 …` are load
+errors naming the verb (the slot must have room for one binding). A
+per-RECIPE held declaration is not representable — on a held-capable verb
+the recipe is known only at completion (that is what §6.4's deferral IS),
+so a recipe-owned slot would demand a two-phase window; the class is
+verb-level, and several recipe slots fold into one held slot whose query
+unions their filters. Two held-only flags sit between the count and the
+query, in either order:
+
+- `greedy` — the engine PULLS the oldest living, unlocked, query-fitting
+  cards at window begin, in birth order, up to the slot's max (§6.7; CS
+  pulls randomly, chorus is deterministic — a documented reduction).
+  Best-effort: fewer fitting cards, fewer pulls, never a refusal, never a
+  clock move. It requires a query (pulling "any card" is not a rule) and a
+  finite max (an unbounded pull vacuums the table) — each a load error.
+- `consuming` — the surviving held cards burn at the window's completion
+  (§6.7); it composes with any range.
+
+Either flag on a NON-held role is a load error. The slot carries a query
 like any other (the card a `hold <card>` step binds must fit it, §11) and
 joins the verb's slot table as the seventh role — `explain` renders it, the
 try row's slot arithmetic sees it, and the §6.1-derived lints (the
 count-cardinality check, the never-matching-`when` domain) read its
-`0..1` range exactly as they read any slot.
+declared range exactly as they read any slot.
+
+```
+verb RITE:
+  actors: 1 kind:character
+  object: 1 kind:text
+  held: 0..2 aspect:quest        # two mid-window choices
+  duration: 1h
+
+verb EXPENSES:
+  actors: 1 kind:character
+  held: 0..1 greedy consuming kind:item aspect:funds>=1
+  duration: 30m                  # pull at begin, burn at completion
+```
 
 ```
 verb READ:
@@ -837,8 +877,9 @@ Rules:
 
 ```
 role refs    actors · object · with · at · about · to · held   (object/at/about/to = first card of the role;
-                                                          held = the card a `hold <card>` step bound into
-                                                          the window, §6.7 — empty until one is held)
+                                                          held = the FIRST card a `hold <card>` step or a
+                                                          greedy pull bound into the window, §6.7 —
+                                                          empty until one is held)
 scalar       object.aspect.secret >= 3
              object.aspect.language.latin >= 2
 cardinality  count(actors) = 2
@@ -867,10 +908,12 @@ only** (`aspect:key >= n`). A missing numeric attr entry on a bound card
 compares as 0 (§6.3); a missing aspect on a bound card reads false.
 
 **The held scope.** `held` is one more role in this grammar: `held.aspect.k`
-reads the held card (empty until a `hold <card>` step binds one, §6.7 — an
+reads the FIRST held card (empty until a `hold <card>` step or a greedy pull
+binds one, §6.7 — an
 empty held reads like any unbound role: counts 0, paths false in a `when:`),
-`count(held) op k` compares the held count against the slot's `0..1`
-cardinality (the §13.2 lint faces apply), and a recipe whose `when` requires
+`count(held) op k` compares the window's bound count against the slot's
+declared range (the §13.2 lint faces apply), and a recipe whose `when`
+requires
 `count(held) >= 1` can only fire when the player actually holds — on a
 held-capable verb selection runs at completion (§6.4), so the same verb's
 earlier recipes see the empty scope.
@@ -1030,8 +1073,11 @@ declares a held slot defers the §6.4 walk to its window's completion:
   candidate was pinned by id, keeps its own `dur` exactly as §6.7 says).
 - *At completion* the window selects among the currently-matching recipes —
   the §6.4 first-match walk with the `max` discipline, the `when`s reading
-  the completion bindings with `held` bound (the held card, if one was held;
-  the empty scope otherwise). The COMPLETE row carries the selected id; the
+  the completion bindings with `held` bound (the held cards, if any were
+  held or pulled: `count(held)` reads the window's bound count against the
+  declared range, and `held.aspect.k` reads the FIRST held card exactly as
+  `with.aspect.k` reads the first `with` card; the empty scope otherwise).
+  The COMPLETE row carries the selected id; the
   execution count (§6.4) lands with the completion, through the one rule
   play and fold share — a successful deferred completion counts its recipe,
   a refused one counts nothing (its draft died).
@@ -1284,9 +1330,10 @@ selection: a held-capable verb's window records the deferral (the empty
 BEGIN recipe entry) and selects at completion, where the COMPLETE row
 carries the selected id.
 
-**The held binding — the `hold <card>` step (v0.9.3).** While a window on a
-held-capable verb (§6.1) processes, the player may bind ONE fitting card
-into its held slot — the `hold <card>` command (§11), a turn of its own:
+**The held binding — the `hold <card>` step (v0.9.3; the slot class since
+v0.9.9).** While a window on a held-capable verb (§6.1) processes, the
+player may bind fitting cards into its held slot, one per hold, up to the
+slot's declared range — the `hold <card>` command (§11), a turn of its own:
 
 - *The row.* The step logs a HOLD row — `HOLD <VERB> <ref>` (§5.1): the
   verb names the station, the ref the card. It moves no clock, applies no
@@ -1298,28 +1345,54 @@ into its held slot — the `hold <card>` command (§11), a turn of its own:
   it. Holds are turns between commits, not clock events.
 - *The checks.* The verb must declare a held slot; its station must have an
   open window; the window must be DEFERRED (a chain-pinned follow-up refuses
-  — its recipe is already fixed, §6.4); the slot must still be empty (no
-  mid-window eviction — one binding, at most once); the card must be alive
-  and fit the held slot's query; and the card must not be locked by any
-  OTHER open window (busy, exactly as a commit's cards are). A card the same
-  station already binds in a committed role may also be held (the §6.3
-  cross-role rule: nothing forbids two roles, and `total(bound, …)` counts
-  both). Every refusal logs nothing.
-- *The binding.* The hold enters the window's refs as the `held` role and
-  the card's id joins the window's locked set — the LOCK (§6.7's busy rule)
-  covers it for the window's remainder, exactly like a committed
-  object/with/at/about/to card: nothing else may act on it meanwhile. It is
-  a logged step that replays: play == fold == undo across a hold returns the
-  card to where it was (§7).
-- *At completion.* The held card re-resolves with every binding (dead refs
-  drop, events do not respect locks); the selected recipe's `when` reads it
-  (§6.4's deferred selection) and its outcomes may consume it like any role
-  (`DESTROY held`). The completion's `on complete` triggers fire on it as on
-  any locked card (the lock list's order — the held card joins last).
-  Unconsumed, it rides the same discipline as every other bound card: it
-  was never moved, so it simply unlocks back to wherever it sits.
+  — its recipe is already fixed, §6.4); the slot must be UNDER ITS FILL —
+  the at-max fill check reads the window's held count against the verb's
+  own declared range (a full slot refuses: no mid-window eviction); the
+  card must be alive, fit the held slot's query, and not already be bound
+  in THIS window's held role (one binding per card); and the card must not
+  be locked by any OTHER open window (busy, exactly as a commit's cards
+  are). A card the same station already binds in a committed role may also
+  be held (the §6.3 cross-role rule: nothing forbids two roles, and
+  `total(bound, …)` counts both). Every refusal logs nothing.
+- *The binding.* Each hold enters the window's refs by APPENDING to the
+  `held` role and the card's id joins the window's locked set — the LOCK
+  (§6.7's busy rule) covers every bound card for the window's remainder,
+  exactly like a committed object/with/at/about/to card: nothing else may
+  act on any of them meanwhile. It is a logged step that replays:
+  play == fold == undo across a hold returns the card to where it was (§7).
+- *The pull and the burn (v0.9.9).* A `greedy` slot fills itself at window
+  begin: immediately after the BEGIN row registers, the engine pulls the
+  oldest living, unlocked, query-fitting cards up to the slot's max, in
+  birth order (the frozen pool discipline), each pull an ordinary HOLD row
+  marked `trigger: greedy` — a field no reader of HOLD rows ever consumes,
+  the ambient BEGIN row's `ambient` mark's precedent — bound through the
+  ONE hold path, so the fold replays it untouched; pulls are best-effort
+  and never move the clock. A chain-pinned window neither accepts holds nor
+  pulls. A `consuming` slot burns at completion: AFTER the recipe's own
+  outcomes and BEFORE the `on complete` trigger phase, every held card
+  still alive is destroyed — engine-written `DESTROY #id` concrete rows
+  appended to the COMPLETE row's outcome list (the completion-trigger
+  rows' appending precedent; the fold replays them with no new machinery).
+  Survivor-only: authored consumption in the recipe's own outcomes
+  (`DESTROY held`, a REPLACE of the held card) already killed the ref, and
+  the burn no-ops on dead refs. Burning before the trigger phase is
+  CS-faithful — the consumed card is gone before the induction pass, so a
+  burned card fires no `on complete`.
+- *The fold's mirror.* The fold re-binds each logged HOLD row through the
+  SAME at-max rule read THROUGH THE VERB'S OWN SLOT RANGE — one rule,
+  keyed on content — so play and fold cannot drift: a hand-built HOLD row
+  into a full window (or re-binding a card the window already holds) is
+  loud log drift.
+- *At completion.* The held cards re-resolve with every binding (dead refs
+  drop, events do not respect locks); the selected recipe's `when` reads
+  them (§6.4's deferred selection) and its outcomes may consume them like
+  any role (`DESTROY held` consumes every bound card). The completion's
+  `on complete` triggers fire on them as on
+  any locked card (the lock list's order — the held cards join last).
+  Unconsumed, they ride the same discipline as every other bound card:
+  they were never moved, so they simply unlock back to wherever they sit.
 - *Prose.* The journal keeps the HOLD row's canonical sentence; the
-  `processing:` line names what a station holds.
+  `processing:` line names what a station holds (every binding).
 
 **Time is explicit.** Beginning at `now` moves nothing; the clock advances
 only through advance passes — a bare clock input, an action whose typed
@@ -1652,7 +1725,7 @@ CREATE TABLE action (
   start_min    INTEGER,                         -- exact minutes: BEGIN = begin minute, wait = span start — the fold
                                                 --   lands them exactly (expires anchoring); absent on complete/event rows
   window       TEXT,                            -- COMPLETE rows: the key of the window they close · HOLD rows: the key of the window they bind
-  held         TEXT,                            -- HOLD rows: the held card's ref · COMPLETE rows: the held card re-resolved (§6.7); else absent
+  held         TEXT,                            -- HOLD rows: the held card's ref · COMPLETE rows: the FIRST held card re-resolved (§6.7); else absent
   actors       JSON,                            -- refs: sorted, de-duplicated union across clauses (order not semantic)
   verb         TEXT NOT NULL,                   -- FIRST clause's verb lexeme ('' for event/wait rows; the verb of a COMPLETE row)
   objects      JSON,                            -- FIRST clause's object/with/at/about roles (multi-clause steps
@@ -1677,8 +1750,8 @@ CREATE TABLE action (
   row's `trigger` (§6.6).
 - **State beyond the tables** — the fold-maintained fields, each written by
   the one path shared by play and fold (§9.2): the open-windows table (the
-  lock, §6.7 — a window's held binding rebuilt from its HOLD row through the
-  same shared bind the play side runs), `byName` (each name → its living ids in BIRTH order — the
+  lock, §6.7 — a window's held bindings rebuilt from its HOLD rows through the
+  same shared append-bind the play side runs), `byName` (each name → its living ids in BIRTH order — the
   pool arrays; a name ref under a pool addresses the head, the OLDEST copy,
   §4.2), the `rng` counter (§4.4), one cursor per deck (§4.4), the
   manifested unique set (§4.2 — rebuilt from the logged SPAWN rows' unique
@@ -2311,9 +2384,13 @@ held-capable station at a time is the target — the card resolves by display
 face against the visible table, the way `inspect` resolves (`the chalice`
 matches THE_CHALICE; a unique prefix resolves). With several held-capable
 stations open, `hold <card> for <verb>` names the station; the bare form
-errors naming the fitting verbs. A hold is a TURN: its row echoes in the
+errors naming the fitting verbs — the under-fill stations pick first, and a
+station already at its fill speaks the engine's precise refusal
+(`… already holds its fill — the held slot is full (§6.7)`). A hold is a
+TURN: its row echoes in the
 `« … »` canonical form, `undo` takes it back, and the turn's `processing:`
-line marks what each station holds. The try row suggests the flip: when an
+line marks what each station holds (every binding — `holding CHALICE,
+RELIC`). The try row suggests the flip: when an
 open station's deferred selection (§6.4) would light a different recipe
 under a fitting card, `hold <card>` joins the suggestions — computed, not
 authored: the walk runs with and without each candidate, and only a card
@@ -2514,14 +2591,18 @@ are the only reach files allowed to):
   declared-slot view bounds, so its bound scope stays Unknown); a
   trigger-owned site has no window model and reads the scope Unknown
   (the under-claim only demotes). The held slot rides the same per-slot
-  shape (§6.1's `0..1`): its cards join the `total(bound, …)` sum's floor
-  and ceiling like any optional slot, and a `count(held)` gate evaluates
-  over the held slot's fit — the analyzer models the hold as a player step
-  it can arrange (like a commit): ≥1 fitting descriptor in the available
-  world reads the count as exactly 1 (arranged — a require-held gate then
-  decides True, provable), no fitting descriptor reads exactly 0 (the gate
-  decides False — the hold can never satisfy it: never claim Proven off a
-  gate the hold alone cannot arrange), and no window model at all
+  shape (§6.1's declared range): its cards join the `total(bound, …)` sum's
+  floor and ceiling like any optional slot, and a `count(held)` gate
+  evaluates over the ARRANGED count = min(slot max, fitting descriptors) —
+  the analyzer models the hold as a player step
+  it can arrange (like a commit): a comparison whose threshold the
+  arranged count meets decides True (provable — a require-held gate with a
+  fitting card in the world proves), a threshold above the SLOT'S OWN MAX
+  reads False (the hold can never exceed the slot: never claim Proven off
+  a gate the hold alone cannot satisfy), and the band between — room in
+  the slot, too few fitting descriptors today — stays Unknown (mints may
+  grow the fitting pool; Unknown only ever widens toward candidate); an
+  unbounded `0..` slot has no ceiling, and no window model at all
   (chain-pinned verb, trigger — the C ruling, held inherits it) reads the
   full-open pair, Unknown under every op. Other held reads
   (`held.aspect.k`, `total(held, …)`) keep their runtime-gated face —
@@ -3082,7 +3163,7 @@ builds the same scenario, draw for draw, under ONE version.
   interval-narrowing evaluation over the §6.1 slot ranges, false for every
   §6.6 selection binding (a held-capable verb's §6.4 deferred walk reads the
   same ranges — completion-time selection binds held before the walk, so the
-  `0..1` domain is the model either way). Conservative at the boundary —
+  declared range is the model either way). Conservative at the boundary —
   staying Unknown is
   what keeps the warning sound: `exists`/`count(<query>)` world reads, the
   §6.3 sum scopes (`total(bound, …)`/`total(table, …)`),
@@ -3097,7 +3178,13 @@ builds the same scenario, draw for draw, under ONE version.
   gate — and never warns). And a verb with a held slot but NO held-reading
   recipe — the advisory dead-slot face: nothing reads the scope, so no hold
   can ever flip the §6.4 deferred selection; the slot is content the player
-  can fill to no effect.
+  can fill to no effect. And a `greedy` held slot whose query can never
+  match any initial-or-mintable descriptor (a declared entity or a
+  prototype) — the dead-verb slot-fit face at slot granularity: the pull is
+  dead content the never-matching-`when` check cannot see (the slot's min
+  being 0). The count-cardinality check reads each slot's DECLARED range
+  (a `count(held) >= 3` on a `held: 0..2` slot is dead exactly as on any
+  over-max slot).
   Two bearer faces: an aspect borne FROM LOAD (a declared `entities:`
   line) — the count/total forms read only these, the load-present pool; and a
   deck `defaultcard` through its prototype's aspects — NOT borne from

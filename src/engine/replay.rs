@@ -13,7 +13,7 @@ use crate::error::{ChorusError, Result};
 use super::exec::{bind_hold, count_deferred, register_windows};
 use super::outcomes::{apply_outcome, ApplyCtx};
 use super::record::{checked_step, ActionRecord};
-use super::validate::{resolve_ref, resolve_role_refs};
+use super::validate::{hold_room, resolve_ref, resolve_role_refs, HoldRoom};
 
 /// Apply one record's concrete outcomes to
 /// a state (replay). Refused records are state no-ops: their logged outcomes
@@ -104,8 +104,9 @@ pub fn apply_record(
         return Ok(());
     }
     // §6.7: a HOLD row re-binds its card through the ONE shared path the
-    // play side ran — the window must be open, deferred and unheld (the
-    // shape execute_hold enforces); anything else is log drift, loud.
+    // play side ran — the window must be open, deferred, and under its
+    // held slot's fill (the shape execute_hold enforces); anything else is
+    // log drift, loud.
     if record.kind == "hold" {
         // the display clock parses for EVERY row kind (drift check); the
         // hold consumes no mechanics from it
@@ -125,9 +126,9 @@ pub fn apply_record(
                 record.id, record.verb, w.verb
             )));
         }
-        if !w.recipe.is_empty() || w.refs.get(&Role::Held).is_some_and(|v| !v.is_empty()) {
+        if !w.recipe.is_empty() {
             return Err(ChorusError::new(format!(
-                "hold row {} binds a window that is pinned or already held — drift",
+                "hold row {} binds a pinned window — drift",
                 record.id
             )));
         }
@@ -140,6 +141,25 @@ pub fn apply_record(
                 record.id
             ))
         })?;
+        // §6.7: the at-max fill rule, THROUGH THE VERB'S OWN SLOT RANGE —
+        // the ONE rule play runs in execute_hold, keyed on content, so the
+        // two paths cannot drift. A logged HOLD row into a full window (or a
+        // re-bind of a card the window already holds) is log drift, loud.
+        match hold_room(content, state, w, &id) {
+            HoldRoom::Full => {
+                return Err(ChorusError::new(format!(
+                    "hold row {} fills window '{key}' past its held slot's declared max — drift",
+                    record.id
+                )));
+            }
+            HoldRoom::Duplicate => {
+                return Err(ChorusError::new(format!(
+                    "hold row {} re-binds a card the window already holds — drift",
+                    record.id
+                )));
+            }
+            HoldRoom::Room => {}
+        }
         bind_hold(key, &id, &held, state);
         return Ok(());
     }

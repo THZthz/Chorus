@@ -235,6 +235,8 @@ fn max_zero_and_negative_are_load_errors_and_max_is_a_keyword_not_an_id() {
                     max: Some(1),
                     query: Some("kind:character".into()),
                     shown: None,
+                    greedy: false,
+                    consuming: false,
                 }],
                 duration: 0,
                 recipes: vec![RecipeDef {

@@ -343,6 +343,8 @@ fn why_table_names_the_wave3_completion_rungs() {
                         max: Some(1),
                         query: Some("kind:character".to_string()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     },
                     SlotDef {
                         role: "object".to_string(),
@@ -350,6 +352,8 @@ fn why_table_names_the_wave3_completion_rungs() {
                         max: Some(1),
                         query: Some("kind:item".to_string()),
                         shown: None,
+                        greedy: false,
+                        consuming: false,
                     },
                 ],
                 duration: 30,

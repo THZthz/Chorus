@@ -78,6 +78,8 @@ fn slot(role: &str, min: i64, max: i64, query: Option<&str>) -> SlotDef {
         max: Some(max),
         query: query.map(str::to_string),
         shown: None,
+        greedy: false,
+        consuming: false,
     }
 }
 

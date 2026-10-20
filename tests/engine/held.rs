@@ -1,8 +1,10 @@
-//! The held slot (§6.7, v0.9.3): the §6.4 deferred selection (a held
-//! binding can flip which recipe matches), the HOLD row (play == fold ==
-//! undo — a logged step that replays), the lock for the window's remainder,
-//! the at-most-once discipline, and the §6.4 identity pin (a held slot whose
-//! recipes never read held selects exactly as a held-less twin would).
+//! The held slot (§6.7, v0.9.3; the slot class since v0.9.9): the §6.4
+//! deferred selection (a held binding can flip which recipe matches), the
+//! HOLD row (play == fold == undo — a logged step that replays), the lock
+//! for the window's remainder, the at-max fill discipline (the declared
+//! range bounds the window's holds, greedy pulls included), and the §6.4
+//! identity pin (a held slot whose recipes never read held selects exactly
+//! as a held-less twin would).
 //!
 //! Every test builds a FRESH Dictionary; the fixture script declares its
 //! verbs through the `verbs:` block (§10's registration). State equality
@@ -374,14 +376,19 @@ fn hold_rejects_a_card_that_does_not_fit_the_query() {
 }
 
 #[test]
-fn a_window_holds_at_most_once() {
+fn a_window_holds_up_to_its_declared_fill_then_refuses() {
     let (_dict, content, state) = rig();
     let r = begin(&content, &_dict, state, "0:0 @ ANA STUDY BOOK", 1);
     let h = hold_chalice(&content, &_dict, r.state, 2);
-    // no mid-window eviction: a second hold — even of a different fitting
-    // card — is the at-most-once refusal
+    assert_eq!(h.rejected, None);
+    // the at-max fill rule (§6.7): the slot's declared max bounds the
+    // window's holds — STUDY's slot takes 0..1, so a full slot rejects a
+    // further hold (no mid-window eviction), even of a different fitting
+    // card. Nothing logs; the state rides back.
     let h2 = execute_hold(&content, &_dict, h.state, "STUDY", name_ref("RELIC", None), 3).unwrap();
-    assert_rejected(&h2, r"STUDY already holds a card");
+    assert_rejected(&h2, r"STUDY already holds its fill — the held slot is full");
+    assert!(h2.records.is_empty(), "nothing logged");
+    assert!(h2.state.windows["1:0"].locked.iter().all(|id| id != "s_relic"));
 }
 
 #[test]
@@ -596,4 +603,435 @@ verbs:
     assert_eq!(bp.recipes, ["study.default"]);
     assert_eq!(bh.sentence, bp.sentence);
     assert_eq!(bh.advanced_min, bp.advanced_min);
+}
+
+// ===========================================================================
+// the slot class (v0.9.9): multiplicity, greedy, consuming
+// ===========================================================================
+
+/// The held-N fixture: RITE holds up to TWO quest items (the deferred
+/// completion reads `count(held) >= 2`), SPEND and BURN hold a consuming
+/// slot (the survivor burn), OIL holds a greedy slot (the begin pull), and
+/// CHAIN pins oil.default through a RUN (the §6.7 pin that refuses holds
+/// and pulls). CANDLE carries an `on complete` trigger the consuming burn
+/// must pre-empt. SEVER and ECHO are consuming twins whose recipes mint a
+/// same-name copy (`SPAWN item:CHALICE` / `item:TALIS` — TALIS stacks) —
+/// the burn's addressing faces.
+const MULTI: &str = "\
+script: Held-N Probe
+player: ANA
+start: 0:0
+
+entities:
+  ANA is character
+  BOOK is text
+  CHALICE is item with quest:1
+  RELIC is item with quest:2
+  CROWN is item with quest:3
+  ORB is item with quest:4
+  CANDLE is item on complete -> (SPAWN WICK)
+  LAMP is item with oil:1
+  TAPER is item with oil:2
+  TALIS is item stackable with quest:1
+
+prototypes:
+  GLYPH is idea
+  ASH is idea stackable
+  WICK is idea
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    object: 1 kind:text
+    held: 0..3 aspect:quest
+    duration: 30m
+    recipes:
+      rite.trio when count(held) >= 3 -> DESTROY held, SPAWN GLYPH, NARRATE \"the trio burns.\"
+      rite.twin when count(held) >= 2 -> SPAWN GLYPH, NARRATE \"the twins glow.\"
+      rite.one when count(held) >= 1 -> SPAWN GLYPH, NARRATE \"one glows.\"
+      default -> NARRATE \"plain.\"
+
+  SPEND:
+    actors: 1 kind:character
+    object: 1 kind:text
+    held: 0..1 consuming kind:item aspect:quest>=1
+    duration: 30m
+    recipes:
+      spend.pay when count(held) >= 1 -> REPLACE held WITH ASH, NARRATE \"paid.\"
+      default -> NARRATE \"unpaid.\"
+
+  BURN:
+    actors: 1 kind:character
+    object: 0..1 kind:text
+    held: 0..1 consuming kind:item
+    duration: 30m
+    recipes:
+      burn.use when count(held) >= 1 -> NARRATE \"burning.\"
+      default -> NARRATE \"cold.\"
+
+  OIL:
+    actors: 1 kind:character
+    object: 0..1 kind:text
+    held: 0..1 greedy kind:item aspect:oil>=1
+    duration: 30m
+    recipes:
+      oil.burn when count(held) >= 1 -> DESTROY held, SPAWN ASH, NARRATE \"burnt.\"
+      default -> NARRATE \"dry.\"
+
+  CHAIN:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      chain.hand -> RUN \"oil.default\"
+
+  SEVER:
+    actors: 1 kind:character
+    object: 0..1 kind:text
+    held: 0..1 consuming kind:item
+    duration: 30m
+    recipes:
+      sever.dust when count(held) >= 1 -> DESTROY held, SPAWN item:CHALICE, NARRATE \"dusted.\"
+      default -> NARRATE \"idle.\"
+
+  ECHO:
+    actors: 1 kind:character
+    object: 0..1 kind:text
+    held: 0..1 consuming kind:item aspect:quest>=1
+    duration: 30m
+    recipes:
+      echo.twin when count(held) >= 1 -> SPAWN item:TALIS, NARRATE \"twinned.\"
+      default -> NARRATE \"hollow.\"
+";
+
+/// A fresh held-N fixture: dictionary, content, and the pristine state.
+fn multi_rig() -> (Dictionary, CompiledContent, State) {
+    let dict = core_dictionary();
+    let compiled = compile_script(MULTI, &dict).unwrap();
+    (compiled.dict, compiled.content, compiled.state)
+}
+
+fn hold_on(
+    content: &CompiledContent,
+    dict: &Dictionary,
+    state: State,
+    verb: &str,
+    card: &str,
+    first_id: i64,
+) -> ExecResult {
+    execute_hold(content, dict, state, verb, name_ref(card, None), first_id).unwrap()
+}
+
+/// T-H2: three holds fill the 0..3 slot; the deferred completion selects the
+/// `count(held) >= 3` recipe; play == fold; undo past the holds frees all
+/// three cards.
+#[test]
+fn three_holds_fill_the_range_and_the_completion_reads_the_count() {
+    let (dict, content, base) = multi_rig();
+    let r = begin(&content, &dict, base.clone(), "0:0 @ ANA RITE BOOK", 1);
+    let begin_len = r.records.len() as i64;
+    let h1 = hold_on(&content, &dict, r.state, "RITE", "CHALICE", 2);
+    assert_eq!(h1.rejected, None);
+    let h2 = hold_on(&content, &dict, h1.state, "RITE", "RELIC", 3);
+    assert_eq!(h2.rejected, None, "the second hold lands — the slot takes 0..3");
+    let h3 = hold_on(&content, &dict, h2.state, "RITE", "CROWN", 4);
+    assert_eq!(h3.rejected, None, "the third hold lands");
+    // all three ride the window's held role, in binding order
+    let w = h3.state.windows.get("1:0").unwrap();
+    assert_eq!(w.locked.len(), 4, "object + three held cards lock");
+    let adv = advance_to(&content, &dict, h3.state, 30, 5);
+    // count(held) >= 3 selects the trio recipe; DESTROY held consumes ALL
+    let complete = complete_of(&adv);
+    assert_eq!(complete.recipes, ["rite.trio"]);
+    for id in ["s_chalice", "s_relic", "s_crown"] {
+        assert!(adv.state.entities.get(id).is_some_and(|e| e.dead_action.is_some()));
+    }
+    assert!(adv.state.by_name.contains_key("GLYPH"));
+    // play == fold (snap)
+    let records: Vec<ActionRecord> =
+        [r.records, h1.records, h2.records, h3.records, adv.records].concat();
+    let folded = fold(&records, &base, &dict, &content).unwrap();
+    assert_eq!(snap(&folded), snap(&adv.state));
+    // undo past the holds: the prefix fold leaves the window open with only
+    // the committed object locked — all three cards back on the table
+    let prefix = fold_up_to(&records, &base, &dict, &content, begin_len + 1).unwrap();
+    let w = prefix.windows.values().next().unwrap();
+    assert_eq!(w.locked, ["s_book"], "no holds — only the committed object locks");
+    assert!(
+        prefix.by_name.contains_key("CHALICE")
+            && prefix.by_name.contains_key("RELIC")
+            && prefix.by_name.contains_key("CROWN")
+    );
+}
+
+/// T-H3: the at-max refusal (a 4th card on a 0..3 slot — nothing logged) and
+/// the duplicate hold (the same card twice — one binding per card).
+#[test]
+fn the_at_max_and_duplicate_holds_reject() {
+    let (_dict, content, state) = multi_rig();
+    let r = begin(&content, &_dict, state, "0:0 @ ANA RITE BOOK", 1);
+    let h1 = hold_on(&content, &_dict, r.state, "RITE", "CHALICE", 2);
+    let h1_state = h1.state.clone();
+    let h2 = hold_on(&content, &_dict, h1.state, "RITE", "RELIC", 3);
+    let h3 = hold_on(&content, &_dict, h2.state, "RITE", "CROWN", 4);
+    assert_eq!(h3.rejected, None);
+    // a fourth fitting card meets the at-max refusal — the slot takes 0..3
+    let h4 = hold_on(&content, &_dict, h3.state, "RITE", "ORB", 5);
+    assert_rejected(&h4, r"RITE already holds its fill — the held slot is full");
+    assert!(h4.records.is_empty(), "nothing logged");
+    // the same card twice is the duplicate refusal
+    let h1b = hold_on(&content, &_dict, h1_state, "RITE", "CHALICE", 3);
+    assert_rejected(&h1b, r"RITE already holds CHALICE — one binding per card");
+    assert!(h1b.records.is_empty());
+}
+
+/// T-H4: the fold's drift mirror — a hand-built HOLD row into a FULL window
+/// fails loud (the at-max rule read through the verb's own slot range).
+#[test]
+fn a_fold_hold_row_into_a_full_window_is_loud_drift() {
+    let (dict, content, base) = multi_rig();
+    let r = begin(&content, &dict, base.clone(), "0:0 @ ANA RITE BOOK", 1);
+    let h1 = hold_on(&content, &dict, r.state, "RITE", "CHALICE", 2);
+    let h2 = hold_on(&content, &dict, h1.state, "RITE", "RELIC", 3);
+    let h3 = hold_on(&content, &dict, h2.state, "RITE", "CROWN", 4);
+    // the window is full (0..3); forge a HOLD row binding a fourth card
+    let mut forged = h3.records[0].clone();
+    forged.id = 99;
+    forged.held = Some(name_ref("ORB", None));
+    let records: Vec<ActionRecord> =
+        [r.records, h1.records, h2.records, h3.records, vec![forged]].concat();
+    let err = fold(&records, &base, &dict, &content).unwrap_err();
+    assert!(
+        err.msg.contains("hold row 99 fills window '1:0' past its held slot's declared max"),
+        "{err}"
+    );
+}
+
+/// T-H5: the greedy pull — begin pulls the oldest fitting card after the
+/// BEGIN row, logging `HOLD …` with the greedy trigger mark; the pulled
+/// card is locked for the window; a chain-pinned follow-up pulls nothing.
+#[test]
+fn a_greedy_slot_pulls_at_begin_and_the_pulled_card_locks() {
+    let (dict, content, base) = multi_rig();
+    let r = begin(&content, &dict, base.clone(), "0:0 @ ANA OIL BOOK", 1);
+    assert_eq!(r.rejected, None);
+    // the pull: an ordinary HOLD row right after the BEGIN, trigger "greedy"
+    let holds: Vec<&ActionRecord> = r.records.iter().filter(|rec| rec.kind == "hold").collect();
+    assert_eq!(
+        holds.len(),
+        1,
+        "{:?}",
+        r.records.iter().map(|rec| rec.kind.clone()).collect::<Vec<_>>()
+    );
+    let hold = holds[0];
+    assert_eq!(hold.verb, "OIL");
+    assert_eq!(hold.window.as_deref(), Some("1:0"));
+    assert_eq!(hold.trigger.as_deref(), Some("greedy"));
+    assert_eq!(hold.sentence, "0:0 @ HOLD OIL #s_lamp", "the pull names the pulled card");
+    // the binding rides the window, locked for the remainder
+    let w = r.state.windows.get("1:0").unwrap();
+    assert!(w.locked.iter().any(|id| id == "s_lamp"));
+    // the pulled card is busy: another station cannot take it mid-window
+    let other = begin_min(&content, &dict, r.state.clone(), "0:0 @ ANA BURN", 5, 9);
+    assert_eq!(other.rejected, None, "BURN opens (its object is optional)");
+    let steal = hold_on(&content, &dict, other.state, "BURN", "LAMP", 10);
+    assert_rejected(&steal, r"LAMP is busy with OIL — it frees at 0:3");
+    // play == fold across the pull and its completion
+    let adv = advance_to(&content, &dict, r.state, 30, 4);
+    assert_eq!(complete_of(&adv).recipes, ["oil.burn"]);
+    let records: Vec<ActionRecord> = [r.records, adv.records].concat();
+    let folded = fold(&records, &base, &dict, &content).unwrap();
+    assert_eq!(snap(&folded), snap(&adv.state));
+}
+
+/// T-H5 (the pin face): a FORK/RUN-pinned follow-up on the greedy verb
+/// opens with its recipe fixed — no pull fires, and a hold refuses.
+#[test]
+fn a_chain_pinned_window_pulls_nothing_and_refuses_the_hold() {
+    let (_dict, content, state) = multi_rig();
+    // CHAIN completes at once and pins oil.default onto OIL's station
+    let r = begin(&content, &_dict, state, "0:0 @ ANA CHAIN", 1);
+    assert_eq!(r.rejected, None);
+    let adv = advance_to(&content, &_dict, r.state, 0, 2);
+    let followup = adv.records.iter().find(|rec| rec.kind == "action" && rec.verb == "OIL");
+    assert!(followup.is_some(), "the pinned follow-up began");
+    assert_eq!(followup.unwrap().recipes, ["oil.default"]);
+    // no HOLD row anywhere in the chain's records — the pin refuses pulls
+    assert!(!adv.records.iter().any(|rec| rec.kind == "hold"), "a pinned window pulls nothing");
+    // …and refuses holds
+    let h = hold_on(&content, &_dict, adv.state, "OIL", "TAPER", 9);
+    assert_rejected(&h, r"OIL is pinned to recipe oil\.default");
+}
+
+/// T-H6: greedy determinism — two fitting cards, the OLDEST pulls, and the
+/// whole begin is byte-identical twice.
+#[test]
+fn the_greedy_pull_is_deterministic_oldest_first() {
+    let play = || {
+        let (dict, content, state) = multi_rig();
+        // birth order: LAMP precedes TAPER (entity insertion order)
+        let r = begin(&content, &dict, state, "0:0 @ ANA OIL BOOK", 1);
+        let adv = advance_to(&content, &dict, r.state, 30, 2);
+        [r.records, adv.records].concat()
+    };
+    let a = play();
+    let b = play();
+    let lines = |rs: &[ActionRecord]| -> Vec<String> {
+        rs.iter().map(|r| serde_json::to_string(r).unwrap()).collect()
+    };
+    assert_eq!(lines(&a), lines(&b), "two identical plays, identical bytes");
+    // the pulled card is the OLDEST fitting one
+    let hold = a.iter().find(|r| r.kind == "hold").unwrap();
+    assert_eq!(hold.sentence, "0:0 @ HOLD OIL #s_lamp", "LAMP (born first) pulls");
+}
+
+/// T-H7: the consuming burn — the survivor dies between the recipe's own
+/// outcomes and the completion-trigger phase (a burned card fires no
+/// `on complete`); `REPLACE held WITH X` composes (no double burn); and
+/// play == fold across the burn.
+#[test]
+fn the_consuming_burn_lands_between_outcomes_and_triggers() {
+    let (dict, content, base) = multi_rig();
+    let r = begin(&content, &dict, base.clone(), "0:0 @ ANA BURN", 1);
+    let h = hold_on(&content, &dict, r.state, "BURN", "CANDLE", 2);
+    assert_eq!(h.rejected, None);
+    let adv = advance_to(&content, &dict, h.state, 30, 3);
+    let complete = complete_of(&adv);
+    // the burn rides the COMPLETE row AFTER the recipe's own outcomes
+    assert_eq!(complete.recipes, ["burn.use"]);
+    let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["NARRATE", "DESTROY"], "{ops:?} — the burn lands last");
+    assert!(
+        complete.outcomes[1]
+            .args
+            .iter()
+            .any(|a| matches!(a, chorus::core::sentence::Arg::Ref { r#ref }
+                if matches!(r#ref, chorus::core::r#ref::Ref::Id { id } if id == "s_candle"))),
+        "the burn is a concrete DESTROY #id row"
+    );
+    // the burn pre-empts the trigger phase: CANDLE's `on complete` (SPAWN
+    // WICK) never fires — the card was dead before the triggers walked
+    assert!(!adv.state.by_name.contains_key("WICK"), "a burned card fires no on complete");
+    assert!(!adv.state.by_name.contains_key("CANDLE"), "the survivor burned");
+    // play == fold: the DESTROY row replays through the ordinary path
+    let records: Vec<ActionRecord> = [r.records, h.records, adv.records].concat();
+    let folded = fold(&records, &base, &dict, &content).unwrap();
+    assert_eq!(snap(&folded), snap(&adv.state));
+}
+
+/// T-H7 (composition): `REPLACE held WITH X` already killed the held card —
+/// the burn no-ops on the dead ref, the successor survives, no double burn.
+#[test]
+fn the_burn_composes_with_authored_consumption() {
+    let (_dict, content, state) = multi_rig();
+    let r = begin(&content, &_dict, state, "0:0 @ ANA SPEND BOOK", 1);
+    let h = hold_on(&content, &_dict, r.state, "SPEND", "CHALICE", 2);
+    assert_eq!(h.rejected, None);
+    let adv = advance_to(&content, &_dict, h.state, 30, 3);
+    let complete = complete_of(&adv);
+    assert_eq!(complete.recipes, ["spend.pay"]);
+    // REPLACE logs as its concrete SPAWN+DESTROY pair — and the burn adds
+    // NO second DESTROY: the held ref was already dead
+    let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["SPAWN", "DESTROY", "NARRATE"], "{ops:?} — the replace's own pair, no burn");
+    assert!(!adv.state.by_name.contains_key("CHALICE"), "the replace consumed it");
+    assert!(adv.state.by_name.contains_key("ASH"), "the successor mints — not burned");
+}
+
+/// T-H8: held-N composes with the consuming slot on a player window that
+/// never holds — the empty held scope burns nothing (a 0..2-consuming twin
+/// of the burn would be identical), and the count gates still defer.
+#[test]
+fn an_empty_consuming_slot_burns_nothing() {
+    let (_dict, content, state) = multi_rig();
+    let r = begin(&content, &_dict, state, "0:0 @ ANA BURN", 1);
+    let adv = advance_to(&content, &_dict, r.state, 30, 2);
+    assert_eq!(complete_of(&adv).recipes, ["burn.default"]);
+    let ops: Vec<&str> = complete_of(&adv).outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["NARRATE"], "{ops:?} — no burn without a binding");
+    assert_eq!(adv.state.windows.len(), 0);
+}
+
+// ------------------------------------- the burn's addressing (§6.7) ----
+
+/// The living survivors of the held bindings at burn time are the ids the
+/// completion bindings resolved BEFORE the recipe's own outcomes ran,
+/// intersected with the living set at burn time:
+///
+/// - a held card the outcomes already consumed no-ops — a `DESTROY held,
+///   SPAWN <same name>` recipe must NOT re-address the held name at burn
+///   time (the pool rule would hand it the minted successor) — no DESTROY
+///   row joins the COMPLETE row, the successor survives;
+/// - a surviving original burns by id even when a sibling outcome minted a
+///   same-name copy — the successor is untouched.
+///
+/// The rows stay concrete `DESTROY #id` and the fold replays them with no
+/// new machinery.
+#[test]
+fn the_burn_addresses_the_bound_ids_not_the_held_names_pool() {
+    // face (a): DESTROY held, SPAWN <same name> — the original died
+    // mid-outcomes, so the burn no-ops and the minted successor SURVIVES
+    let (dict, content, base) = multi_rig();
+    let r = begin(&content, &dict, base.clone(), "0:0 @ ANA SEVER BOOK", 1);
+    let h = hold_on(&content, &dict, r.state, "SEVER", "CHALICE", 2);
+    assert_eq!(h.rejected, None);
+    let adv = advance_to(&content, &dict, h.state, 30, 3);
+    let complete = complete_of(&adv);
+    assert_eq!(complete.recipes, ["sever.dust"]);
+    // the recipe's own pair only — NO burn DESTROY joins the row: the bound
+    // card was dead at burn time, and the burn does not re-address the name
+    let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["DESTROY", "SPAWN", "NARRATE"], "{ops:?} — the dead binding no-ops");
+    // the successor minted by the recipe is the ONLY CHALICE and it lives —
+    // the burn did not take it
+    let living: Vec<&String> = adv
+        .state
+        .entities
+        .values()
+        .filter(|e| e.name == "CHALICE" && e.dead_action.is_none())
+        .map(|e| &e.id)
+        .collect();
+    assert_eq!(living.len(), 1, "exactly one living CHALICE");
+    assert_ne!(living[0].as_str(), "s_chalice", "the successor, not the original");
+    assert!(
+        adv.state.entities.get("s_chalice").is_some_and(|e| e.dead_action.is_some()),
+        "the original died to the recipe's own DESTROY held"
+    );
+    // play == fold: the concrete rows replay with no new machinery
+    let records: Vec<ActionRecord> = [r.records, h.records, adv.records].concat();
+    let folded = fold(&records, &base, &dict, &content).unwrap();
+    assert_eq!(snap(&folded), snap(&adv.state));
+
+    // face (b): a sibling outcome mints a same-name copy while the original
+    // survives — the ORIGINAL burns by id, the successor is untouched
+    let (dict, content, base) = multi_rig();
+    let r = begin(&content, &dict, base.clone(), "0:0 @ ANA ECHO BOOK", 1);
+    let h = hold_on(&content, &dict, r.state, "ECHO", "TALIS", 2);
+    assert_eq!(h.rejected, None);
+    let adv = advance_to(&content, &dict, h.state, 30, 3);
+    let complete = complete_of(&adv);
+    assert_eq!(complete.recipes, ["echo.twin"]);
+    // the burn lands after the recipe's own outcomes, one DESTROY, and it
+    // names the ORIGINAL
+    let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["SPAWN", "NARRATE", "DESTROY"], "{ops:?} — the burn lands last");
+    assert!(
+        complete.outcomes[2]
+            .args
+            .iter()
+            .any(|a| matches!(a, chorus::core::sentence::Arg::Ref { r#ref }
+                if matches!(r#ref, chorus::core::r#ref::Ref::Id { id } if id == "s_talis"))),
+        "the burn addresses the bound original, not the pool's oldest"
+    );
+    let originals = adv.state.entities.get("s_talis").is_some_and(|e| e.dead_action.is_some());
+    assert!(originals, "the bound original burned");
+    let successor = adv
+        .state
+        .entities
+        .values()
+        .find(|e| e.name == "TALIS" && e.dead_action.is_none() && e.id != "s_talis");
+    assert!(successor.is_some(), "the same-name copy survived the burn");
+    // play == fold across the burn
+    let records: Vec<ActionRecord> = [r.records, h.records, adv.records].concat();
+    let folded = fold(&records, &base, &dict, &content).unwrap();
+    assert_eq!(snap(&folded), snap(&adv.state));
 }

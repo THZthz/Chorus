@@ -14,7 +14,7 @@ use crate::core::query::match_query;
 use crate::core::r#ref::{id_ref, Ref};
 use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::{Clause, Outcome};
-use crate::core::types::{clone_state, OpenWindow, State};
+use crate::core::types::{clone_state, is_parked, OpenWindow, State};
 use crate::error::{ChorusError, Result};
 
 use super::advance::resolve_due;
@@ -268,6 +268,13 @@ pub fn execute_step(
         let mut candidates: Vec<String> = Vec::new();
         for e in draft.entities.values() {
             if e.dead_action.is_some() {
+                continue;
+            }
+            // §6.3's binding law (v0.10.0): a parked card cannot bind into a
+            // slot — the greedy pull is the slot's own face of the same rule,
+            // so a parked card is never a pull candidate (it cannot be HELD
+            // either, `validate_hold` runs the same law)
+            if is_parked(e) {
                 continue;
             }
             if let Some(q) = &slot.query {

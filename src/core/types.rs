@@ -387,6 +387,15 @@ pub fn aspect_get(e: &Entity, path: &str) -> Option<i64> {
     }
 }
 
+/// The parked state (§4.2, §6.3): the `state.parked` flag reads EXACT
+/// boolean true — the same face the `state:parked` query term matches
+/// (`state:key` coerces its missing comparison to `= true`), so the flag
+/// vocabulary and the predicate scope can never disagree about one card.
+#[must_use]
+pub fn is_parked(e: &Entity) -> bool {
+    e.attrs.get("state.parked") == Some(&AttrValue::Bool(true))
+}
+
 /// Numeric attr read (non-number → None) — `aspect_get`'s attr
 /// counterpart.
 #[must_use]

@@ -151,6 +151,47 @@ fn spawn_rejects_unknown_pair_keys_loud() {
 }
 
 #[test]
+fn spawn_modifier_order_is_free_between_expires_and_parked() {
+    // §4.4: the two mint modifiers collect in EITHER authored order — the
+    // fixed-order read turned `SPAWN DREAD parked expires 30m` into a
+    // trailing-token load error while its swap loaded. Both spellings are
+    // one outcome: they parse to the same args, canonical order expires
+    // then parked. INTO/AS keep their positions ahead of the modifier
+    // sweep, and the loud faces stay loud.
+    let dict = core_dictionary();
+    assert_eq!(
+        canonical("0:0 @ ANA DREAM -> SPAWN DREAD parked expires 30m", &dict),
+        "0:0 @ ANA DREAM -> SPAWN DREAD expires 30m parked"
+    );
+    assert_eq!(
+        canonical("0:0 @ ANA DREAM -> SPAWN WISP expires 30m parked", &dict),
+        "0:0 @ ANA DREAM -> SPAWN WISP expires 30m parked"
+    );
+    assert_eq!(
+        canonical("0:0 @ ANA DREAM -> SPAWN MARK INTO HOUSE AS #m1 parked expires 2h", &dict),
+        "0:0 @ ANA DREAM -> SPAWN MARK INTO HOUSE AS #m1 expires 2h parked"
+    );
+    // duplicate modifiers: loud, naming the grammar
+    assert_err_msg(
+        parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD parked parked", &dict),
+        "SPAWN: duplicate 'parked' — the modifier takes no value and may appear once",
+    );
+    assert_err_msg(
+        parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires 30m expires 2h", &dict),
+        "SPAWN: duplicate 'expires' — a mint arms one expiry; author a single expires <duration>",
+    );
+    // a genuinely malformed duration and an unknown trailing token: still loud
+    assert_err_msg(
+        parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD parked expires parked", &dict),
+        "SPAWN expires takes a §5.1 duration \\(e.g. 2h, 90m, 30m\\), got 'parked'",
+    );
+    assert_err_msg(
+        parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD parked expires 30m ghost", &dict),
+        "unexpected trailing token 'ghost'",
+    );
+}
+
+#[test]
 fn role_refs_in_outcomes_render_uppercase() {
     // (MOVE ACTORS INTO OBJECT)
     let dict = core_dictionary();

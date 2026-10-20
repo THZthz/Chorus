@@ -12,7 +12,9 @@ use indexmap::IndexMap;
 
 use crate::core::query::{match_query, CmpOp, Query};
 use crate::core::roles::Role;
-use crate::core::types::{aspect_get, number_attr, relation_alive, AttrValue, Entity, State};
+use crate::core::types::{
+    aspect_get, is_parked, number_attr, relation_alive, AttrValue, Entity, State,
+};
 use crate::error::{ChorusError, Result};
 
 pub use crate::core::pred_lint::{
@@ -97,11 +99,13 @@ pub enum Pred {
         role: String,
         cond: ScalarCond,
     },
-    /// ∃ an ALIVE entity bearing this exact name
+    /// ∃ an ALIVE, UNPARKED entity bearing this exact name (§6.3's
+    /// visibility law — a parked copy keeps the name addressable but not
+    /// world-existent)
     Exists {
         name: String,
     },
-    /// ∃ an alive entity matching a §4.5 slot query
+    /// ∃ an alive, unparked entity matching a §4.5 slot query
     ExistsQuery {
         query: Query,
     },
@@ -133,10 +137,17 @@ pub enum ValExpr {
     TotalBound {
         path: String,
     },
-    /// §6.3: `total(table, aspect:k)` — the summed level over every ALIVE
-    /// card on the world projection (the same card set `count(name:X)` and
-    /// `exists(name:X)` see, §4.5), missing aspects reading 0.
+    /// §6.3: `total(table, aspect:k)` — the summed level over every ALIVE,
+    /// UNPARKED card on the world projection (the same card set `count(name:X)`
+    /// and `exists(name:X)` see, §4.5 — the visibility law keeps parked cards
+    /// out of the world scopes), missing aspects reading 0.
     TotalTable {
+        path: String,
+    },
+    /// §6.3 (v0.10.0): `total(parked, aspect:k)` — the summed level over every
+    /// ALIVE PARKED card (the interior's pool — the exact complement of the
+    /// `table` scope's card set), missing aspects reading 0.
+    TotalParked {
         path: String,
     },
     Path {
@@ -261,20 +272,27 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
         Pred::Exists { name } => {
             // `by_name` holds ALIVE entities only (§5.1); the `dead_action`
             // re-check is the same belt-and-braces `resolve_ref` wears. Under
-            // pools (§4.2) the existential is ANY living copy of the name.
+            // pools (§4.2) the existential is ANY living copy of the name —
+            // and the §6.3 visibility law reads the WORLD-VISIBLE pool: a
+            // parked copy keeps the name alive (name/#id refs still reach it)
+            // but does not keep the name's world-existence true.
             match ctx.state.by_name.get(name) {
-                Some(pool) => Ok(pool
-                    .iter()
-                    .any(|id| ctx.state.entities.get(id).is_some_and(|e| e.dead_action.is_none()))),
+                Some(pool) => Ok(pool.iter().any(|id| {
+                    ctx.state
+                        .entities
+                        .get(id)
+                        .is_some_and(|e| e.dead_action.is_none() && !is_parked(e))
+                })),
                 None => Ok(false),
             }
         }
         Pred::ExistsQuery { query } => {
             // the WHOLE world, not the step's bound roles — CS extantreqs
             // ("anywhere in play"); entities insertion order is the scan
-            // order (match_query is order-insensitive per-card)
+            // order (match_query is order-insensitive per-card). §6.3's
+            // visibility law: UNPARKED alive cards only.
             for e in ctx.state.entities.values() {
-                if e.dead_action.is_none() && match_query(e, query) {
+                if e.dead_action.is_none() && !is_parked(e) && match_query(e, query) {
                     return Ok(true);
                 }
             }
@@ -356,10 +374,12 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
         }
         ValExpr::Count { role } => Ok(Some(role_cards(ctx, role).len() as i64)),
         ValExpr::CountQuery { query } => {
-            // world scope, like `ExistsQuery` (§6.3): every ALIVE card matching
+            // world scope, like `ExistsQuery` (§6.3): every ALIVE, UNPARKED
+            // card matching — the visibility law keeps the interior out of
+            // the world counts
             let mut n: i64 = 0;
             for e in ctx.state.entities.values() {
-                if e.dead_action.is_none() && match_query(e, query) {
+                if e.dead_action.is_none() && !is_parked(e) && match_query(e, query) {
                     n += 1;
                 }
             }
@@ -388,13 +408,27 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
             Ok(Some(sum))
         }
         ValExpr::TotalTable { path } => {
-            // §6.3 world scope, like `CountQuery`: every ALIVE card, missing
-            // aspect reading 0
+            // §6.3 world scope, like `CountQuery`: every ALIVE, UNPARKED card
+            // (the visibility law), missing aspect reading 0
             let sum = ctx
                 .state
                 .entities
                 .values()
-                .filter(|e| e.dead_action.is_none())
+                .filter(|e| e.dead_action.is_none() && !is_parked(e))
+                .fold(0i64, |sum, e| sum.saturating_add(aspect_get(e, path).unwrap_or(0)));
+            Ok(Some(sum))
+        }
+        ValExpr::TotalParked { path } => {
+            // §6.3 (v0.10.0) interior scope — the exact complement of the
+            // table scope's card set: every ALIVE PARKED card, missing aspect
+            // reading 0. The two pools partition the living world, so a death
+            // gate on parked dread and a table-scope gate never double-count
+            // a mint.
+            let sum = ctx
+                .state
+                .entities
+                .values()
+                .filter(|e| e.dead_action.is_none() && is_parked(e))
                 .fold(0i64, |sum, e| sum.saturating_add(aspect_get(e, path).unwrap_or(0)));
             Ok(Some(sum))
         }

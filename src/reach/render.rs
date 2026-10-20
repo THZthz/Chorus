@@ -71,6 +71,7 @@ pub(crate) fn expr_text(v: &ValExpr) -> String {
         ValExpr::Int { v } => v.to_string(),
         ValExpr::CountQuery { query } => format!("count({})", query_text(query)),
         ValExpr::TotalTable { path } => format!("total(table, aspect:{path})"),
+        ValExpr::TotalParked { path } => format!("total(parked, aspect:{path})"),
         ValExpr::TotalBound { path } => format!("total(bound, aspect:{path})"),
         // non-static operand — never on a proven path
         _ => "?".to_string(),

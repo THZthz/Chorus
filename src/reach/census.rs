@@ -176,6 +176,17 @@ pub(crate) struct RawSite<'c> {
     pub list_stack_mints: Rc<IndexSet<String>>,
     /// SPAWN of a `deriving name from object` prototype
     pub derives: bool,
+    /// v0.10.0: the authored `parked` mint modifier — the product is born
+    /// inside the interior (`state.parked: true` at mint), so the fixpoint
+    /// registers it into the PARKED pool, not the world pool (§13.1)
+    pub parks: bool,
+    /// v0.10.0: a later `SET <this name>, state.parked, true` op of the SAME
+    /// list — with no later non-`true` `state.parked` write after it on the
+    /// site's chain (parking is two-phase) — flips this product from the
+    /// world pool to the parked pool — the `killed_in_list` machinery's
+    /// twin, one application's face (a cross-list SET is player-timed and
+    /// unmodeled: the product stays world-side, the sound under-claim)
+    pub parked_in_list: bool,
     /// display owner (always equal to `owner`)
     pub where_: String,
 }
@@ -200,6 +211,11 @@ pub(crate) struct SetSite {
     pub recipe: Option<usize>,
     pub target_name: Option<String>,
     pub target_role: Option<String>,
+    /// the innermost segment and walk position of the SET op — the
+    /// ancestor-chain/position test the parked pool's `parked_in_list` flip
+    /// runs against a SPAWN site (the kill log's same shape)
+    pub seg: usize,
+    pub pos: i64,
     pub segs: Vec<usize>,
     pub shadowed: bool,
     /// annotated after the walk: a SET whose own segment chain contains an
@@ -208,6 +224,9 @@ pub(crate) struct SetSite {
     pub path_non_static: bool,
     pub when_pred: Option<Pred>,
     pub owner_slot: Option<i64>,
+    /// v0.10.0: the write parks its target — key `state.parked`, value the
+    /// exact boolean `true` (the flag's one true face)
+    pub parks_target: bool,
 }
 
 /// Where an outside holder's copy can come from — the timing side of the
@@ -768,6 +787,7 @@ fn walk_list<'c, 'a>(
 
     // the walk itself; the REFUSE/throwing marking rides
     // inside walk_sites
+    let set_start = census.set_sites.len();
     let cx = RecordCx {
         content,
         owner: list_cx.owner,
@@ -779,6 +799,9 @@ fn walk_list<'c, 'a>(
         own_slot,
     };
     let mut st = walk_sites(out, &cx, &mut census.set_sites, &mut census.destroyed_by);
+    // this list's own SET ops (the slice pushed by the walk above) — the
+    // parked pool's in-list flip reads them beside the kill log
+    let list_sets = &census.set_sites[set_start..];
     let sites = &mut st.sites;
     let kills = &st.kills;
     let flags = &st.flags;
@@ -946,6 +969,31 @@ fn walk_list<'c, 'a>(
                 s.segs.contains(&k.seg) && (k.seg != s.seg || k.pos > s.pos) && k.name == s.name
             });
         s.dup_risk = dup_risk;
+        // v0.10.0: the parked pool's in-list flip — a later same-list
+        // `SET <name>, state.parked, true` moves this product into the
+        // parked pool (one application's face, the kill log's twin shape;
+        // a SET itself doomed by a REFUSE'd segment never applies, so it
+        // cannot flip anything). Parking is two-phase, death is not: a
+        // LATER non-`true` `state.parked` write on the site's
+        // ancestor-or-equal chain — after the park SET's own position —
+        // un-parks the product, so the application ends world-side and
+        // that park SET flips nothing.
+        s.parked_in_list = s.kind == SiteKind::Spawn
+            && list_sets.iter().any(|set| {
+                set.parks_target
+                    && set.target_name.as_deref() == Some(s.name.as_str())
+                    && !set.segs.iter().any(|id| dead_segs.contains(id))
+                    && s.segs.contains(&set.seg)
+                    && (set.seg != s.seg || set.pos > s.pos)
+                    && !list_sets.iter().any(|unset| {
+                        !unset.parks_target
+                            && unset.key == "state.parked"
+                            && unset.target_name.as_deref() == Some(s.name.as_str())
+                            && !unset.segs.iter().any(|id| dead_segs.contains(id))
+                            && s.segs.contains(&unset.seg)
+                            && (unset.seg != s.seg || unset.pos > set.pos)
+                    })
+            });
         s.list_gate_mints = Rc::clone(&list_gate_mints);
         s.list_stack_mints = Rc::clone(&list_stack_mints);
         s.target_killed_in_list = s.kind == SiteKind::Replace
@@ -1174,6 +1222,10 @@ fn record_visit<'c, 'a>(
                 Some(Arg::Role { role }) => Some(role.as_str().to_string()),
                 _ => None,
             };
+            // v0.10.0: the write parks its target — key `state.parked`,
+            // value the exact boolean `true` (the flag's one true face)
+            let parks_target =
+                key == "state.parked" && matches!(o.args.get(2), Some(Arg::Bool { v: true }));
             set_sites.push(SetSite {
                 key,
                 owner: owner.to_string(),
@@ -1184,12 +1236,15 @@ fn record_visit<'c, 'a>(
                 recipe: cx.recipe_idx,
                 target_name,
                 target_role,
+                seg,
+                pos,
                 segs: segs.clone(),
                 shadowed,
                 refused: false, // annotated after the walk, once dead_segs are known
                 path_non_static: path_runtime_gated(path),
                 when_pred: when.cloned(),
                 owner_slot: own_slot,
+                parks_target,
             });
         }
     }
@@ -1211,6 +1266,9 @@ fn record_visit<'c, 'a>(
             .and_then(|p| p.derive.as_ref())
             .and_then(|d| d.name_from.as_deref())
             == Some("object");
+        // v0.10.0: the authored `parked` mint modifier — the product lands in
+        // the parked pool (§13.1)
+        site.parks = o.args.iter().any(|a| matches!(a, Arg::Parked));
         Some(site)
     } else if let Some(name) = replace {
         let mut site = base_site(SiteKind::Replace, name, cx, frame, seg, pos);
@@ -1284,6 +1342,8 @@ fn base_site<'c>(
         list_gate_mints: Rc::new(IndexSet::new()),
         list_stack_mints: Rc::new(IndexSet::new()),
         derives: false,
+        parks: false,
+        parked_in_list: false,
         where_: owner,
     }
 }

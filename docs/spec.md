@@ -65,6 +65,7 @@ projection of that data, never the source of truth.
 44. **v0.9.7** — the reach analyzer's chain model closes its five ledgered gaps (§13.3): the completing-recipe selection rule demands EVERY earlier `when` decidably False (§13.1); the dead-verb demotion exempts chain-pinned verbs — the §6.7 follow-up path skips `validate_slots` (§13.1); the census records a list-level chain-slot refusal — a pin-capable RUN/FORK followed by another chain op, event channels exempt — demoted at the ladder's `ChainPinRefusal` rung (§13.1); a proven in-play SPAWN/REPLACE of a unique name marks it manifested (`minted_manifested`), and the once-draw + in-play-mint composition agrees with play (§13.1); two Wave-4 residual classes are triaged (§13.3).
 45. **v0.9.8** — the reach analyzer's cross-list model closes the Wave-4 residual ocean, all sixteen failing seeds of the 200–3199 campaign window (§13.3): the census computes ONE cross-list interference map over the whole content — per list the candidate owners of its RUN/FORK ops and its top-level (seg-0) REFUSE face, per name its minting lists, non-reusable minters and engine-timed holder sources (slot/expire bodies, ambient recipes; fallback arms excluded) — and the fixpoint consumes it per completion (§13.1): the shared §6.7 chain channel joins across lists (`ChainSlotInterference` — a second pin, or a pin whose candidate carries a top-level REFUSE, refuses the parent window); the §5.1 mint check's LIVING-HOLDER side joins across lists (`CollisionRefusal` — recipe arms blanket, slot arms timing-refined to the first crossing, expire arms blanket, the witness-pair filter per pair, and the draft-occupant test widened to the holder side); the completing recipe's own outcomes killing the locked home void the witness pair (`CompleteHomeKilled`); the ambient gate's window-bound sum reads exactly 0 over the sweep's empty bindings; and an earlier unconditional same-list mint of a unique name marks the later site `UniqueSkipped` (§13.1).
 46. **v0.9.9** — held-N, the held slot becomes a slot class: the slot line takes two held-only flags between the count and the query — `greedy` (the engine pulls the oldest living, unlocked, query-fitting cards at window begin, in birth order, up to the slot's max; each pull an ordinary HOLD row with the unread `trigger: greedy` mark; best-effort, never a refusal, never a clock move) and `consuming` (the surviving held cards burn at completion, between the recipe outcomes and the completion-trigger phase, as engine-written `DESTROY #id` concrete rows on the COMPLETE row) (§6.1, §6.7); the held `0..1`-exactness guard becomes the min-0 rule — any finite max ≥ 1 and the unbounded `0..` are legal, `held: 1 …`/`held: 1.. …`/`held: 0..0 …` are load errors, and per-recipe held declarations stay unrepresentable (§6.1); the hold step's at-most-once becomes the at-max fill check — the window's held count against the verb's own slot range, mirrored in the fold through the SAME content-keyed rule (a hand-built HOLD row into a full window is loud drift), `bind_hold` appends, and a card the window already binds refuses (one binding per card) (§6.7); the reach arrangeable-hold face reads the declared range — the arranged count is min(slot max, fitting descriptors), a threshold above the slot max reads False, the band between stays Unknown (§13.1); the lint gains the greedy slot-fit advisory and the count-cardinality domain widens to the declared range (§13.2); the fuzz generator draws the held band and the campaign's step enumeration gains HOLD steps (v12).
+47. **v0.10.0** — the parked interior: the card-level flag `state.parked` (§4.2, the `state.*` namespace) with three faces and no new op — park/unpark are `SET(…, state.parked, true/false)` writes (§4.4); the authored `SPAWN X parked` mint modifier materializes the flag inside the concrete row's `attrs=` pair, the `expires` discipline — authored sugar only, nothing new on the log (§4.4); a third predicate sum scope `total(parked, aspect:k)` pools the alive parked cards, and the VISIBILITY LAW makes the world forms — `exists(NAME)`, `exists(<query>)`, `count(<query>)`, `total(table, …)` — read UNPARKED alive cards only, while name/`#id` refs keep full reach (§6.3); the binding law refuses a parked card every slot bind and hold (the greedy pull included) until unparked (§6.1, §6.7); a parked card keeps its authored expiry, its locks and its `on complete` triggers (§6.6); the play surface skips parked cards in the table projection (and the suggestion walk over it) while `inspect` still reaches one and renders the flag — the lenient input resolves a typed name to a parked card and the engine's pinned parked refusal speaks (§11); the reach card world splits into a world pool and a parked pool — proven parked mints and same-list SET flips register into the parked pool, the parked interval rides the same weighted machinery, and a parked product reports in the world notes (§13.1); the lint warns on a parked read with no writer anywhere and on an open parked gate one undrained mint already satisfies (§13.2); the fuzz generator draws the `parked` modifier and the parked-scope `when` form (v13).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -186,8 +187,32 @@ duration at set time, stored as **absolute minutes**, while the authored
 quoted — so only that attr and the logged sentence differ between the two
 spellings) and the boolean flag
 namespace `state.*`: `state.sealed`, `state.locked`, `state.hidden`,
-`state.portable`, `state.unique`. Queries read them via `state:sealed` /
-`state:!sealed` (§4.5); `SET`/`REVEAL` toggle them.
+`state.portable`, `state.unique`, `state.parked`. Queries read them via
+`state:sealed` / `state:!sealed` (§4.5); `SET`/`REVEAL` toggle them.
+
+**The parked state — `state.parked` (v0.10.0).** One flag, three faces of
+one idea — the situation interior (a card slid inside a situation's storage
+tray, the CS storage-sphere stand-in): it is a **mint modifier**
+(`SPAWN X parked`, §4.4 — the flag materializes at birth), a **predicate
+scope** (`total(parked, aspect:k)`, §6.3 — the interior's sum), and a
+**visibility law** (parked cards leave the world scopes the way dead cards
+do, §6.3). The flag reads EXACT boolean `true` — the same face the
+`state:parked` query term matches — so the query vocabulary and the scope
+can never disagree about one card. No new op: parking is
+`SET X, state.parked, true`, unparking is `SET X, state.parked, false` —
+both log the concrete SET rows the fold already replays. The flag composes
+with everything else a card carries: parked + locked (a bound card may be
+parked mid-list; the lock holds to window close, the flag outlives it),
+parked + `expires` (a parked card keeps its authored expiry — the port's
+decay is authored-only; that an interior does not decay is converter
+discipline, not an engine carve), parked + `on complete` (a parked card
+bound in a completing window still fires its own triggers, §6.6). The
+binding law: a parked card cannot bind into any slot (§6.1) until
+unparked; refs — name and `#id` — keep full reach, so authored outcomes
+address the interior freely. Per-window storage was deliberately not
+built: card state lives and dies with the card, and a crisis pump
+accumulates ACROSS its chain's windows precisely because the flag is card
+state, not window state.
 
 **The description — `desc "…"` (v0.9.4).** An entity or prototype line may
 carry one `desc "…"` attribute — a single-line double-quoted string under the
@@ -361,7 +386,7 @@ contributes no template line; its recipe NARRATEs still speak.
 
 | Operator  | Args (normative)                | Effect                                        |
 |-----------|---------------------------------|-----------------------------------------------|
-| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.2) — and the ONLY pair keys: any other `k=v` on SPAWN is a parse error; the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§4.2), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.2), anchored to the MINT clock — the step clock at the table, the window's START clock inside a completion (§6.7), a slot/expire trigger's crossing tick (an `on complete` mint anchors to the completion's window-start clock) — never a follow-up derivation; a zero duration (`0m`) fires at the first tick boundary at or after that minute that the clock actually crosses |
+| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration | parked] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.2) — and the ONLY pair keys: any other `k=v` on SPAWN is a parse error; the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§4.2), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.2), anchored to the MINT clock — the step clock at the table, the window's START clock inside a completion (§6.7), a slot/expire trigger's crossing tick (an `on complete` mint anchors to the completion's window-start clock) — never a follow-up derivation; a zero duration (`0m`) fires at the first tick boundary at or after that minute that the clock actually crosses; the authored `parked` modifier (v0.10.0) births the mint inside the interior — `state.parked: true` materialized inside the same `attrs=` pair, the same authored-sugar-only discipline (the modifier never reaches the log; a dedicated arg shape, so no parameter or bare value can be mistaken for it); the two mint modifiers are order-free between themselves — either authored order, each at most once (duplicates are a parse error), canonical order `expires` then `parked` |
 | `DESTROY` | ref                             | card removed (deadAction stamped)             |
 | `REPLACE` | ref `WITH` prototype            | decay a card into its successor: mint from the prototype into the dying card's **current location** — its `container` (place-contained or character-carried) or, for a zone-tagged card, its `zone` (§10: the grouping has no card, so the tag passes to the successor) — then soft-destroy it — spawn first, then destroy, so the old name is released as usual. Paren-less authored form `REPLACE X WITH Y`; the engine logs the concrete `SPAWN … AS #id` + `DESTROY #id` pair, so there is no REPLACE in the log. Prototype derivation (`name from object`) is unavailable — REPLACE has no clause. A name collision with any living entity — the dying card itself included, still alive at spawn time — rejects the whole step (§9.2); revised for pools: a stackable successor may share a stackable pool, so `REPLACE X WITH X` succeeds — append-then-pop, the pool never dips, and the next pool op addresses the next-oldest. A replaced place's children keep pointing at the dead place id; re-parenting them is the author's job. REPLACE always writes the `attrs=` pair, even empty — the pair is the authoritative materialization (§9.2), so the fold cannot grow a location the mint never had |
 | `SET`     | ref, key, value                 | mutate an attr (`state.sealed`, `container`, `expires`…) — or the aspects map when the key is `aspect:`-prefixed (`aspect:level`); a signed integer value (`+1`, `-2`) is a delta on the entry's current value and logs the computed absolute: a missing entry counts as 0, results may go negative (no clamping — a counter may read below zero), adding to a non-numeric entry is an application failure (§9.2), and a delta over a role ref applies per bound card, logging one concrete SET per card (`#id`s, each with its own result); deltas apply to the draft, so a later REFUSE in the same step discards them whole (§6.5). `SET x, expires, 2h` also materializes `expiresAt` (§4.2) |
@@ -562,7 +587,7 @@ reflist    = ref { "," ref } ;
 verbo      = VERB ;                              (* must be a verb registered in the dictionary *)
 outcomes   = outcome { "," outcome } ;           (* commas inside ( ) belong to args *)
 outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/ADVANCE/PROGRESS: parens required *)
-           | "SPAWN" ref [ "INTO" target ] [ "AS" "#" id ] [ "expires" duration ] { key "=" value }
+           | "SPAWN" ref [ "INTO" target ] [ "AS" "#" id ] { "expires" duration | "parked" } { key "=" value }
                                                  (* expires: the authored mint-decay modifier (§4.4, §4.2) —
                                                     any §5.1 duration form, bare or quoted; consumed into the
                                                     attrs= materialization (§9.2), never logged itself. The bare
@@ -575,7 +600,9 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
                                                     into a pair position lands as a bare value the grammar
                                                     rejects loud (§9.2). The pair loop itself admits only the
                                                     engine-written `aspects=`/`attrs=` keys — any other key is
-                                                    a parse error *)
+                                                    a parse error. `expires` and `parked` (§4.4's parked
+                                                    interior) collect in EITHER authored order — each at most
+                                                    once, duplicates loud; canonical order expires, then parked *)
            | ( "DESTROY" | "REVEAL" | "MOVE" ) parenlessTail      (* input sugar *)
            | "REPLACE" ( ref | role ) "WITH" ref (* paren-less only; WITH is syntax, not a role *)
            | "NARRATE" string
@@ -848,6 +875,13 @@ The per-slot `shown`/`hidden` flag (§6.2) exists in the data model
 (`CompiledSlot.shown`, default `shown`); the script line grammar does not
 carry it — the flag is reachable only by building `ContentRaw` in code.
 
+The binding law (v0.10.0): the slot-validation walk refuses a PARKED card
+(§4.2) every bind — the pinned message names the flag ("X is parked inside
+a situation — it cannot bind into 'role' until unparked (§6.3)"); the
+`hold <card>` step (§11) and the greedy pull run the same law (the pull is
+the slot's own face of it — a parked card is never a pull candidate).
+Name and `#id` refs keep full reach for outcomes; only the bind refuses.
+
 Cardinality is the **general** rule only. Exceptions ("two may read *unless*
 the book is magick") are recipes, not slots — a rule the UI can apply without
 understanding content (grey-out) and a narrative the engine can speak when the
@@ -895,6 +929,7 @@ world        exists(HUNTER)                               # ∃ an ALIVE card wi
 aggregate    total(actors, aspect:lantern) >= 3 # pooled power of the set
              total(bound, aspect:lantern) >= 3  # the window's sum, across ALL its roles
              total(table, aspect:lantern) >= 3  # the whole world's sum (§4.5's card set)
+             total(parked, aspect:lantern) >= 3 # the interior's sum (§4.2's parked cards)
              count(name:SUSPICION) >= 3         # the whole living pool, not a role (§4.5)
 paths        total(actors, aspect:lantern) < object.aspect.demand   # value vs value
              count(actors) > object.attr.seats                      # attr paths too
@@ -954,9 +989,9 @@ query-starter — `count(DREAD) >= 3` (the most tempting typo: a NAME where a
 role belongs; it would silently count 0) is a load error naming the valid
 forms. `total(<query>, …)` is not offered: pooled aspects read a bound role.
 
-**`total(...)` — the pooled-power sum, in three scopes.** The first argument
-is a role, or one of the two scope keywords `bound` and `table`; the second
-is always an aspect path (`total(X, aspect:key)`):
+**`total(...)` — the pooled-power sum, in four scopes.** The first argument
+is a role, or one of the three scope keywords `bound`, `table` and
+`parked`; the second is always an aspect path (`total(X, aspect:key)`):
 
 - `total(role, aspect:k)` pools one bound role's cards, as always.
 - `total(bound, aspect:k)` sums the current window's bindings across ALL its
@@ -966,14 +1001,41 @@ is always an aspect path (`total(X, aspect:key)`):
   scope reads 0 there and the trigger lint rejects it in an event IF
   condition the way it rejects a role read; a completion trigger's window is
   live and reads its bindings.
-- `total(table, aspect:k)` sums every ALIVE card on the world projection —
-  the same card set `count(name:X)` and `exists(name:X)` see (§4.5).
+- `total(table, aspect:k)` sums every ALIVE, UNPARKED card on the world
+  projection — the same card set `count(name:X)` and `exists(name:X)` see
+  (§4.5).
+- `total(parked, aspect:k)` (v0.10.0) sums every ALIVE PARKED card (§4.2) —
+  the exact complement of the table scope's card set, so the two scopes
+  partition the living world and a death gate on the interior never
+  double-counts a mint the table scope also sees.
 
-All three share the reduction rules: cards read alive-only, a MISSING aspect
+All four share the reduction rules: cards read alive-only, a MISSING aspect
 contributes 0 (the same house rule `count`/`total` always wore), and the sum
 is saturating (only absurd magnitudes overflow, and no log pins their sums).
-`bound` and `table` are not role names, so the keyword pick cannot shadow
-the role form.
+`bound`, `table` and `parked` are not role names, so the keyword pick cannot
+shadow the role form.
+
+**The visibility law (v0.10.0).** The world forms — `exists(NAME)`,
+`exists(<query>)`, `count(<query>)` and `total(table, …)` — read UNPARKED
+alive cards only: a parked card sits inside a situation's interior and no
+world form sees it, exactly as if it were not there (but alive: its locks,
+expiry and triggers keep working, §6.6, and its name stays addressable —
+see the binding law below). `total(parked, …)` is the interior's eye: it
+reads the parked cards and only them. Nothing that authors no `parked`
+changes behavior at all. The law's complement is deliberate: the ROLE and
+WINDOW scopes are NOT parked-blind — `total(role, aspect:k)`,
+`total(bound, aspect:k)` and `count(held)` read their bindings with no
+parked filter, because parking never unbinds: a card bound and then parked
+mid-window still counts in the bound scope (and in its role's reads) until
+the window closes — the binding law below stops NEW binds, it does not
+reach into a window's existing bookkeeping. The law's other face is the
+binding law (§6.1, the
+slot-validation walk): a parked card refuses every slot bind — the
+pinned message names the flag ("X is parked inside a situation — it cannot
+bind into 'role' until unparked (§6.3)"), the hold step and the greedy pull
+included — while name and `#id` refs keep full reach for OUTCOMES
+(DESTROY/SET/REPLACE address a parked card; parking does not reorder the
+`by_name` pool, so a name whose oldest copy is parked still addresses it).
 
 Idiom — a rite that only burns while the coast is clear (no HUNTER card
 exists anywhere in play) and the sealed door still stands:
@@ -990,7 +1052,10 @@ operand as false, an IF condition rejects the step. The boundary,
 precisely:
 
 - counts over anything read 0; aggregates read 0; world existentials read
-  false — these are branch selection, not failures.
+  false — these are branch selection, not failures. The visibility law's
+  scopes decide the same way in both disciplines: the world forms read
+  unparked alive cards only, `total(parked, …)` reads the interior (§6.3) —
+  neither ever rejects an IF condition.
 - a missing aspect on a bound card reads false; a missing NUMERIC attr entry
   on a bound card compares as 0 (`attr:x >= 3` fails and `attr:x < 3` holds
   from missing — the SET-delta rule); a present non-numeric entry still
@@ -1253,7 +1318,9 @@ clause with no refs (the §5.1 actor-less clause), the follow-up locks
 nothing, its gate merge reduces to the empty bindings — a role-path
 comparison reads false; counts/sums over a role read 0 (the §6.6
 event-binding discipline), while the world forms (`exists(...)`,
-`count(name:X)`) work. The chain ops apply inline, in list order (events have no deferral
+`count(name:X)`, `total(table, …)`, `total(parked, …)`) work — a trigger's
+IF may read the parked scope (§6.3's visibility law decides it over the
+folded state, a death gate's vocabulary). The chain ops apply inline, in list order (events have no deferral
 phase), and each firing's follow-up BEGINs REGISTER IMMEDIATELY on the
 pass's state — a later firing in the same crossing (the next authored
 trigger, or an expiry) sees the station busy and skips silently — and append
@@ -1697,7 +1764,7 @@ CREATE TABLE entity (
   kind         TEXT NOT NULL,         -- dictionary KIND
   name         TEXT NOT NULL,         -- unique among alive entities
   aspects      JSON,                  -- {"secret":4,"language":{"latin":2}}
-  attrs        JSON,                  -- {"container":"house","state.sealed":true,"expiresAt":790}
+  attrs        JSON,                  -- {"container":"house","state.sealed":true,"state.parked":true,"expiresAt":790}
   born_action  INTEGER,
   dead_action  INTEGER
 );
@@ -1834,7 +1901,7 @@ machinery, not a new rulebook.
 | `REFUSE` (§6.5) | the committed cards bounce back, no time passes, and the attempt is still journaled |
 | a step rejected before logging — bad slots, no matching recipe, unresolvable outcome, clock rewind (§6.6, §9.2) | the station refuses the drop outright: the table is untouched and nothing is journaled — distinct from `REFUSE`, which journals the attempt |
 | an EVENT row (§5.1, §6.6) — clock-fired, no station | cards arriving and leaving on their own: an expiry consumes a card, a trigger's outcomes mint, mutate, or consume cards — journaled like any other record |
-| the table projection (`Game::visible()`, §11) | what the player actually sees on the table: `container` = which tray/pile a card sits in, zones = groupings with no card (§10), N/S/E/W relations = where place cards sit (§4.2) |
+| the table projection (`Game::visible()`, §11) | what the player actually sees on the table: `container` = which tray/pile a card sits in, zones = groupings with no card (§10), N/S/E/W relations = where place cards sit (§4.2); a parked card (§4.2, v0.10.0) has slid into a situation's interior tray — off the table projection until an authored SET unparks it |
 | undo (§11) | a take-back: truncate the log to the previous turn boundary and re-fold — every card returns exactly where it was (§7) |
 | `born_action` (§7) | a card's provenance — "entered play at action N" |
 
@@ -2343,15 +2410,25 @@ printed once — later turns answer with the plain notice. The meta views are ty
 (place + clock, cards here, **exits** read off the living direction
 relations the same way `rel(<dir>, …)` gates travel, what the player
 carries, the processing stations), `cards` (the visible table, copies
-grouped), `inspect <name>` (a card's face — the declared `desc` renders
-under it (§4.2); a card that left play says
+grouped; a parked card (§4.2, v0.10.0) is inside a situation's interior —
+the projection skips it until an authored SET unparks it, and the
+suggestion walk reads the projection, so nothing parked is ever offered),
+`inspect <name>` (a card's face — the declared `desc` renders
+under it (§4.2); a parked card is the one display face that still reaches
+the interior — the name finds it and the face carries the parked flag; a
+card that left play says
 "no longer in play (left play at action N)"; a bare `inspect` prints the
 usage and the table, never guessing a card), `journal` (canonical, recipe
 ids bracketed like the echo), `story` (prose), `undo` (names what it took
 back — `undone: « … »` or `undone: the wait`), `save <file>` (the log as
 JSONL — the file
 `reach --from-state` replays), `explain <verb>` (the recipe walk, below),
-`hold <card>` (the held binding, below), `wait`, `help`, `quit`. A piped
+`hold <card>` (the held binding, below), `wait`, `help`, `quit`. The
+LENIENT INPUT skips nothing: the living name tables read every living
+copy (§4.2), so a typed name still resolves to a parked card and the step
+fails at the engine with the pinned parked refusal ("X is parked inside a
+situation — it cannot bind into 'role' until unparked (§6.3)") — only the
+SUGGESTIONS park-blind, never the resolution. A piped
 session echoes every
 line as `» line` (the stand-in for a TTY's prompt + typing; on a TTY the
 `» ` prompt is drawn instead and input is not echoed).
@@ -2543,7 +2620,17 @@ are the only reach files allowed to):
   earlier mint in the same application always lands first, so the later
   site's product never exists.
   Unbounded counts carry the `MANY` sentinel; derive-mints behind
-  object-mandatory verbs carry a name-blind sentinel.
+  object-mandatory verbs carry a name-blind sentinel. The parked faces ride
+  the same walk (v0.10.0): a site records whether its SPAWN carries the
+  authored `parked` modifier, and whether a later same-list
+  `SET <name>, state.parked, true` op flips its product with no later
+  non-`true` `state.parked` write after it (the kill log's
+  twin shape — the SET's own segment chain on the site's ancestor chain, at
+  a later position; a REFUSE-doomed SET flips nothing, and parking is
+  two-phase: a later non-`true` write un-parks, death is permanent) — either face
+  registers the product into the PARKED pool, not the world pool (§13.1's
+  world module); a cross-list SET is player-timed and unmodeled, the
+  product stays world-side (the sound under-claim).
 - **world** — the weighted, distinct-fact card-world the predicates
   evaluate over (exactly the §4.5 match, over the flattened entity array);
   `path_open` demands every path condition static AND true (anything
@@ -2578,7 +2665,22 @@ are the only reach files allowed to):
   each fact's LEVEL (missing → 0) — an unbounded matching fact with a
   positive level lifts the ceiling, a negative one sinks the floor, and
   either face goes full-open (Unknown under every op, the widening-only
-  invariant again); `total(bound, aspect:k)` sums what the owning verb's
+  invariant again); `total(parked, …)` (v0.10.0) is its interior twin over
+  the PARKED pool: the card world carries BOTH pools, parked facts register
+  only into the parked one (the visibility law, §6.3 — the world pools
+  exclude them exactly), a parked fact comes from a proven parked site, a
+  same-list SET flip, or an initial entity born with the flag, and the
+  parked interval rides the same weighted machinery with the same
+  lift/sink/first-crossing rules — both directions modeled on proven sites,
+  unproven sites flooring the parked pool at 0 (the sound direction); the
+  unique clamp is a CARD face over BOTH pools: both mint faces skip while a
+  LIVING copy exists and the living read counts parked copies (a parked
+  card is alive), so a unique's parked count is 0-or-1 — 1 when the one
+  living copy was born parked (the authored modifier or the same-list SET
+  flip), 0 when it is world-side or does not exist — and the parked pool
+  dedups a unique's facts exactly like the world pool (the first parked
+  fact of the name becomes the distinct instance, weight clamped at 1,
+  later same-name parked facts clamp at it); `total(bound, aspect:k)` sums what the owning verb's
   slots can bind — one face per declared slot, the floor binding the
   slot's min cards at their smallest levels and the ceiling its max cards
   at their largest (the engine's cross-role rule applies: slots draw from
@@ -2804,7 +2906,10 @@ are the only reach files allowed to):
   destroyed-by map (name → the owners that destroy/replace it); the SET
   pump map (set sites grouped by key → owners, annotated refused /
   shadowed / non-static path); the refused-site owners; and the world
-  notes. Determinism is the contract: every section walks
+  notes — the parked products' notes among them (v0.10.0: one
+  `parked: NAME …` line per proven parked site, in proof order; a note
+  naming a card rides only that name's report, the convergence rule).
+  Determinism is the contract: every section walks
   IndexMap/IndexSet insertion order (content order underneath) and
   nothing sorts or rehashes, so two runs over the same (compiled
   content, initial state) render byte-identical text.
@@ -3077,7 +3182,7 @@ campaign); and the pair filter's chain-channel join inherits the fixpoint's
 proven-once schedule exposure (the same one `completion_contaminated`
 accepts).
 
-The fuzz generator (`gen_scenario`, v11) builds one random script per
+The fuzz generator (`gen_scenario`, v13) builds one random script per
 seed over the FULL trigger face — slot, expiry and completion triggers
 (the complete form drawing its home and its optional §6.7 aspect gate) —
 plus §6.7 chain candidates (a recipe body draws from the GLOBAL
@@ -3112,7 +3217,16 @@ REFUSE band off (a load error in ambient recipes); v11 added the §4.2
 `unique` draw to the prototype loop — p=0.15, one roll per prototype
 ALWAYS (after the stackable draw), landing only on a non-stackable
 prototype (`unique` + `stackable` on one line is a load error) — so
-unique prototypes ride the deck spec pool like any other name. Scenario
+unique prototypes ride the deck spec pool like any other name; v12 added
+the §6.1 held draw to the verb block — p=0.15, after the non-actor slots:
+a range from {0..1, 0..2, 0..3}, a query from the aspect pool, the
+greedy/consuming flags drawn after — and the campaign's step enumeration
+gained HOLD steps; v13 added the §6.3 parked scope — the `parked` mint
+modifier drawn on SPAWNs (p=0.10, after the INTO draw, inside the SPAWN
+band) and a `total(parked, aspect:a) >= n` form in the `when` candidate
+table (built eagerly with the other nine, so its draw joins the frozen
+order before the pick) — the parked pool and the parked-blind world forms
+both facing the differential sweep. Scenario
 streams differ across generator versions by design. What stays pinned is
 purity: the generator is a pure function of its seed — the same seed
 builds the same scenario, draw for draw, under ONE version.
@@ -3199,6 +3313,18 @@ builds the same scenario, draw for draw, under ONE version.
   negated query, a closed count comparison (the pool can grow past it), a
   threshold the load-present pool or sum does not meet, an aspect with no
   writer (the no-writer error is that finding), and `state.*` reads.
+  And the parked-interior faces (v0.10.0, the same two families over the
+  interior): a `total(parked, …)` read with NO parked writer anywhere — no
+  `SPAWN … parked` modifier and no `SET(…, state.parked)` — is dead
+  content (the scope is stuck at 0) and warns under any op; and an OPEN
+  (`>=`, `>`) parked gate that ONE undrained mint already satisfies is
+  always true once the mints land — a writer whose prototype bears the
+  aspect at the gate's level, with no drain face (no non-`true`
+  `SET(…, state.parked)`, no name-form kill reaching the parked mint's
+  name, no role-form kill anywhere — an unknown target may reach the
+  parked cards) — warns naming the mint. Silent on a closed comparison and
+  on a threshold no single mint meets (the interior may still have to
+  fill).
   And a chain-op list that can never pin: a `RUN`/`FORK` list whose EVERY
   candidate's target `when` is provably dead — each verdict evaluated over
   the TARGET recipe's verb's slot ranges (the same §6.1 domain), owner the
@@ -3268,8 +3394,12 @@ version that produced them. The scenario generator is itself VERSIONED
 chain-candidate table to the global build prefix (cross-verb chains, §6.7),
 v6 split the chain band into RUN [0.22, 0.27) and FORK [0.27, 0.32),
 v7 turned the chain band on in slot/expire trigger bodies (§6.6's
-event-chain channel), and v10 added the §6.9 ambient draw (the full
-v10 draw-order note lives in §13.1). The bins freeze exactly five dependency
+event-chain channel), v10 added the §6.9 ambient draw, and v13 added the
+§6.3 parked scope — the `parked` mint modifier drawn on SPAWNs (p=0.10,
+after the INTO draw) and a `total(parked, aspect:a)` form in the `when`
+candidate table (built eagerly with the other nine, so its draw joins the
+frozen order before the pick; the full v13 note lives in §13.1's fuzz
+description). The bins freeze exactly five dependency
 crates (`Cargo.toml`: indexmap, serde, serde_json, regex, crossterm —
 the last only for the ANSI writer behind `cli`, riding with
 `default-features = false`; `Cargo.lock` is committed).

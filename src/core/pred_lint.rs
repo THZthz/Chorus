@@ -50,7 +50,7 @@ pub fn lint_val_expr(where_: &str, x: &ValExpr) -> Result<()> {
     if let ValExpr::Total { role, .. } = x {
         if !is_role(role) {
             return Err(ChorusError::new(format!(
-                "{where_}: total() first argument '{role}' is not a declared role ({}) — total pools a role's aspects; the scope forms are total(bound, aspect:k) and total(table, aspect:k), and count(name:x) counts a pool by name",
+                "{where_}: total() first argument '{role}' is not a declared role ({}) — total pools a role's aspects; the scope forms are total(bound, aspect:k), total(table, aspect:k) and total(parked, aspect:k), and count(name:x) counts a pool by name",
                 role_list()
             )));
         }
@@ -101,7 +101,7 @@ pub fn lint_trigger_val_expr_what(where_: &str, x: &ValExpr, what: &str) -> Resu
         ))),
         // §6.3: `bound` reads the WINDOW's bindings — the same empty bookkeeping
         // an event trigger's IF conditions see, so it would always be 0 too;
-        // `table` is a world form and never fires this lint
+        // `table` and `parked` are world forms and never fire this lint
         ValExpr::TotalBound { path } => Err(ChorusError::new(format!(
             "{where_}: {what} total(bound, aspect:{path}) reads the window's bindings — trigger bindings are empty, it would always be 0"
         ))),
@@ -204,7 +204,7 @@ mod tests {
         let e2 = lint_pred("recipe r2", &p2).unwrap_err();
         assert_eq!(
             e2.msg,
-            "recipe r2: total() first argument 'BOB' is not a declared role (actors, object, with, at, about, to, held) — total pools a role's aspects; the scope forms are total(bound, aspect:k) and total(table, aspect:k), and count(name:x) counts a pool by name"
+            "recipe r2: total() first argument 'BOB' is not a declared role (actors, object, with, at, about, to, held) — total pools a role's aspects; the scope forms are total(bound, aspect:k), total(table, aspect:k) and total(parked, aspect:k), and count(name:x) counts a pool by name"
         );
         // trigger lint: rel/every/count over step roles are load errors
         let p3 = parse_predicate("rel(neighbor, actors)", &dict).unwrap();
@@ -220,7 +220,8 @@ mod tests {
             "trigger t: IF operand every(actors, …) reads a step role — trigger bindings are empty, it would always be true; use world forms (exists(…), count(name:…))"
         );
         // §6.3 sum scopes in trigger IF conditions: `bound` reads the (empty)
-        // event bindings — the same always-0 error; `table` is a world form
+        // event bindings — the same always-0 error; `table` and `parked` are
+        // world forms and never fire this lint
         let p5 = parse_predicate("total(bound, aspect:dread) >= 1", &dict).unwrap();
         let e5 = lint_trigger_pred("trigger t", &p5).unwrap_err();
         assert_eq!(
@@ -229,5 +230,7 @@ mod tests {
         );
         let p6 = parse_predicate("total(table, aspect:dread) >= 1", &dict).unwrap();
         assert!(lint_trigger_pred("trigger t", &p6).is_ok());
+        let p7 = parse_predicate("total(parked, aspect:dread) >= 1", &dict).unwrap();
+        assert!(lint_trigger_pred("trigger t", &p7).is_ok());
     }
 }

@@ -28,8 +28,13 @@
 //! draw to the verb block (p=0.15, AFTER the non-actor slots: a range from
 //! {0..1, 0..2, 0..3}, a query from the aspect pool, the greedy/consuming
 //! flags drawn after — the held verb defers selection and the campaign's
-//! step enumeration gained HOLD steps, `all_candidates`). Every recorded
-//! fuzz run taken before v12 is therefore NOT reproducible
+//! step enumeration gained HOLD steps, `all_candidates`); v13 added the
+//! §6.3 parked scope (v0.10.0): the `parked` mint modifier drawn on SPAWNs
+//! (p=0.10, AFTER the INTO draw, inside the SPAWN band) and a
+//! `total(parked, aspect:a) >= n` form in the `when` candidate table (built
+//! eagerly with the other nine, so its draw joins the frozen order before
+//! the pick). Every recorded
+//! fuzz run taken before v13 is therefore NOT reproducible
 //! seed-for-seed; reproduce against the matching generator version. What
 //! stays pinned is that the generator is a pure function of its seed — the
 //! same seed builds the same scenario, draw for draw, under ONE version.
@@ -247,7 +252,12 @@ impl Gen<'_> {
             } else {
                 String::new()
             };
-            return format!("SPAWN {kind_override}{pn}{into}");
+            // §6.3 (v13 NEW draw, p=0.10, AFTER the INTO draw): the mint is
+            // born parked — `SPAWN {pn} parked` — so the interior's pool and
+            // the parked-blind world forms both face the differential
+            // campaign (the analyzer's parked interval, §13.1)
+            let parked = if self.r.next_f64() < 0.10 { " parked" } else { "" };
+            return format!("SPAWN {kind_override}{pn}{into}{parked}");
         }
         // RUN (§6.7): the candidates live in run_targets — the recipes built
         // so far across ALL verbs inside the recipe loop, the global
@@ -339,10 +349,11 @@ impl Gen<'_> {
         "NARRATE \"beat\"".to_string()
     }
 
-    /// The `when` candidates. All nine are built EAGERLY — every template
+    /// The `when` candidates. All ten are built EAGERLY — every template
     /// interpolation draws BEFORE the final pick selects one:
     /// t1 one int, t2 one pool pick, t3 none, t4 one proto-name pick,
-    /// ta one int, tb one int, tc one int, td one int, te one int.
+    /// ta one int, tb one int, tc one int, td one int, te one int,
+    /// tf one int.
     fn gen_when(&mut self) -> String {
         let t1 = format!("actors.aspect.a >= {}", 1 + int(self.r, 3) as i64);
         let mut pool = self.others.clone();
@@ -375,7 +386,11 @@ impl Gen<'_> {
         // the differential campaign
         let td = format!("total(bound, aspect:a) >= {}", 1 + int(self.r, 3) as i64);
         let te = format!("total(table, aspect:b) >= {}", 1 + int(self.r, 2) as i64);
-        let choices: [&str; 9] = [&t1, &t2, &t3, &t4, &ta, &tb, &tc, &td, &te];
+        // the interior scope (v13, §6.3 v0.10.0): the parked sum over the
+        // alive parked cards — the analyzer's parked interval under the same
+        // sweep (mints land parked at p=0.10 in the SPAWN band)
+        let tf = format!("total(parked, aspect:a) >= {}", 1 + int(self.r, 3) as i64);
+        let choices: [&str; 10] = [&t1, &t2, &t3, &t4, &ta, &tb, &tc, &td, &te, &tf];
         pick_str(self.r, &choices)
     }
 }

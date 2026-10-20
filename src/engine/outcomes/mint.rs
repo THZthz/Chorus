@@ -173,6 +173,18 @@ pub(super) fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResul
     if let Some(v) = &expires_arg {
         materialize_expires(&mut attrs, "expires", v, ctx.now, "SPAWN expires")?;
     }
+    // the authored parked mint modifier (§4.4, §4.2, v0.10.0): `SPAWN X
+    // parked` materializes `state.parked: true` inside the concrete row's
+    // `attrs=` pair — the fold replays it verbatim with no new log surface
+    // (the modifier itself never reaches the log, exactly like `expires`
+    // above). Applied AFTER the attrs= merge, the modifier is authoritative
+    // over a literal state.parked pair in an authored same-step pair; the
+    // DEDICATED arg shape means only the authored modifier position matches
+    // (a §10 parameter expanded into a k=v pair position lands as a BARE
+    // Str/Dur and is rejected below, never silently read as the modifier).
+    if args.iter().any(|a| matches!(a, Arg::Parked)) {
+        attrs.insert("state.parked".to_string(), AttrValue::Bool(true));
+    }
     if let Some(a) = args.iter().find(|a| matches!(a, Arg::Str { .. } | Arg::Dur { .. })) {
         // authored text cannot produce a bare str/dur in SPAWN args (the
         // modifier is its own shape, pairs are `k=v`), so one of these is

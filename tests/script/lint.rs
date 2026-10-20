@@ -1989,3 +1989,150 @@ verbs:
     );
     assert!(warnings_of(&findings).is_empty(), "{findings:?}");
 }
+
+// ---------------------------------------------------------------------------
+// W2 — the parked-interior faces (the WARNING class, v0.10.0)
+// ---------------------------------------------------------------------------
+
+/// T-P9, face one: a `total(parked, …)` read with NO parked writer anywhere
+/// is dead content — the scope is stuck at 0.
+#[test]
+fn a_parked_scope_read_with_no_writer_anywhere_warns_dead_content() {
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when total(parked, aspect:funds) >= 1 -> SPAWN PILLAR
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(
+        w[0].message.contains(
+            "recipe rite.gate (RITE): total(parked, aspect:funds) >= 1 reads a parked interior \
+             nothing writes — no SPAWN `parked` modifier and no SET(…, state.parked) anywhere, \
+             so the scope is stuck at 0 and the gate is dead content (§6.3)"
+        ),
+        "{w:?}"
+    );
+}
+
+/// T-P9, face two: an open parked gate one undrained mint already satisfies
+/// is always true once the mints land — no unpark, no destroy reaching the
+/// parked mint's name.
+#[test]
+fn an_undrainable_open_parked_gate_warns_always_true() {
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  DREAD is idea stackable with dread:3
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when total(parked, aspect:dread) >= 2 -> SPAWN PILLAR
+      rite.pump -> SPAWN DREAD parked
+",
+    );
+    let w = warnings_of(&findings);
+    assert_eq!(w.len(), 1, "{findings:?}");
+    assert!(
+        w[0].message.contains(
+            "recipe rite.gate (RITE): total(parked, aspect:dread) >= 2 is always true once the \
+             parked mints land — one mint of DREAD meets the threshold and the interior has no \
+             drain (no SET(…, state.parked, false), no destroy reaching it), so the gate can \
+             never gate (§6.3)"
+        ),
+        "{w:?}"
+    );
+}
+
+/// The drain faces stand the warning down: an unparking SET, a name-form
+/// destroy reaching the parked mint, or a threshold no single mint meets —
+/// each leaves the gate genuinely gating.
+#[test]
+fn a_drained_or_unfillable_parked_gate_stays_silent() {
+    // the unpark drain
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  DREAD is idea stackable with dread:3
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when total(parked, aspect:dread) >= 2 -> SPAWN PILLAR
+      rite.pump -> SPAWN DREAD parked, SET(DREAD, state.parked, false)
+",
+    );
+    assert!(findings.iter().all(|f| !f.message.contains("total(parked")), "{findings:?}");
+    // the destroy drain (a name-form kill reaching the parked mint)
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  DREAD is idea stackable with dread:3
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when total(parked, aspect:dread) >= 2 -> SPAWN PILLAR
+      rite.pump -> SPAWN DREAD parked, DESTROY DREAD
+",
+    );
+    assert!(findings.iter().all(|f| !f.message.contains("total(parked")), "{findings:?}");
+    // the threshold no single mint meets (dread 3 < 5) — the interior may
+    // still have to fill
+    let findings = lint_findings(
+        "
+prototypes:
+  PILLAR is item
+  DREAD is idea stackable with dread:3
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when total(parked, aspect:dread) >= 5 -> SPAWN PILLAR
+      rite.pump -> SPAWN DREAD parked
+",
+    );
+    assert!(findings.iter().all(|f| !f.message.contains("total(parked")), "{findings:?}");
+}
+
+/// `state:parked` slot queries stay silent (the flag vocabulary is generic)
+/// and a parked mint is no E1 finding (the prototype carries the kind).
+#[test]
+fn state_parked_slot_queries_stay_silent() {
+    let findings = lint_findings(
+        "
+prototypes:
+  DREAD is idea stackable with dread:1
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    held: 0..1 state:parked
+    duration: 0m
+    recipes:
+      rite.gate when count(held) >= 1 -> NARRATE \"held.\"
+      rite.pump -> SPAWN DREAD parked
+",
+    );
+    assert!(findings.is_empty(), "{findings:?}");
+}

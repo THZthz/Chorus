@@ -153,7 +153,7 @@ fn format_outcome(o: &Outcome, dict: &Dictionary) -> Result<String> {
         return Ok(format!("{}({})", o.op, parts.join(", ")));
     }
     if o.op == "SPAWN" {
-        // pretty form: SPAWN X [INTO Y] [AS #id] [expires <duration>]
+        // pretty form: SPAWN X [INTO Y] [AS #id] [expires <duration>] [parked]
         let mut parts = vec!["SPAWN".to_string()];
         for a in &o.args {
             parts.push(format_arg(a, dict)?);
@@ -230,6 +230,9 @@ fn format_arg(a: &Arg, dict: &Dictionary) -> Result<String> {
             }
             crate::core::types::AttrValue::Bool(b) => format!("expires {b}"),
         }),
+        // the SPAWN mint modifier (§4.4, §4.2, v0.10.0): the bare keyword
+        // restored — `parked` re-parses through the dedicated intercept
+        Arg::Parked => Ok("parked".to_string()),
         Arg::Vexpr { .. } => Err(ChorusError::new(
             "a ROLL value expression is authored form only — the log records the computed ROLLED ints (§4.4)",
         )),

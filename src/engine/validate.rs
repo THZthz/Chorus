@@ -13,7 +13,7 @@ use crate::core::query::match_query;
 use crate::core::r#ref::Ref;
 use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::Clause;
-use crate::core::types::{get_alive, oldest_named, Entity, OpenWindow, State};
+use crate::core::types::{get_alive, is_parked, oldest_named, Entity, OpenWindow, State};
 use crate::error::{ChorusError, Result};
 
 // ---------- role binding & slot validation (§6.1) ----------
@@ -63,6 +63,14 @@ pub(super) fn validate_hold(verb: &CompiledVerb, r: &Ref, state: &State) -> Resu
     let Some(e) = resolve_ref(state, r)? else {
         return Err(ChorusError::new(format!("unresolvable ref {}", show(r))));
     };
+    // §6.3's binding law (v0.10.0): a parked card cannot bind into a slot —
+    // the held slot included (the law's one rule, both faces; unpark first)
+    if is_parked(e) {
+        return Err(ChorusError::new(format!(
+            "{} is parked inside a situation — it cannot bind into 'held' until unparked (§6.3)",
+            show(r)
+        )));
+    }
     if let Some(query) = &slot.query {
         if !match_query(e, query) {
             return Err(ChorusError::new(format!(
@@ -176,6 +184,17 @@ pub(super) fn validate_slots(
                 )));
             }
             placed.insert(e.id.clone());
+            // §6.3's binding law (v0.10.0): a parked card cannot bind into a
+            // slot — it is inside a situation's interior until unparked. Name
+            // and #id refs keep full reach for OUTCOMES (DESTROY/SET/REPLACE
+            // address parked cards); only the slot bind refuses.
+            if is_parked(e) {
+                return Err(ChorusError::new(format!(
+                    "{} is parked inside a situation — it cannot bind into '{}' until unparked (§6.3)",
+                    show(r),
+                    role.as_str()
+                )));
+            }
             if let Some(query) = &slot.query {
                 if !match_query(e, query) {
                     return Err(ChorusError::new(format!(

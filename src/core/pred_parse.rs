@@ -502,21 +502,22 @@ impl<'a> PredParser<'a> {
                     "total() pools a bound role's aspects — total(<query>, …) is not offered; use count(<query>) to count a pool by name (e.g. count(name:X))",
                 ));
             }
-            // §6.3's two scope keywords: `bound` sums the window's bindings
-            // across all its roles; `table` sums the whole living world (the
-            // count(name:X) card set). Neither is a role name, so the keyword
-            // pick cannot shadow the role form.
+            // §6.3's three scope keywords: `bound` sums the window's bindings
+            // across all its roles; `table` sums the whole UNPARKED living
+            // world (the count(name:X) card set); `parked` (v0.10.0) sums the
+            // interior — the alive parked cards. None is a role name, so the
+            // keyword pick cannot shadow the role form.
             let scope = self.next()?;
-            if scope == "bound" || scope == "table" {
+            if scope == "bound" || scope == "table" || scope == "parked" {
                 self.expect(",")?;
                 self.expect("aspect")?;
                 self.expect(":")?;
                 let path = self.dotted_name()?;
                 self.expect(")")?;
-                return Ok(if scope == "bound" {
-                    ValExpr::TotalBound { path }
-                } else {
-                    ValExpr::TotalTable { path }
+                return Ok(match scope.as_str() {
+                    "bound" => ValExpr::TotalBound { path },
+                    "table" => ValExpr::TotalTable { path },
+                    _ => ValExpr::TotalParked { path },
                 });
             }
             self.expect(",")?;
@@ -718,7 +719,7 @@ mod tests {
     #[test]
     fn total_scope_keywords_parse_to_their_own_operands() {
         let dict = core_dictionary();
-        // §6.3: the two scope keywords parse to their own operands, leaving
+        // §6.3: the scope keywords parse to their own operands, leaving
         // the role form untouched
         let p = parse_predicate("total(bound, aspect:dread) >= 2", &dict).unwrap();
         let Pred::Cmp { l, r, .. } = p else {
@@ -731,6 +732,12 @@ mod tests {
             panic!("expected Cmp, got {p:?}");
         };
         assert_eq!(l, ValExpr::TotalTable { path: "dread".to_string() });
+        // v0.10.0: the third scope keyword — the interior's sum
+        let p = parse_predicate("total(parked, aspect:dread) >= 3", &dict).unwrap();
+        let Pred::Cmp { l, .. } = p else {
+            panic!("expected Cmp, got {p:?}");
+        };
+        assert_eq!(l, ValExpr::TotalParked { path: "dread".to_string() });
         let p = parse_predicate("total(actors, aspect:dread) >= 2", &dict).unwrap();
         let Pred::Cmp { l, .. } = p else {
             panic!("expected Cmp, got {p:?}");

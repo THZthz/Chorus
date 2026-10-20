@@ -91,8 +91,8 @@ impl Sign {
 /// fields in the declaration order below — `param`'s `sign` omitted when
 /// absent (the canonical undefined-dropping rule). The log only
 /// ever carries the ref/role/int/delta/str/bool/dur/key/into/asId/pair
-/// shapes (expires/vexpr/param are authored-only — the modifier rides the
-/// concrete row's attrs= materialization, §6.6 — and expand/roll away),
+/// shapes (expires/parked/vexpr/param are authored-only — the modifiers ride
+/// the concrete row's attrs= materialization, §6.6 — and expand/roll away),
 /// but the serde impl covers every variant so the model has one
 /// representation.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -148,6 +148,15 @@ pub enum Arg {
     /// carries one.
     #[serde(rename = "expires")]
     Expires { v: crate::core::types::AttrValue },
+    /// `{ t: 'parked' }` — the SPAWN `parked` mint modifier (§4.4, §4.2,
+    /// v0.10.0): the mint is born inside the interior (`state.parked: true`
+    /// materialized inside the concrete row's `attrs=` pair, §6.6). The same
+    /// dedicated-shape discipline as [`Arg::Expires`] — the modifier is
+    /// authored-sugar only and never reaches the log; a zero-arg keyword, so
+    /// no value can be mistaken for it and no §10 parameter can reach the
+    /// position (the keyword intercept precedes every bare-ref fallback).
+    #[serde(rename = "parked")]
+    Parked,
     /// `{ t: 'vexpr', v }` — ROLL argument (§4.4): a §6.3 value expression.
     /// Authored form only: the log records the computed ROLLED ints.
     #[serde(rename = "vexpr")]
@@ -182,6 +191,7 @@ impl Arg {
             Arg::AsId { .. } => "asId",
             Arg::Pair { .. } => "pair",
             Arg::Expires { .. } => "expires",
+            Arg::Parked => "parked",
             Arg::Vexpr { .. } => "vexpr",
             Arg::Param { .. } => "param",
         }
@@ -354,7 +364,7 @@ mod tests {
 
     #[test]
     fn every_arg_variants_wire_tag_matches_tag() {
-        // the serde `rename` attributes and Arg::tag() spell the same 14
+        // the serde `rename` attributes and Arg::tag() spell the same 15
         // discriminator strings twice — pin them equal, one variant per arm
         let variants: Vec<Arg> = vec![
             Arg::Ref { r#ref: id_ref("x1") },
@@ -369,6 +379,7 @@ mod tests {
             Arg::AsId { id: "a1".into() },
             Arg::Pair { k: "attrs".into(), v: AttrValue::Num(1) },
             Arg::Expires { v: AttrValue::Num(30) },
+            Arg::Parked,
             Arg::Vexpr { v: ValExpr::Int { v: 2 } },
             Arg::Param { name: "n".into(), sign: None },
         ];

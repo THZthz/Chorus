@@ -125,6 +125,14 @@ impl<'c> WorldFacts<'c> {
             let mut cards: Vec<&Entity> = Vec::new();
             for facts in self.avail.values() {
                 for f in facts {
+                    // §6.3's binding law: a PARKED fact can never bind — the
+                    // window model claims only what a slot could actually
+                    // take (parking is from the product's first availability:
+                    // a card parked mid-window was unparked at its bind, and
+                    // that face is the engine's, not a future window's)
+                    if f.parked {
+                        continue;
+                    }
                     if slot.query.as_ref().is_none_or(|q| match_query(&f.entity, q)) {
                         let copies = if f.entity.stackable {
                             std::cmp::min(f.count, super::world::FLATTEN_WEIGHT_CAP)
@@ -168,6 +176,11 @@ impl<'c> WorldFacts<'c> {
                 let mut list: Vec<CandInst> = Vec::new();
                 for facts in self.avail.values() {
                     for f in facts {
+                        // the binding law (§6.3): a parked card refuses every
+                        // slot bind — it is never a commit candidate
+                        if f.parked {
+                            continue;
+                        }
                         let fits = slot.query.as_ref().is_none_or(|q| match_query(&f.entity, q));
                         if !fits {
                             continue;
@@ -440,6 +453,7 @@ impl<'c> WorldFacts<'c> {
                         count: if repeats { MANY } else { *n },
                         how,
                         unbounded: repeats && Self::bare_list(&site),
+                        parked: false, // a draw serves onto the table — no parked face
                     },
                 );
             }
@@ -464,6 +478,7 @@ impl<'c> WorldFacts<'c> {
                             count: if repeats { MANY } else { 1 },
                             how,
                             unbounded: repeats && Self::bare_list(&site),
+                            parked: false, // a draw serves onto the table — no parked face
                         },
                     );
                 }
@@ -507,7 +522,13 @@ impl<'c> WorldFacts<'c> {
         // fact's unbounded flag — the count-form world gates decide over
         // its open interval instead of assuming the capped weight exact
         let unbounded = count == MANY && Self::bare_list(&site);
-        self.push(key.to_string(), CardFact { entity, count, how, unbounded });
+        // v0.10.0: the authored `parked` modifier (or the same-list SET
+        // flip) registers the product into the PARKED pool — the world forms
+        // cannot see it and `total(parked, …)` sums it (§13.1's parked
+        // interval). Draw sites never park: a draw's spec entries carry no
+        // modifier and the census's flip face reads SPAWN sites only.
+        let parked = site.parks || site.parked_in_list;
+        self.push(key.to_string(), CardFact { entity, count, how, unbounded, parked });
         // the in-play mints mark manifested (§4.2): the engine's mint face
         // records a UNIQUE name PERMANENTLY — `apply_spawn`/`apply_replace`
         // insert unconditionally, whether or not the mint lands — so a
@@ -1288,8 +1309,18 @@ impl<'c> WorldFacts<'c> {
     /// presence is the `CompleteHomeMissing` verdict; its kind/aspect body
     /// feeds the slot-binding rungs.
     fn complete_home_desc(&self, home: &str) -> Option<Entity> {
+        // a PARKED home cannot lock into a window (the binding law, §6.3) —
+        // a parked fact is no witness; the initial representative is an
+        // engine truth (if it carries the flag at load, the completion
+        // trigger genuinely cannot fire over it)
+        if self.init_names.get(home).is_some_and(|e| crate::core::types::is_parked(e)) {
+            return None;
+        }
         self.init_names.get(home).map(|e| (*e).clone()).or_else(|| {
-            self.avail.get(home).and_then(|facts| facts.first()).map(|f| f.entity.clone())
+            self.avail
+                .get(home)
+                .and_then(|facts| facts.iter().find(|f| !f.parked))
+                .map(|f| f.entity.clone())
         })
     }
 
@@ -1311,9 +1342,13 @@ impl<'c> WorldFacts<'c> {
             return true;
         }
         // min >= 2: the home is one of >= min DISTINCT matching instances
+        // (parked facts excluded — the binding law, §6.3)
         let mut pool = 0i64;
         for facts in self.avail.values() {
             for f in facts {
+                if f.parked {
+                    continue;
+                }
                 if slot.query.as_ref().is_none_or(|q| match_query(&f.entity, q)) {
                     pool += if f.entity.stackable {
                         std::cmp::min(f.count, SLOT_CANDIDATE_CAP)

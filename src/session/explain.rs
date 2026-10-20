@@ -107,6 +107,7 @@ fn val_expr_text(x: &ValExpr) -> String {
         ValExpr::Total { role, path } => format!("total({role}, aspect:{path})"),
         ValExpr::TotalBound { path } => format!("total(bound, aspect:{path})"),
         ValExpr::TotalTable { path } => format!("total(table, aspect:{path})"),
+        ValExpr::TotalParked { path } => format!("total(parked, aspect:{path})"),
         ValExpr::Path { role, field, key } => format!("{role}.{}.{}", field.as_str(), key),
         ValExpr::Param { name } => name.clone(),
         ValExpr::Roll => "roll".to_string(),

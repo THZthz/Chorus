@@ -164,11 +164,14 @@ impl LintFinding {
 /// detector (a recipe whose `when` is provably false for every §6.6
 /// selection binding — advisory, because a dead `when` is sometimes the
 /// point: the converter emits deliberate dead-marker twins under exactly
-/// such negation whens) and the always-true world-form gate check (an
+/// such negation whens), the always-true world-form gate check (an
 /// `exists(aspect:k…)`, a `count(aspect:k…) >= v`, or a
 /// `total(table, aspect:k…) >= v` whose aspect the player cannot prevent —
 /// borne from load, or riding a deck defaultcard after its first serve — so
-/// the gate can never gate).
+/// the gate can never gate), and the parked-interior faces (v0.10.0): a
+/// `total(parked, …)` read with no parked writer anywhere is dead
+/// content, and an open parked gate one undrained mint already satisfies
+/// is always true once the mints land.
 pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFinding>> {
     let script = parse_script(text, dict)?;
     // lints run on scripts that already compile — and the compile hands back
@@ -758,25 +761,85 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
         })
         .collect();
     // the killed-name census: every name a DESTROY/REPLACE first arg
-    // reaches, walked on the compiled outcomes — the same walk E1 uses
+    // reaches, walked on the compiled outcomes — the same walk E1 uses.
+    // A ROLE-form kill reaches whatever the step binds (no name), so it
+    // only raises the `role_kill_seen` flag — the parked interior's drain
+    // face treats it as "a destroy may reach the parked cards".
     let mut killed: IndexSet<String> = IndexSet::new();
-    let scan_kills = |killed: &mut IndexSet<String>, outs: &[Outcome]| {
+    let mut role_kill_seen = false;
+    let scan_kills = |killed: &mut IndexSet<String>, role_kill: &mut bool, outs: &[Outcome]| {
         for_each_authored_outcome_infallible(outs, &mut |o| {
             if o.op != "DESTROY" && o.op != "REPLACE" {
                 return;
             }
-            if let Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) = o.args.first() {
-                killed.insert(name.clone());
+            match o.args.first() {
+                Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => {
+                    killed.insert(name.clone());
+                }
+                Some(Arg::Role { .. }) => *role_kill = true,
+                _ => {}
             }
         });
     };
     for (_, v) in &compiled.content.verbs {
         for r in &v.recipes {
-            scan_kills(&mut killed, &r.out);
+            scan_kills(&mut killed, &mut role_kill_seen, &r.out);
         }
     }
     for t in &compiled.content.triggers {
-        scan_kills(&mut killed, t.out());
+        scan_kills(&mut killed, &mut role_kill_seen, t.out());
+    }
+
+    // the parked-interior census (v0.10.0, §2.4's lint faces): the writers —
+    // every SPAWN carrying the `parked` modifier (with its prototype's
+    // aspects, the always-true face's level table) and every
+    // `SET(…, state.parked, …)` — and the drains: an unparking SET (any
+    // value but exact `true`; the flag reads exact boolean true, the same
+    // face `state:parked` matches), a name-form kill reaching a parked
+    // mint's name, or a role-form kill (unknown target — may reach the
+    // parked cards).
+    let mut parked_spawns: Vec<(String, Aspects)> = Vec::new();
+    let mut parked_writer_seen = false;
+    let mut parked_drain_seen = false;
+    let scan_parked = |parked_spawns: &mut Vec<(String, Aspects)>,
+                       writer: &mut bool,
+                       drain: &mut bool,
+                       outs: &[Outcome]| {
+        for_each_authored_outcome_infallible(outs, &mut |o| {
+            if o.op == "SPAWN" && o.args.iter().any(|a| matches!(a, Arg::Parked)) {
+                *writer = true;
+                if let Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) = o.args.first() {
+                    if let Some(p) = compiled.content.prototypes.get(name) {
+                        parked_spawns.push((name.clone(), p.aspects.clone().unwrap_or_default()));
+                    }
+                }
+            }
+            if o.op == "SET" {
+                let key = match o.args.get(1) {
+                    Some(Arg::Key { v }) | Some(Arg::Str { v }) => Some(v.as_str()),
+                    _ => None,
+                };
+                if key == Some("state.parked") {
+                    *writer = true;
+                    if !matches!(o.args.get(2), Some(Arg::Bool { v: true })) {
+                        *drain = true; // any non-`true` write unparks the flag
+                    }
+                }
+            }
+        });
+    };
+    for (_, v) in &compiled.content.verbs {
+        for r in &v.recipes {
+            scan_parked(
+                &mut parked_spawns,
+                &mut parked_writer_seen,
+                &mut parked_drain_seen,
+                &r.out,
+            );
+        }
+    }
+    for t in &compiled.content.triggers {
+        scan_parked(&mut parked_spawns, &mut parked_writer_seen, &mut parked_drain_seen, t.out());
     }
     // the one positive `aspect:k` term of a world form's query — None for
     // any multi-group, multi-term, negated, or name/kind/state-bearing form
@@ -824,15 +887,31 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
         }
     }
     /// The W1 walk's shared context, threaded as one borrow: the two
-    /// bearer tables, the killed-name census and the written-path set.
+    /// bearer tables, the killed-name census, the written-path set, and the
+    /// parked-interior census (v0.10.0 — the parked writers' aspect levels,
+    /// whether ANY parked writer exists, and whether the interior has a
+    /// drain face).
     struct W1Cx<'a> {
         load_bearers: &'a [(&'a str, &'a Aspects)],
         deck_bearers: &'a [(&'a str, &'a str, &'a Aspects)],
         killed: &'a IndexSet<String>,
         writes: &'a IndexSet<String>,
+        parked_spawns: &'a [(String, Aspects)],
+        parked_writer_seen: bool,
+        parked_drain_seen: bool,
+        role_kill_seen: bool,
     }
     fn w1_walk(cx: &W1Cx<'_>, p: &Pred, id: &str, verb: &str, out: &mut IndexSet<String>) {
-        let W1Cx { load_bearers, deck_bearers, killed, writes } = *cx;
+        let W1Cx {
+            load_bearers,
+            deck_bearers,
+            killed,
+            writes,
+            parked_spawns,
+            parked_writer_seen,
+            parked_drain_seen,
+            role_kill_seen,
+        } = *cx;
         match p {
             Pred::And(a, b) | Pred::Or(a, b) => {
                 w1_walk(cx, a, id, verb, out);
@@ -949,6 +1028,47 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                             op.as_str(),
                         ));
                     }
+                    ValExpr::TotalParked { path } => {
+                        // v0.10.0, the parked-interior twins (§2.4): with NO
+                        // parked writer anywhere the scope is stuck at 0 —
+                        // dead content under any op. With a writer, the open
+                        // (>=, >) face latches once a mint's level meets the
+                        // threshold: an undrained interior only ever grows, so
+                        // a gate one parked mint already satisfies can never
+                        // gate. The drain faces: an unparking SET (any value
+                        // but exact `true`), a name-form kill reaching the
+                        // parked mint's name, or a role-form kill (unknown
+                        // target — may reach the parked cards). Silent on a
+                        // closed comparison and on a threshold no single mint
+                        // meets (the interior may still have to fill).
+                        if !parked_writer_seen {
+                            out.insert(format!(
+                                "recipe {id} ({verb}): total(parked, aspect:{path}) {} {k} reads a parked interior nothing writes — no SPAWN `parked` modifier and no SET(…, state.parked) anywhere, so the scope is stuck at 0 and the gate is dead content (§6.3)",
+                                op.as_str(),
+                            ));
+                            return;
+                        }
+                        if !matches!(op, CmpOp::Ge | CmpOp::Gt) || parked_drain_seen {
+                            return;
+                        }
+                        let undrained: Vec<&str> = parked_spawns
+                            .iter()
+                            .filter(|(name, aspects)| {
+                                !killed.contains(name.as_str())
+                                    && !role_kill_seen
+                                    && bearer_aspect(aspects, path)
+                                        .is_some_and(|v| op.num_cmp(v, k))
+                            })
+                            .map(|(name, _)| name.as_str())
+                            .collect();
+                        if !undrained.is_empty() {
+                            out.insert(format!(
+                                "recipe {id} ({verb}): total(parked, aspect:{path}) {} {k} is always true once the parked mints land — one mint of {} meets the threshold and the interior has no drain (no SET(…, state.parked, false), no destroy reaching it), so the gate can never gate (§6.3)",
+                                op.as_str(),
+                                undrained.join(", "),
+                            ));
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -968,6 +1088,10 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                 deck_bearers: &deck_bearers,
                 killed: &killed,
                 writes: &writes,
+                parked_spawns: &parked_spawns,
+                parked_writer_seen,
+                parked_drain_seen,
+                role_kill_seen,
             };
             w1_walk(&cx, &pred, &id, name, &mut msgs);
             for m in msgs {

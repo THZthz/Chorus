@@ -23,7 +23,8 @@ use crate::core::roles::Role;
 use crate::core::sentence::{Arg, Clause, IntoTarget};
 use crate::core::text::{cmp_ascii_ci, dsl_trim, split_dsl_ws};
 use crate::core::types::{
-    clone_state, get_alive, is_truthy, oldest_named, AttrValue, Entity, OpenWindow, State,
+    clone_state, get_alive, is_parked, is_truthy, oldest_named, AttrValue, Entity, OpenWindow,
+    State,
 };
 use crate::engine::fold::fold;
 use crate::engine::store::{save_log, Log};
@@ -803,9 +804,19 @@ impl Game {
     /// player's location; carried cards; contents of an explored (named)
     /// place; and anything the log has named through a role or a
     /// spawn/destroy — a projection over (state, log), never stored.
+    /// §6.3's visibility law is also the display face (§11): a PARKED card
+    /// sits inside a situation's interior and skips the table projection
+    /// (which the suggestion walk reads) until unparked — `inspect` still
+    /// reaches one by name, and the lenient input resolves over the WHOLE
+    /// living set, so a typed name still finds a parked card and the
+    /// engine's pinned parked refusal speaks (§6.3).
     pub fn visible(&self) -> Vec<&Entity> {
-        let alive: Vec<&Entity> =
-            self.state.entities.values().filter(|e| e.dead_action.is_none()).collect();
+        let alive: Vec<&Entity> = self
+            .state
+            .entities
+            .values()
+            .filter(|e| e.dead_action.is_none() && !is_parked(e))
+            .collect();
         let me = self.living_player();
         let mut named: HashSet<String> = HashSet::new();
         for r in &self.log.records {
@@ -889,7 +900,10 @@ impl Game {
             .entities
             .values()
             .filter(|e| {
-                e.dead_action.is_none() && e.attrs.get("container") == here && e.id != player.id
+                e.dead_action.is_none()
+                    && !is_parked(e)
+                    && e.attrs.get("container") == here
+                    && e.id != player.id
             })
             .collect();
         for line in grouped_cards(&things) {
@@ -909,6 +923,7 @@ impl Game {
             .values()
             .filter(|e| {
                 e.dead_action.is_none()
+                    && !is_parked(e)
                     && matches!(e.attrs.get("container"), Some(AttrValue::Str(c)) if *c == player.id)
             })
             .collect();
@@ -959,7 +974,23 @@ impl Game {
             .iter()
             .copied()
             .find(|e| face(e) == q)
-            .or_else(|| table.iter().copied().find(|e| face(e).starts_with(&q)));
+            .or_else(|| table.iter().copied().find(|e| face(e).starts_with(&q)))
+            // §6.3's visibility law keeps a parked card off the table
+            // projection, but a NAME still reaches it (§4.2): `inspect` is
+            // the one display face that can address the interior — the face
+            // renders with the parked flag below
+            .or_else(|| {
+                self.state
+                    .entities
+                    .values()
+                    .find(|e| e.dead_action.is_none() && is_parked(e) && face(e) == q)
+            })
+            .or_else(|| {
+                self.state
+                    .entities
+                    .values()
+                    .find(|e| e.dead_action.is_none() && is_parked(e) && face(e).starts_with(&q))
+            });
         let Some(card) = card else {
             // a card that left play is named as such — the corpse the
             // narration just described is not a typo
@@ -987,6 +1018,15 @@ impl Game {
         // renders exactly the pre-desc lines
         if let Some(d) = &card.desc {
             lines.push(format!("  {d}"));
+        }
+        // v0.10.0: the parked flag (§11) — the card sits inside a
+        // situation's interior: the world forms cannot see it and slots
+        // refuse it until an authored SET unparks it
+        if is_parked(card) {
+            lines.push(
+                "  parked — inside a situation's interior (invisible to the world until unparked)"
+                    .to_string(),
+            );
         }
         let aspects = flatten_aspects(&card.aspects);
         if !aspects.is_empty() {

@@ -25,7 +25,7 @@ use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, CmpOp, Query, QueryTerm};
 use crate::core::r#ref::Ref;
 use crate::core::sentence::{Arg, Outcome};
-use crate::core::types::{aspect_get, Aspects, Entity, State};
+use crate::core::types::{aspect_get, is_parked, Aspects, Entity, State};
 use crate::error::{ChorusError, Result};
 
 use super::census::{
@@ -62,8 +62,9 @@ pub(crate) fn effective_duration(v: &CompiledVerb, ri: Option<usize>) -> i64 {
 
 /// A value expression is world-static when it reads no runtime state. The
 /// §6.3 sum scopes join the static class: `total(table, …)` is a pure world
-/// read, and `total(bound, …)` is decidable from the analyzer's window
-/// model (the [`BoundView`]) — a missing model reads Unknown, never an
+/// read, `total(parked, …)` (v0.10.0) is the interior's twin — a pure read
+/// over the parked pool — and `total(bound, …)` is decidable from the analyzer's
+/// window model (the [`BoundView`]) — a missing model reads Unknown, never an
 /// internal throw. `count(held)` joins the same way (§6.7's held slot, §13.1):
 /// the analyzer models the hold as a player step it can arrange, so the
 /// gate decides over the held slot's fit — any other role's count reads
@@ -73,6 +74,7 @@ fn expr_static(v: &ValExpr) -> bool {
         ValExpr::Int { .. }
         | ValExpr::CountQuery { .. }
         | ValExpr::TotalTable { .. }
+        | ValExpr::TotalParked { .. }
         | ValExpr::TotalBound { .. } => true,
         // §6.7's held slot: the analyzer models the hold as arrangeable, so
         // the gate decides over the held slot's fit (§13.1). Any other
@@ -108,6 +110,11 @@ pub(crate) struct CardWorld {
     pub ver: u64,
     pub by_name: IndexMap<String, i64>,
     pub distinct: Vec<DistEntry>,
+    /// v0.10.0: the PARKED pool — the same weighted-distinct shape over the
+    /// parked facts, the `total(parked, …)` scope's world. The world-visible
+    /// pools above exclude parked facts exactly (§6.3's visibility law), so
+    /// the two pools partition the card world.
+    pub parked: Vec<DistEntry>,
 }
 
 /// One distinct fact: the entity descriptor `e`, its
@@ -203,6 +210,27 @@ fn eval_expr_interval(
             let mut lift = false;
             let mut sink = false;
             for d in &world.distinct {
+                let level = aspect_get(&d.e, path).unwrap_or(0);
+                sum = sum.saturating_add(d.w.saturating_mul(level));
+                if d.unbounded {
+                    lift |= level > 0;
+                    sink |= level < 0;
+                }
+            }
+            if sink {
+                return Ok((i64::MIN, None));
+            }
+            Ok((sum, if lift { None } else { Some(sum) }))
+        }
+        // v0.10.0: the parked pool's twin of the table scope — the same
+        // weighted machinery over the parked facts (§13.1's parked interval:
+        // proven parked mints lift it, unproven sites floor it at 0 — the
+        // sound direction)
+        ValExpr::TotalParked { path } => {
+            let mut sum: i64 = 0;
+            let mut lift = false;
+            let mut sink = false;
+            for d in &world.parked {
                 let level = aspect_get(&d.e, path).unwrap_or(0);
                 sum = sum.saturating_add(d.w.saturating_mul(level));
                 if d.unbounded {
@@ -604,6 +632,12 @@ pub(crate) struct CardFact {
     /// this (the [`CardWorld`] weight stays the capped flatten; an
     /// unbounded matching fact lifts the count interval's ceiling off).
     pub unbounded: bool,
+    /// v0.10.0: the product is born parked — the authored `SPAWN … parked`
+    /// modifier, a same-list `SET …, state.parked, true` flip, or an initial
+    /// entity carrying the flag — so it pools in the parked pool, invisible
+    /// to the world forms (§6.3's visibility law) and visible to
+    /// `total(parked, …)` only.
+    pub parked: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -776,14 +810,43 @@ impl<'c> WorldFacts<'c> {
     pub(crate) fn build_world(&self) -> CardWorld {
         let mut by_name: IndexMap<String, i64> = IndexMap::new();
         let mut distinct: Vec<DistEntry> = Vec::new();
+        let mut parked: Vec<DistEntry> = Vec::new();
+        // the parked pool's unique-clamp registry (the `by_name` membership
+        // test's twin — the parked pool keeps no by-name map)
+        let mut parked_uniques: IndexSet<String> = IndexSet::new();
         for list in self.avail.values() {
             for f in list {
-                let unique = self.content.mint_is_unique(&f.entity.name);
                 // §4.2 unique: at most ONE living copy of a unique name can
                 // ever exist (the mint face skips while one lives) — the
                 // pooled total clamps at 1 and only the FIRST fact becomes
                 // the distinct instance (no slot can ever bind two), whatever
                 // the sources' own counts say
+                let unique = self.content.mint_is_unique(&f.entity.name);
+                // v0.10.0: the parked facts pool SEPARATELY (§6.3's visibility
+                // law — the world forms cannot see them). The unique clamp is
+                // a CARD face, not a world-pool face: both mint faces skip
+                // while a LIVING copy exists and `name_is_living` reads the
+                // by_name pool of ALL living ids — parked copies included (a
+                // parked card is alive) — so a unique's parked count is
+                // 0-or-1: 1 when the one living copy was born parked (the
+                // authored modifier or the same-list SET flip), 0 when it is
+                // world-side or does not exist yet. The FIRST parked fact of
+                // a unique name becomes the distinct instance (weight
+                // clamped at 1); later same-name parked facts clamp at it —
+                // no second copy can ever coexist, whatever the sources'
+                // own counts say.
+                if f.parked {
+                    if unique {
+                        if parked_uniques.contains(&f.entity.name) {
+                            continue;
+                        }
+                        parked_uniques.insert(f.entity.name.clone());
+                    }
+                    let w = std::cmp::min(f.count, FLATTEN_WEIGHT_CAP);
+                    let w = if unique { w.min(1) } else { w };
+                    parked.push(DistEntry { e: f.entity.clone(), w, unbounded: f.unbounded });
+                    continue;
+                }
                 if unique && by_name.contains_key(&f.entity.name) {
                     continue;
                 }
@@ -796,7 +859,7 @@ impl<'c> WorldFacts<'c> {
                 distinct.push(DistEntry { e: f.entity.clone(), w, unbounded: f.unbounded });
             }
         }
-        CardWorld { ver: self.avail_ver, by_name, distinct }
+        CardWorld { ver: self.avail_ver, by_name, distinct, parked }
     }
 
     /// Add one available-card fact under its name (the `push` mechanics).
@@ -996,6 +1059,9 @@ pub(crate) fn compute_world_facts<'c>(
                     count: init_count.get(name).copied().unwrap_or(1),
                     how: format!("initial entity {name} ({})", e.kind),
                     unbounded: false,
+                    // v0.10.0: an initial card carrying the flag is born into
+                    // the interior — the parked pool's initial face
+                    parked: is_parked(e),
                 },
             )
         })
@@ -1075,6 +1141,20 @@ pub(crate) fn compute_world_facts<'c>(
 
     // the fixpoint (naive round-robin)
     super::fixpoint::run_fixpoint(&mut wf);
+
+    // v0.10.0: the parked products' world notes (the destroyed-by map's
+    // precedent — zero new analysis, one line per PROVEN parked site, in
+    // proof order). A note naming a card rides only that name's report (the
+    // §13.1 note-convergence rule).
+    for &si in wf.proven.keys() {
+        let s = &wf.census.sites[si];
+        if s.parks || s.parked_in_list {
+            wf.notes.push(format!(
+                "parked: {} lands in the interior by {} — total(parked, …) sees it, the world forms do not",
+                s.name, s.owner
+            ));
+        }
+    }
 
     // universe, dead verbs, deck caps
     super::paths::build_post_fixpoint(&mut wf);

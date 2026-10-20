@@ -476,14 +476,24 @@ impl Parser<'_> {
         })
     }
 
-    /// SPAWN ref [INTO target] [AS #id] [expires duration] [k=v …]
+    /// SPAWN ref [INTO target] [AS #id] [expires duration | parked] [k=v …]
     /// (canonical paren-less form). The authored `expires <duration>`
     /// modifier (§4.4, §4.2) arms the mint at birth — the engine
     /// materializes the SET-expires `expires`/`expiresAt` pair inside the
     /// concrete row's `attrs=` pair (§6.6), so the modifier itself is
-    /// authored-sugar only and never reaches the log. §10: a parameter as
-    /// the pair's key OR value replaces the whole pair (these param checks
-    /// are LIVE — unlike arg()'s dead key check, Q3).
+    /// authored-sugar only and never reaches the log. The `parked` modifier
+    /// (§4.4, §4.2, v0.10.0) births the mint inside the interior the same
+    /// way — a `state.parked: true` pair inside `attrs=`, the same
+    /// authored-sugar-only discipline. The two modifiers are ORDER-FREE
+    /// between themselves — every modifier position in the language is
+    /// (§10) — so the sweep collects either keyword in any authored order
+    /// and emits the args canonically (expires, then parked); duplicates
+    /// fail loud. §10: a parameter as the pair's key OR value replaces the
+    /// whole pair (these param checks are LIVE — unlike arg()'s dead key
+    /// check, Q3); the modifier keywords are literal — a parameter cannot
+    /// stand in a modifier position (`parked` takes no value, so there is
+    /// no parameter shape to even reject: the keyword intercept simply
+    /// wins).
     fn spawn_args(&mut self) -> Result<Vec<Arg>> {
         let mut args = vec![Arg::Ref { r#ref: self.ref_()? }];
         if self.at_keyword("INTO") {
@@ -501,26 +511,53 @@ impl Parser<'_> {
             };
             args.push(Arg::AsId { id: v });
         }
-        if self.at_keyword("expires") {
-            self.next()?;
-            // every §5.1 duration form: the bare literal lexes to minutes
-            // (§5.1 compounds included); the quoted form rides §4.2's
-            // quoted-string path — the engine runs both through the one
-            // duration parser. The DEDICATED arg shape (E12 review): a
-            // §10 parameter here is a parse error naming the grammar, so
-            // the modifier can never be reached by substitution, and no
-            // bare dur/str arg is ever mistaken for it at application.
-            let t = self.next()?;
-            match &t {
-                Tok::Dur { v } => args.push(Arg::Expires { v: AttrValue::Num(*v) }),
-                Tok::Str { v } => args.push(Arg::Expires { v: AttrValue::Str(v.clone()) }),
-                other => {
-                    return Err(ChorusError::new(format!(
-                        "SPAWN expires takes a §5.1 duration (e.g. 2h, 90m, 30m), got '{}'",
-                        show(other)
-                    )));
+        // the modifier sweep: order-free `expires <duration>` / `parked`
+        // collection, the dedicated arg shapes keeping a bare name/ref from
+        // ever being read as either modifier (the E12 review). Duplicates
+        // are loud: a mint arms one expiry and parks once.
+        let mut expires: Option<Arg> = None;
+        let mut parked = false;
+        while self.at_keyword("expires") || self.at_keyword("parked") {
+            if self.at_keyword("expires") {
+                self.next()?;
+                // every §5.1 duration form: the bare literal lexes to minutes
+                // (§5.1 compounds included); the quoted form rides §4.2's
+                // quoted-string path — the engine runs both through the one
+                // duration parser. A §10 parameter here is a parse error
+                // naming the grammar, so the modifier can never be reached
+                // by substitution, and no bare dur/str arg is ever mistaken
+                // for it at application.
+                let t = self.next()?;
+                let arg = match &t {
+                    Tok::Dur { v } => Arg::Expires { v: AttrValue::Num(*v) },
+                    Tok::Str { v } => Arg::Expires { v: AttrValue::Str(v.clone()) },
+                    other => {
+                        return Err(ChorusError::new(format!(
+                            "SPAWN expires takes a §5.1 duration (e.g. 2h, 90m, 30m), got '{}'",
+                            show(other)
+                        )));
+                    }
+                };
+                if expires.replace(arg).is_some() {
+                    return Err(ChorusError::new(
+                        "SPAWN: duplicate 'expires' — a mint arms one expiry; author a single expires <duration>",
+                    ));
                 }
+            } else {
+                self.next()?;
+                if parked {
+                    return Err(ChorusError::new(
+                        "SPAWN: duplicate 'parked' — the modifier takes no value and may appear once",
+                    ));
+                }
+                parked = true;
             }
+        }
+        if let Some(e) = expires {
+            args.push(e);
+        }
+        if parked {
+            args.push(Arg::Parked);
         }
         while self.at_punct("=", 1) {
             let k = self.next()?;

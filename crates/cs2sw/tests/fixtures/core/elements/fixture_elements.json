@@ -1,0 +1,154 @@
+{
+ "elements": [
+  {
+   "id": "health",
+   "label": "Health",
+   "aspects": {
+    "heart": 2,
+    "ingredient": 1,
+    "ability": 1
+   },
+   "xtriggers": {
+    "damagehealth": "injury",
+    "fallsick": "affliction",
+    "destroyhealth": "decrepitude",
+    "fatiguing": "fatigue",
+    "employment": "fatigue",
+    "job": "fatigue",
+    "ritual": "fatigue",
+    "society": "fatigue",
+    "scar_ability": "scar_heart"
+   },
+   "description": "This is my body. There are other bodies, but this one is mine, and my mind needs it as a fungus needs soil. [With enough Vitality, you can gain more Health.]",
+   "decayTo": "fatigue"
+  },
+  {
+   "id": "affliction",
+   "label": "An Affliction",
+   "aspects": {
+    "illhealth": 1,
+    "winter": 2,
+    "ingredient": 1
+   },
+   "xtriggers": {
+    "restorehealth": "health",
+    "scarability": "scar_heart"
+   },
+   "slots": [
+    {
+     "id": "medicine",
+     "label": "Medicines, or...",
+     "actionid": "dream",
+     "description": "I could pay for a doctor's visit...",
+     "required": {
+      "funds": 1
+     }
+    },
+    {
+     "id": "vitality",
+     "label": "...Vitality",
+     "actionid": "dream",
+     "description": "...but perhaps I just need a little rest.",
+     "required": {
+      "vitality": 1
+     }
+    }
+   ],
+   "description": "Disease has left me weak. I need rest and nourishment, if I am to recover. [Dream on an Affliction to transform it back to Health, before the card decays.]",
+   "lifetime": 180,
+   "decayTo": "decrepitude"
+  },
+  {
+   "id": "decrepitude",
+   "label": "Decrepitude",
+   "description": "Some wounds never quite heal. [Untreated Injuries and Hunger become Decrepitude, which does not return to Health. Decrepitude remains until you die.]",
+   "aspects": {
+    "ability": 1,
+    "winter": 1,
+    "remnant": 1
+   },
+   "xtriggers": {
+    "tohealth": "health",
+    "alzabo": "memory.honeyed"
+   },
+   "slots": [
+    {
+     "id": "consume",
+     "label": "Consume",
+     "required": {
+      "ingredient": 1
+     },
+     "forbidden": {
+      "poison": 1
+     },
+     "actionid": "dream"
+    }
+   ]
+  },
+  {
+   "id": "fleeting",
+   "label": "Fleeting Reminiscence",
+   "description": "A moment in time. In another moment, it'll be gone.",
+   "aspects": {
+    "secrethistories": 2,
+    "moth": 2,
+    "influence": 1,
+    "memory": 1
+   },
+   "slots": [
+    {
+     "id": "with",
+     "label": "With",
+     "description": "Perhaps I can find something in my memories to strengthen a transient influence.",
+     "required": {
+      "influencemoth": 1,
+      "influencelantern": 1
+     },
+     "actionid": "study"
+    },
+    {
+     "id": "knowledge",
+     "label": "Knowledge",
+     "description": "I must understand the influences at work, if I am to strengthen or to subvert them. [You'll need a significant grounding in the relevant lore.]",
+     "required": {
+      "fragmentmothc": 1,
+      "fragmentmothd": 1,
+      "fragmentmothe": 1,
+      "fragmentmothf": 1,
+      "fragmentmothg": 1
+     },
+     "actionid": "study"
+    }
+   ],
+   "lifetime": 120,
+   "xtriggers": {
+    "upgradeinfluence": "influencemothc"
+   }
+  },
+  {
+   "id": "scar_heart",
+   "label": "Scar: A Wandering Heart",
+   "description": "I have so much life in me. It is difficult not to move. When I sit, my joints burn. I know that if I stop, I might stop for always. [You've made a permanent sacrifice for power. Be careful: unlike Health, this card will not satisfy Sickness or Starvation.]",
+   "aspects": {
+    "tool": 1,
+    "heart": 4,
+    "scar": 1
+   },
+   "xtriggers": {
+    "job": "scar_heart_fatigued",
+    "employment": "scar_heart_fatigued",
+    "ritual": "scar_heart_fatigued"
+   }
+  },
+  {
+   "id": "waystagbefore_1",
+   "label": "Stag Door's Riddle",
+   "description": "'What may be lost?' Answer this riddle to pass the Stag Door, and be accounted a Know.",
+   "aspects": {
+    "riddle": 1,
+    "way": 1
+   },
+   "unique": true
+  }
+ ]
+}

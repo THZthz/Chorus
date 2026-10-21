@@ -1,0 +1,3 @@
+- Code are liabilities, not assets, esp. code for testing purpose. Keep code simple and extensible. The repo is individual owned and for experimental purpose.
+- Use English everywhere.
+- When producing deliverables, no matter its form, including code, docs, you should NEVER add historical, outdated, stale, or non-current-implementation-related information (e.g., "the former...", "previously...").

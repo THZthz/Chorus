@@ -1,0 +1,3 @@
+cards
+  card dup
+    stackable

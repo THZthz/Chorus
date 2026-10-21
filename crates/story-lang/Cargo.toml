@@ -1,0 +1,14 @@
+[package]
+name = "story-lang"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+story-core = { workspace = true }
+story-content = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[[example]]
+name = "compile"

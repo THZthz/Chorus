@@ -1,0 +1,14 @@
+[package]
+name = "story-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+story-core = { workspace = true }
+story-content = { workspace = true }
+story-engine = { workspace = true }
+story-lang = { workspace = true }
+
+[[bin]]
+name = "story-cli"
+path = "src/main.rs"

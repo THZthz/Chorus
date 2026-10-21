@@ -265,8 +265,9 @@ if <condition> <effect-lines> [else <effect-lines>]
 ```
 
 - `spawn` mints from the card's template (or its `mint` alias); `count` default 1; the zone defaults to `interior` in a situation context, else `home`.
-- **Handles.** `spawn <card> ... as <handle>` binds the minted card(s) to `<handle>` for the enclosing effect list only: subsequent effects in that list address the pool via `<handle>`, oldest-first for multi-card pools, and narrate tokens may reference `{<handle>}` (display names) and `{<handle>.<aspect>}` (the oldest card's read). A handle is visible at and after its spawn line, including nested `if` branches and subsequent `effectset` expansions, and nowhere else; a handle reference with no enclosing spawn is [E238].
+- **Handles.** `spawn <card> ... as <handle>` binds the minted card(s) to `<handle>` for the enclosing effect list only: subsequent effects in that list address the pool via `<handle>`, oldest-first for multi-card pools, and narrate tokens may reference `{<handle>}` (display names) and `{<handle>.<aspect>}` (the oldest card's read). A handle is visible at and after its spawn line, including nested `if` branches and subsequent `effectset` expansions, and nowhere else; a handle target with no enclosing spawn is [E238], an orphan handle-shaped token is [E205] (§7).
 - `set` / `legacy` write with `=` / `+=` / `-=`, clamped at ≥ 0 unless suffixed `unclamped`.
+- **Effect counts are full integer expressions** — the `count <n>` of `spawn` / `destroy` / `swap` / `draw` / `start` and the trailing `<n>` of `consume` take the §3 grammar (`spawn coin count 1 + total(world, aspect:coal)` is legal), evaluated at effect time; a negative count is the effect failure, and a constant negative is [E246]. The expression ends at end-of-line: a following `into`, `as`, `to`, or `via` clause is no operator.
 - **`roll` takes full integer expressions** in count, sides, and bonus — `roll 1d6 + warden.watch as sight`, `roll total(bound, aspect:dice)d6 as storm`, `roll 0d6 + legacy.favor as grace` are all legal. Operands are validated at effect time: count ≥ 0, sides ≥ 1; a violation is an effect failure (unit rollback). Count 0 applies the bonus only and leaves the rng counter unmoved. The result binds `<name>` for subsequent `if` conditions and `{<name>}` tokens in the same effect list (last wins).
 - `draw`'s count defaults to 1; the target defaults to `interior` when the effect runs in a situation context, else `home`. Exhaustion walks `fallback` → `wrap` → the exhaustion failure (§2.7).
 - `start` materializes a new instance; failure semantics are spec.md §4.2's taxonomy — silent chain end, or skip on cap/materialization shortfall, never a parent rollback.
@@ -357,7 +358,7 @@ Compile diagnostics carry `file:line:col`, a stable number, and a note phrased a
 | E235 | An `effectset` expansion reaches itself or exceeds the depth cap (16). |
 | E236 | A declaration-level key repeats: a `meta` key, an `on complete` qualifier, or an `on expire` block on one declaration. |
 | E237 | A recipe has no `duration` line. |
-| E238 | A handle target or `{handle}` token has no enclosing `spawn ... as <handle>` in the same effect list. |
+| E238 | A `<handle>` target has no enclosing `spawn ... as <handle>` in the same effect list (an orphan handle-shaped prose token is [E205], §7). |
 | E239 | A name-path operand or target addresses a card that is not `unique`. |
 | E240 | A slot range's minimum exceeds its maximum. |
 | E241 | A `greedy` slot has no finite maximum. |

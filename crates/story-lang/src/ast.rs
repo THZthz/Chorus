@@ -475,7 +475,7 @@ pub enum AEffect {
     Spawn {
         span: Span,
         card: (Span, String),
-        count: Option<(Span, u32)>,
+        count: Option<AExpr>,
         into: Option<AInto>,
         handle: Option<(Span, String)>,
     },
@@ -487,12 +487,12 @@ pub enum AEffect {
     Consume {
         span: Span,
         target: ATarget,
-        count: Option<(Span, u32)>,
+        count: Option<AExpr>,
     },
     Swap {
         span: Span,
         target: ATarget,
-        count: Option<(Span, u32)>,
+        count: Option<AExpr>,
         to: (Span, String),
         into: Option<AInto>,
     },
@@ -529,14 +529,14 @@ pub enum AEffect {
     Draw {
         span: Span,
         deck: (Span, String),
-        count: Option<(Span, u32)>,
+        count: Option<AExpr>,
         into: Option<AInto>,
     },
     Start {
         span: Span,
         verb: (Span, String),
         via: Option<(Span, String)>,
-        count: Option<(Span, u32)>,
+        count: Option<AExpr>,
     },
     Signal {
         span: Span,
@@ -559,10 +559,10 @@ pub enum AEffect {
     },
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum DestroyCountAst {
     All,
-    N(u32),
+    N(AExpr),
 }
 
 /// True when the token is the `d`/`dN` spelling a roll's dice separator.

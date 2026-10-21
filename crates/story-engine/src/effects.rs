@@ -9,7 +9,7 @@ use crate::settle::Run;
 use crate::{Engine, Event, StartSkipReason};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use story_content::ir::{EffectNode, Into as IntoZone};
+use story_content::ir::{EffectNode, Expr, Into as IntoZone};
 use story_content::runtime::DiagKind;
 use story_core::{EntityId, State};
 
@@ -90,6 +90,21 @@ impl EffectRegistry {
 }
 
 impl Engine {
+    /// Effect-time count validation (language.md §4.3): a count is a full
+    /// integer expression and must evaluate to a non-negative value; a
+    /// negative takes the effect-failure path (a constant negative is
+    /// refused at compile time as [E246]).
+    pub(crate) fn eval_count(&self, e: &Expr, ctx: &Ctx) -> Result<i64, Fail> {
+        let n = self.eval_expr(e, ctx);
+        if n < 0 {
+            return Err(Fail::new(
+                DiagKind::EffectFailure,
+                format!("count must be non-negative; the expression evaluated to {n}"),
+            ));
+        }
+        Ok(n)
+    }
+
     /// Run one effect list. `clear_handles` marks an owning list (a recipe's
     /// effects, a rule's effects): its handle pools are cleared at the end.
     /// Branch bodies are continuations of the enclosing list and share the
@@ -154,9 +169,7 @@ impl Engine {
                 into,
                 handle,
             } => {
-                let n = self
-                    .eval_expr(count, &fctx.eval_ctx(recipe.as_ref()))
-                    .max(0);
+                let n = self.eval_count(count, &fctx.eval_ctx(recipe.as_ref()))?;
                 for _ in 0..n {
                     if let Some(id) = self.mint(prototype, into, fctx, ev)? {
                         if let Some(h) = handle {
@@ -171,7 +184,7 @@ impl Engine {
                 let n = match count {
                     story_content::ir::DestroyCount::All => ids.len(),
                     story_content::ir::DestroyCount::AtMost(e) => {
-                        self.eval_expr(e, &fctx.eval_ctx(recipe.as_ref())).max(0) as usize
+                        self.eval_count(e, &fctx.eval_ctx(recipe.as_ref()))? as usize
                     }
                 };
                 for id in ids.into_iter().take(n) {
@@ -181,9 +194,7 @@ impl Engine {
             EffectNode::Consume { target, count } => {
                 let ids =
                     self.resolve_target(target, &fctx.eval_ctx(recipe.as_ref()), &fctx.handles);
-                let n = self
-                    .eval_expr(count, &fctx.eval_ctx(recipe.as_ref()))
-                    .max(0) as usize;
+                let n = self.eval_count(count, &fctx.eval_ctx(recipe.as_ref()))? as usize;
                 if ids.len() < n {
                     return Err(Fail::new(
                         story_content::runtime::DiagKind::EffectFailure,
@@ -286,9 +297,7 @@ impl Engine {
                 fctx.roll = Some(total);
             }
             EffectNode::Draw { deck, count, into } => {
-                let n = self
-                    .eval_expr(count, &fctx.eval_ctx(recipe.as_ref()))
-                    .max(0);
+                let n = self.eval_count(count, &fctx.eval_ctx(recipe.as_ref()))?;
                 let into = into.clone().unwrap_or(IntoZone::Interior);
                 for _ in 0..n {
                     let card = self.draw_card(deck)?;
@@ -296,9 +305,7 @@ impl Engine {
                 }
             }
             EffectNode::Start { verb, via, count } => {
-                let n = self
-                    .eval_expr(count, &fctx.eval_ctx(recipe.as_ref()))
-                    .max(0);
+                let n = self.eval_count(count, &fctx.eval_ctx(recipe.as_ref()))?;
                 self.apply_start(verb, via.as_ref(), n, fctx, ev, run)?;
             }
             EffectNode::Signal { event } => {
@@ -447,23 +454,18 @@ impl Engine {
     ) -> Result<(), Fail> {
         let ctx = fctx.eval_ctx(recipe.as_ref());
         let ids = self.resolve_target(target, &ctx, &fctx.handles);
-        let n = self.eval_expr(count, &ctx).max(0) as usize;
+        let n = self.eval_count(count, &ctx)? as usize;
         let dying: Vec<story_core::EntityId> = ids.into_iter().take(n).collect();
         if dying.is_empty() {
             return Ok(());
         }
         let decl = self.template(to);
         // Uniqueness against the entities live at this instant, the dying
-        // cards excluded (swapping oneself = retire and re-mint).
-        let others: Vec<EntityId> = self
-            .state
-            .entities
-            .values()
-            .filter(|ent| !dying.contains(&ent.id))
-            .filter(|ent| self.mint_blocks(&decl.mint, ent))
-            .map(|ent| ent.id)
-            .collect();
-        if !others.is_empty() {
+        // cards excluded (swapping oneself = retire and re-mint). Name-aware
+        // like every mint: SingleCopy/Unique block on a live entity of that
+        // name, Group on a live member, each minus the dying set (spec.md
+        // §4.5).
+        if self.mint_collision_except(&decl.mint, to, &dying) {
             match decl.mint {
                 story_core::MintPolicy::SingleCopy => {
                     return Err(Fail::new(

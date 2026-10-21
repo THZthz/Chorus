@@ -1343,8 +1343,8 @@ impl<'d> Parser<'d> {
                 while !tc.done() {
                     if tc.at_ident("count") {
                         tc.next();
-                        match count_int(&mut tc, "`count`", self.diags) {
-                            Some((_, c)) => count = Some((span.clone(), c)),
+                        match count_expr(&mut tc, &span, "`count`", self.diags) {
+                            Some(c) => count = Some(c),
                             None => break,
                         }
                     } else if tc.at_ident("into") {
@@ -1380,8 +1380,8 @@ impl<'d> Parser<'d> {
                         count = Some((span.clone(), DestroyCountAst::All));
                     } else if tc.at_ident("count") {
                         tc.next();
-                        match count_int(&mut tc, "`count`", self.diags) {
-                            Some((_, c)) => count = Some((span.clone(), DestroyCountAst::N(c))),
+                        match count_expr(&mut tc, &span, "`count`", self.diags) {
+                            Some(c) => count = Some((span.clone(), DestroyCountAst::N(c))),
                             None => break,
                         }
                     } else {
@@ -1400,13 +1400,12 @@ impl<'d> Parser<'d> {
             }
             "consume" => {
                 let target = self.parse_target(&mut tc)?;
+                // The count is whatever follows the target on the line: a
+                // full integer expression (language.md §4.3).
                 let mut count = None;
-                if tc
-                    .peek()
-                    .is_some_and(|(_, t)| matches!(t, Tok::Int(_) | Tok::P(P::Minus)))
-                {
-                    match count_int(&mut tc, "`count`", self.diags) {
-                        Some((_, c)) => count = Some((span.clone(), c)),
+                if !tc.done() {
+                    match count_expr(&mut tc, &span, "`count`", self.diags) {
+                        Some(c) => count = Some(c),
                         None => return None,
                     }
                 }
@@ -1421,8 +1420,8 @@ impl<'d> Parser<'d> {
                 let mut count = None;
                 if tc.at_ident("count") {
                     tc.next();
-                    match count_int(&mut tc, "`count`", self.diags) {
-                        Some((_, c)) => count = Some((span.clone(), c)),
+                    match count_expr(&mut tc, &span, "`count`", self.diags) {
+                        Some(c) => count = Some(c),
                         None => return None,
                     }
                 }
@@ -1528,8 +1527,8 @@ impl<'d> Parser<'d> {
                 while !tc.done() {
                     if tc.at_ident("count") {
                         tc.next();
-                        match count_int(&mut tc, "`count`", self.diags) {
-                            Some((_, c)) => count = Some((span.clone(), c)),
+                        match count_expr(&mut tc, &span, "`count`", self.diags) {
+                            Some(c) => count = Some(c),
                             None => break,
                         }
                     } else if tc.at_ident("into") {
@@ -1562,8 +1561,8 @@ impl<'d> Parser<'d> {
                         }
                     } else if tc.at_ident("count") {
                         tc.next();
-                        match count_int(&mut tc, "`count`", self.diags) {
-                            Some((_, c)) => count = Some((span.clone(), c)),
+                        match count_expr(&mut tc, &span, "`count`", self.diags) {
+                            Some(c) => count = Some(c),
                             None => break,
                         }
                     } else {
@@ -1857,6 +1856,24 @@ fn count_int(tc: &mut TC, what: &str, diags: &mut Vec<Diagnostic>) -> Option<(Sp
     let (sp, n) = signed_int(tc, what, diags)?;
     let c = count_arg(&sp, n, what, diags)?;
     Some((sp, c))
+}
+
+/// An effect count: a full integer expression with the roll-operand grammar,
+/// evaluated at effect time (language.md §4.3). Effects are line-oriented, so
+/// the expression ends at end-of-line; a following clause keyword (`into`,
+/// `as`, `to`, `via`) is no operator and stops the arithmetic parse on its
+/// own.
+fn count_expr(tc: &mut TC, at: &Span, what: &str, diags: &mut Vec<Diagnostic>) -> Option<AExpr> {
+    let before = diags.len();
+    match parse_arith(tc, diags, false) {
+        Some(e) => Some(e),
+        None => {
+            if diags.len() == before {
+                diags.push(at.clone().error(code::E201, format!("expected {what}")));
+            }
+            None
+        }
+    }
 }
 
 fn parse_set_op(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Option<(Span, ASetOp)> {

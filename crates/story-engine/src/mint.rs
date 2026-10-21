@@ -97,20 +97,20 @@ impl Engine {
         Ok(id)
     }
 
-    /// Does a live entity block mints of this policy? A bound card counts as
-    /// live (spec.md §5).
-    pub(crate) fn mint_blocks(&self, mint: &MintPolicy, ent: &Entity) -> bool {
-        match mint {
-            MintPolicy::Stackable => false,
-            MintPolicy::SingleCopy | MintPolicy::Unique => true,
-            MintPolicy::Group(g) => ent.mint == MintPolicy::Group(g.clone()),
-        }
-    }
-
     /// Whether any entity live at this instant blocks a mint of `card` under
-    /// its policy.
-    pub(crate) fn mint_collision(&self, mint: &MintPolicy, card: &CardId) -> bool {
+    /// its policy, with `except` ids excluded (swap excludes its dying set).
+    /// Name-aware like every mint: SingleCopy and Unique block on a live
+    /// entity of the SAME name, Group on a live member (spec.md §4.5).
+    pub(crate) fn mint_collision_except(
+        &self,
+        mint: &MintPolicy,
+        card: &CardId,
+        except: &[EntityId],
+    ) -> bool {
         self.state.entities.values().any(|ent| {
+            if except.contains(&ent.id) {
+                return false;
+            }
             let same = &ent.name == card.as_str();
             match mint {
                 MintPolicy::Stackable => false,
@@ -118,6 +118,12 @@ impl Engine {
                 MintPolicy::Group(g) => ent.mint == MintPolicy::Group(g.clone()),
             }
         })
+    }
+
+    /// Whether any entity live at this instant blocks a mint of `card` under
+    /// its policy.
+    pub(crate) fn mint_collision(&self, mint: &MintPolicy, card: &CardId) -> bool {
+        self.mint_collision_except(mint, card, &[])
     }
 
     /// The destination zone of an `into` clause. Card carriers create their

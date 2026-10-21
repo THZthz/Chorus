@@ -45,6 +45,26 @@ impl Compiler {
         }
     }
 
+    /// Lower an effect count: a full integer expression evaluated at effect
+    /// time (language.md §4.3). A constant negative is the [E246] refusal at
+    /// compile time; a dynamic one fails at effect time.
+    fn lower_count(&mut self, e: &ast::AExpr, sp: &Span, env: &mut Env) -> Option<Expr> {
+        let expr = self.lower_arith(e, env)?;
+        if ir::const_eval(&expr).is_some_and(|v| v < 0) {
+            self.err(sp.error(code::E246, "counts must be non-negative"));
+            return None;
+        }
+        Some(expr)
+    }
+
+    /// The optional count form: absent reads 1.
+    fn lower_count_opt(&mut self, count: &Option<ast::AExpr>, env: &mut Env) -> Option<Expr> {
+        match count {
+            Some(e) => self.lower_count(e, e.span(), env),
+            None => Some(Expr::Lit(1)),
+        }
+    }
+
     pub(crate) fn home_zone(&self) -> String {
         self.content
             .game
@@ -75,10 +95,7 @@ impl Compiler {
                 }
                 Some(EffectNode::Spawn {
                     prototype: CardId::from(card.1.clone()),
-                    count: count
-                        .as_ref()
-                        .map(|c| Expr::Lit(c.1 as i64))
-                        .unwrap_or(Expr::Lit(1)),
+                    count: self.lower_count_opt(count, env)?,
                     into,
                     handle: handle.as_ref().map(|h| h.1.clone()),
                 })
@@ -87,8 +104,8 @@ impl Compiler {
                 let target = self.lower_target(target, env)?;
                 let count = match count {
                     Some((_, ast::DestroyCountAst::All)) => DestroyCount::All,
-                    Some((_, ast::DestroyCountAst::N(n))) => {
-                        DestroyCount::AtMost(Expr::Lit(*n as i64))
+                    Some((sp, ast::DestroyCountAst::N(e))) => {
+                        DestroyCount::AtMost(self.lower_count(e, sp, env)?)
                     }
                     None => DestroyCount::All,
                 };
@@ -98,10 +115,7 @@ impl Compiler {
                 let target = self.lower_target(target, env)?;
                 Some(EffectNode::Consume {
                     target,
-                    count: count
-                        .as_ref()
-                        .map(|c| Expr::Lit(c.1 as i64))
-                        .unwrap_or(Expr::Lit(1)),
+                    count: self.lower_count_opt(count, env)?,
                 })
             }
             ast::AEffect::Swap {
@@ -121,10 +135,7 @@ impl Compiler {
                 };
                 Some(EffectNode::Swap {
                     target,
-                    count: count
-                        .as_ref()
-                        .map(|c| Expr::Lit(c.1 as i64))
-                        .unwrap_or(Expr::Lit(1)),
+                    count: self.lower_count_opt(count, env)?,
                     to: CardId::from(to.1.clone()),
                     into,
                 })
@@ -209,10 +220,7 @@ impl Compiler {
                 };
                 Some(EffectNode::Draw {
                     deck: DeckId::from(deck.1.clone()),
-                    count: count
-                        .as_ref()
-                        .map(|c| Expr::Lit(c.1 as i64))
-                        .unwrap_or(Expr::Lit(1)),
+                    count: self.lower_count_opt(count, env)?,
                     into,
                 })
             }
@@ -236,10 +244,7 @@ impl Compiler {
                 Some(EffectNode::Start {
                     verb: VerbId::from(verb.1.clone()),
                     via,
-                    count: count
-                        .as_ref()
-                        .map(|c| Expr::Lit(c.1 as i64))
-                        .unwrap_or(Expr::Lit(1)),
+                    count: self.lower_count_opt(count, env)?,
                 })
             }
             ast::AEffect::Signal { event, .. } => {

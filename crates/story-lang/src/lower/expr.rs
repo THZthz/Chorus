@@ -332,11 +332,17 @@ impl Compiler {
         let pname = reg.params[0].1.clone();
         let saved = std::mem::take(&mut env.params);
         env.params = vec![(pname, ParamVal::Subject)];
+        // Query-position predicates lower roll-free: a roll binding is
+        // visible to `if` conditions and prose tokens only (language.md
+        // §4.3), so a roll name inside a query term is the E244 unknown-name
+        // refusal, exactly as in slot filters and recipe `when`s.
+        let saved_rolls = std::mem::take(&mut env.rolls);
         env.pred_depth += 1;
         self.pred_stack.push(n.clone());
         let out = self.lower_cond(&body, env).map(Box::new);
         self.pred_stack.pop();
         env.pred_depth -= 1;
+        env.rolls = saved_rolls;
         env.params = saved;
         out.map(QueryTerm::Pred)
     }

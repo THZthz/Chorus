@@ -195,7 +195,9 @@ pub(crate) fn boot(
     };
 
     // Arm boot instances from the cards' own declarations (mint aliasing
-    // never applies at boot), lifetimes armed at t=0.
+    // never applies at boot), lifetimes armed at t=0. Aspects, kind, and the
+    // uniqueness policy all read the own declaration; the `mint <alias>` body
+    // applies only to mints (spec.md §4.5).
     let mut card_ids: Vec<(u32, story_core::CardId, story_content::ir::BootFace)> = Vec::new();
     for decl in engine.content.cards.values() {
         if let Some(face) = decl.boot.clone() {
@@ -214,15 +216,17 @@ pub(crate) fn boot(
         let Some(&z) = engine.zone_ids.get(&face.zone) else {
             continue;
         };
-        let template = engine.template(&id);
+        let Some(own) = engine.content.card(&id).cloned() else {
+            continue;
+        };
         for _ in 0..face.count {
-            if engine.mint_collision(&template.mint, &id) {
+            if engine.mint_collision(&own.mint, &id) {
                 diags.push(DiagKind::NameInUse.warning(format!(
                     "boot instance of `{id}` skipped: a live copy blocks the mint"
                 )));
                 continue;
             }
-            let _ = engine.mint_body(&template, &id, z, &fctx, &mut ev);
+            let _ = engine.mint_body(&own, &id, z, &fctx, &mut ev);
         }
     }
 

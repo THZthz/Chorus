@@ -152,7 +152,7 @@ pub struct EffectCtx {
 Extension without kernel changes: host Rust registers `Host` closures by name; `boot` verifies that every referenced op is registered (`UnregisteredOp`). `include` and `effectset` are story-lang compile steps; `Content` stores only the expanded IR.
 
 - **Target application** (per target form): `Name` → the one entity; `Slot` → the context's bindings for that slot, per-binding application; `Query` → candidates in the scope, oldest-first (mint order) within the scope; `BareQuery` → interior-oldest-first, then world-oldest-first; `Handle` → the unit's pool, oldest-first. Counts walk the resolved order; `Set` writes every resolved card.
-- **Handles**: a `spawn ... as h` appends the minted ids to `ctx.handles[h]`; the pool lives for the enclosing effect list and is cleared when the list ends. A handle reference the compiler cannot see an enclosing spawn for is [E238].
+- **Handles**: a `spawn ... as h` appends the minted ids to `ctx.handles[h]`; the pool lives for the enclosing effect list and is cleared when the list ends. A handle target the compiler cannot see an enclosing spawn for is [E238] (an orphan handle-shaped prose token is [E205]).
 - **Roll**: `splitmix64(seed ^ rng_counter)` per die, counter in `State`, incremented once per die. Count and sides are evaluated as integer expressions at effect time; count < 0 or sides < 1 is an effect failure (unit rollback). Count 0 applies the bonus only and leaves `rng_counter` unmoved. The result lands in `ctx.roll` (last-wins).
 - **Ending**: sets `state.ended`; further endings in the same advance are no-ops.
 
@@ -171,7 +171,7 @@ The engine-side grammar mirrors the DSL's (language.md §3). `Interior` is the i
 ## 6. Time, Settlement, and Budgets
 
 - **advance(dt) settlement.** `target = now + dt`; the loop repeatedly takes the least due item under the total-order key `(moment, phase, id)`, with `phase: 0=Completion < 1=Expiry < 2=Autonomous` and `id` the mint order. Before resolving an item, the engine sets `state.now = item.moment`; checkpoints, effects, spawn anchoring, and event timestamps observe the stepped now. When the loop drains, `now = target`.
-- **Per-unit failure policy.** Every resolution unit checkpoints (a `State` clone) before its first effect. An effect failure rolls the unit back to that checkpoint, the unit's situation aborts through the release path (bindings released — `take` slots to `bound_from`, the rest in place — interior leftovers to `releases` / `home`, interior destroyed), `Event::ResolutionFailed { reason }` is emitted, and the loop continues with the next item.
+- **Per-unit failure policy.** Every resolution unit checkpoints (a `State` clone) before its first effect. An effect failure rolls the unit back to that checkpoint; a failed completion unit's situation aborts through the release path (bindings released — `take` slots to `bound_from`, the rest in place — interior leftovers to `releases` / `home`, interior destroyed) and `Event::ResolutionFailed { reason }` is emitted for it, while a failed expiry unit — no situation to name — rolls back silently and the timer is spent; the loop continues with the next item.
 - **Budgets and constants:**
   - `MAX_RESOLUTIONS_PER_ADVANCE = 4096` — exceeding it rolls the entire advance back to its entry checkpoint and returns `Diagnostic::Livelock`. The only whole-advance rollback.
   - `MAX_RESOLUTION_DEPTH = 128` — the native recursion depth of inline resolution (instant `start` chains, signal cycles); a breach takes the same Livelock rollback path instead of exhausting the stack.
@@ -208,7 +208,7 @@ Each statement is directly assertable by a test:
 - **T1 Totality.** Any expression evaluates to a value in any state: absent aspects/attrs read 0; dead entities read 0; empty scopes count 0 / exist false; unbound slot scopes are empty; unbound rolls read 0; `x / 0` = 0.
 - **T2 Zero-divisor.** A constant zero divisor is refused at compile time [E242].
 - **T3 Commit atomicity.** Any commit refusal (`NoRecipe`, `GuardRefused`, `InstanceCapReached`, `StoryEnded`, `VerbAutonomous`, …) leaves the state bit-identical and spends zero time.
-- **T4 Per-unit atomicity.** An effect failure rolls the resolution unit back to its checkpoint — `rng_counter` and deck cursors included — aborts the unit's situation through the release path, emits `ResolutionFailed`, and the advance continues.
+- **T4 Per-unit atomicity.** An effect failure rolls the resolution unit back to its checkpoint — `rng_counter` and deck cursors included — aborts the unit's situation through the release path, emits `ResolutionFailed` (a completion unit; a failing expiry unit rolls back silently and spends its timer), and the advance continues.
 - **T5 Livelock.** More than `MAX_RESOLUTIONS_PER_ADVANCE` resolutions — or nesting deeper than `MAX_RESOLUTION_DEPTH` — in one call rolls the entire call back to its entry checkpoint and returns `Livelock`.
 - **T6 Determinism.** Same content + seed + operation sequence ⇒ identical state, including a retried identical `commit` after a refusal (bit-restored dice).
 - **T7 Ending.** After any ending: the due queue is discarded unresolved; every subsequent `commit`/`advance` returns `StoryEnded`; restoring the pre-ending snapshot resumes play.
@@ -262,5 +262,6 @@ Behavioral coverage contract: at least one positive and one refusal path per mec
 28. `bound` scope — per-binding double-count, empty outside a situation;
 29. `kind:` terms — positive, negated, unknown-kind compile refusal;
 30. start/autonomous candidacy by state-countable greedy fill, with the `StartSkipped { MaterializationFailed }` path.
+31. mid-run `bind` — the open-slot happy path: the `Bound` event, the interior move, release to `bound_from`, and open-slot capacity interplay.
 
 Every entry in §9 (T1–T14) carries an executable assertion as well.

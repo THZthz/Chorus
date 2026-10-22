@@ -602,8 +602,8 @@ impl Engine {
                     continue;
                 };
                 // The stack's own declaration — element id and aspect keys,
-                // mutations included — is the candidate set CS
-                // RunXTriggersOnStack scans for declaring elements.
+                // mutations included — is where its candidate triggers are
+                // read from.
                 (self.template(&ent.prototype), ent.aspects.clone())
             };
             for (qual, book) in &decl.on_complete {
@@ -611,10 +611,10 @@ impl Engine {
                     break;
                 }
                 // Two conjuncts over the two catalyst passes: a recipe-declared
-                // qualifier (pass 1, CS Recipe.Aspects) fires the book; the
-                // interior pool (pass 2, CS situation aspects) fires it only on
-                // a stack whose own keys carry the qualifier — a stack's
-                // candidate triggers are those declared on its own elements.
+                // qualifier (pass 1) fires the book; the interior pool
+                // (pass 2) fires it only on a stack whose own keys carry the
+                // qualifier — a stack's candidate triggers are those declared
+                // on its own elements.
                 let fires = match qual {
                     None => true,
                     Some(k) => {
@@ -694,14 +694,12 @@ impl Engine {
         if let Some(s) = self.state.situations.get_mut(&sit) {
             s.bindings.clear();
         }
-        // (3) The transition's one gate, decided pre-materialization (CS
-        // GetNextValidLink decides before the takeover; StartRecipe just
-        // materializes): the walk's arms re-check their `when`s in order
-        // against the released pool — the situation's interior sums — and a
-        // max-exhausted target is a miss like a failed `when` (CS
-        // CanExecuteInContext blocks exhausted linked candidates). The first
-        // arm that passes adopts; a miss on every arm falls through to the
-        // normal completion sequence.
+        // (3) The transition's one gate, decided pre-materialization: the
+        // walk's arms re-check their `when`s in order against the released
+        // pool — the situation's interior sums — and a max-exhausted target
+        // is a miss like a failed `when`. The first arm that passes adopts;
+        // a miss on every arm falls through to the normal completion
+        // sequence.
         let mut adopted: Option<story_core::RecipeId> = None;
         for arm in &arms {
             let rec = self.recipe_of(arm);

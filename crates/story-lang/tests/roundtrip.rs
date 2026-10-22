@@ -1,4 +1,4 @@
-//! The round-trip acceptance (plan.md M0): the compiled `Content`
+//! The round-trip acceptance: the compiled `Content`
 //! serializes, deserializes, and refingerprints identically; recompiling the
 //! same source is fingerprint-stable too.
 

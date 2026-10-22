@@ -1,4 +1,0 @@
-# Personal-machine pin for the env-gated converter tests: `cargo test` keeps
-# its full-conversion coverage without any absolute path in committed source.
-[env]
-CS2SW_CS_CORE = "/Users/amias/Projects/testing-grounds/cs-extract/cultistsimulator_Data/StreamingAssets/content/core"

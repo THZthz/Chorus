@@ -195,7 +195,7 @@ verbs
     /// aspect keys) carries `k`; a recipe `declares` fires it anywhere. A
     /// card that does not itself carry `k` stays silent even when the pool
     /// holds it (a stack's candidate triggers are only those declared on its
-    /// own elements — CS ElementStackXTriggerCommand.RunXTriggersOnStack).
+    /// own elements).
     #[test]
     fn qualified_books_fire_on_the_interior_aspect_pool() {
         let src = r#"

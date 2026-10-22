@@ -1,8 +1,8 @@
 # Chorus² — Content Language Reference (`story-lang`)
 
-The authoring format for Chorus² content: extension `.sw`, hand-written by authors and read by mechanical converters. This document is the full concrete reference — every declaration, every effect, every diagnostic. The conceptual model lives in spec.md §5; the runtime contract in kernel-api.md.
+The authoring format for Chorus² content: extension `.sw`, hand-written by authors. This document is the full concrete reference — every declaration, every effect, every diagnostic. The conceptual model lives in spec.md §5; the runtime contract in kernel-api.md.
 
-Design goals, in brief: the grammar is mechanically regular (one declaration per shape, one spelling per concept — converters map, they never interpret); files are diff- and grep-first (one declaration per block, one fact per line, indentation as nesting, explicit ids); prose is first-class; diagnostics are a public interface — they carry `file:line:col`, a stable number, and a fix phrased at the declaration site:
+Design goals, in brief: the grammar is mechanically regular (one declaration per shape, one spelling per concept); files are diff- and grep-first (one declaration per block, one fact per line, indentation as nesting, explicit ids); prose is first-class; diagnostics are a public interface — they carry `file:line:col`, a stable number, and a fix phrased at the declaration site:
 
 ```
 lighthouse.sw:42:11: error [E203] unknown aspect key `restor` (read in sup.eat slot query)
@@ -339,7 +339,7 @@ Compositions the mechanism set makes natural:
 - **Mid-run narration via chains.** Longer arcs are chains of shorter recipes: each `start` hands off to the next beat, and the autonomous heartbeat keeps world texture moving between player actions.
 - **Reveal.** Move a card out of a Hidden zone to surface it, or flip a 0/1 aspect as the reveal flag; the rendering layer reads state and decides what showing means (spec.md §7).
 - **Time-of-day patterns.** `clock` arithmetic in `when` conditions: a dawn gate is `clock >= 6h`; an evening window is `clock >= 22h and clock < 24h`; duration literals carry the minute counts.
-- **Disjunctive slot filters via unary predicates.** A slot that accepts any of several aspect arms — `required: {a: 1, b: 1}` in converter terms — is one predicate over the candidate card: `predicate fits(p) = p.a >= 1 or p.b >= 1`, called bare in the slot query (`fits()`); conjunction and negation terms compose around the call.
+- **Disjunctive slot filters via unary predicates.** A slot that accepts any of several aspect arms is one predicate over the candidate card: `predicate fits(p) = p.a >= 1 or p.b >= 1`, called bare in the slot query (`fits()`); conjunction and negation terms compose around the call.
 
 ## 9. Compile Diagnostics
 

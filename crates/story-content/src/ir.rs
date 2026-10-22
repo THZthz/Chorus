@@ -28,6 +28,14 @@ pub enum Scope {
     Slot(SlotName),
     /// A declared zone with its nested subtree.
     Zone(ZoneName),
+    /// The `related:<kind> (of|to) <card-ref>` scope: the endpoint's edges of
+    /// one kind, forward (`of`) or incoming (`to`). Location-transparent:
+    /// related live cards wherever they live. Empty on a dead endpoint.
+    Related {
+        kind: String,
+        of: Box<CardRef>,
+        incoming: bool,
+    },
     /// Every card in a public zone plus every situation's non-greedy slot
     /// bindings; greedy bindings and situation interiors are excluded.
     Table,
@@ -35,6 +43,21 @@ pub enum Scope {
     World,
     /// All live cards.
     Anywhere,
+}
+
+/// The endpoint type of `Expr::Rel` and `Scope::Related` (language.md §3).
+/// Resolution is total: an unresolved ref is a dead endpoint — `rel(...)`
+/// reads false and a `related:` scope reads empty.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CardRef {
+    /// A `unique` card's one live entity (compile-checked [E239]).
+    Name(CardId),
+    /// The context's subject: the query-position candidate, the bound card in
+    /// a card completion book, the dying card in an expiry book.
+    Subject,
+    /// `first(<scope> [<terms>])`: the scope's first term-matching candidate
+    /// in the scope's own deterministic order, re-resolved per read.
+    Query { scope: Scope, terms: Vec<QueryTerm> },
 }
 
 /// A bare `aspect:<k>` term matches a candidate whose read value for the key
@@ -134,6 +157,13 @@ pub enum Expr {
     Counter,
     Clock,
     Alive(CardId),
+    /// `rel(<kind>, <card-ref>, <card-ref>)`: the pairwise edge test.
+    /// Symmetric kinds hold either way; a dead endpoint reads false.
+    Rel {
+        kind: String,
+        from: Box<CardRef>,
+        to: Box<CardRef>,
+    },
     Arith {
         op: ArithOp,
         left: Box<Expr>,
@@ -278,7 +308,25 @@ pub enum EffectNode {
     /// Same-situation continuation: legal only in recipe effects (the
     /// compiler enforces it). At settlement the situation adopts the target
     /// recipe instead of completing (spec.md §4.2).
-    Continue { recipe: RecipeId },
+    Continue {
+        recipe: RecipeId,
+    },
+    /// `relate <target> to <target> as <kind>`: one `Related` per written
+    /// logical edge; exclusive kinds steal first (`Unrelated` per victim);
+    /// self-pairs are skipped silently. Total — no failure modes.
+    Relate {
+        from: Box<Target>,
+        to: Box<Target>,
+        kind: String,
+    },
+    /// `unrelate <target> from <target> [as <kind>]`: one `Unrelated` per
+    /// removed logical edge; an omitted kind severs every edge between each
+    /// pair, either direction, each once.
+    Unrelate {
+        from: Box<Target>,
+        to: Box<Target>,
+        kind: Option<String>,
+    },
     Signal {
         event: String,
     },
@@ -365,6 +413,19 @@ pub struct BootFace {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelationKindDecl {
+    pub name: String,
+    /// Stored once per logical edge under the canonical subject
+    /// `min(from, to)`; reads are direction-agnostic.
+    pub symmetric: bool,
+    /// Write-time exclusivity: directed kinds hold at most one `from` per
+    /// object (steal); symmetric kinds give each endpoint valence 1.
+    pub exclusive: bool,
+    pub meta: Meta,
+    pub decl_index: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardDecl {
     pub id: CardId,
     pub kind: Option<String>,
@@ -374,6 +435,9 @@ pub struct CardDecl {
     pub lifetime: Option<i64>,
     /// Present when the card instantiates at boot.
     pub boot: Option<BootFace>,
+    /// Boot edges: `(kind, object cards)` in declaration order, applied after
+    /// all boot mints toward every live same-name entity.
+    pub relates: Vec<(String, Vec<CardId>)>,
     pub desc: Option<String>,
     /// Mints of this name use the aliased card's body as template.
     pub mint_alias: Option<CardId>,

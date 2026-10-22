@@ -4,7 +4,7 @@
 
 use crate::ir::{
     AspectDecl, AspectKey, Book, CardDecl, DeckDecl, EndingDecl, GameHeader, LegacyDecl, LegacyKey,
-    RecipeDecl, VerbDecl, ZoneDecl,
+    RecipeDecl, RelationKindDecl, VerbDecl, ZoneDecl,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,6 +19,10 @@ pub struct Content {
     /// Kinds collected from card `kind` lines; `kind:` terms validate against
     /// this set.
     pub kinds: BTreeSet<String>,
+    /// The declared relation-kind registry (`relations` blocks); every read
+    /// and write of a relation kind validates against it. Its own namespace,
+    /// disjoint from card `kind` tags.
+    pub relation_kinds: BTreeMap<String, RelationKindDecl>,
     pub cards: BTreeMap<CardId, CardDecl>,
     pub verbs: BTreeMap<String, VerbDecl>,
     pub decks: BTreeMap<String, DeckDecl>,
@@ -41,6 +45,11 @@ impl Content {
 
     pub fn card(&self, id: &CardId) -> Option<&CardDecl> {
         self.cards.get(id)
+    }
+
+    /// The declared flags of a relation kind.
+    pub fn relation_kind(&self, name: &str) -> Option<&RelationKindDecl> {
+        self.relation_kinds.get(name)
     }
 
     pub fn recipe(&self, id: &str) -> Option<&RecipeDecl> {

@@ -11,7 +11,11 @@ pub use ids::{
     ZoneId,
 };
 pub use snapshot::{Snapshot, FORMAT_VERSION};
-pub use state::{Binding, Entity, MintPolicy, Situation, SituationSource, State, Zone, ZoneKind};
+pub use state::{
+    drop_entity_edges, edge_exists, edges_into, edges_touching, relate_edge, sever_pair,
+    unrelate_edge, Binding, Entity, MintPolicy, Relations, RemovedEdge, Situation, SituationSource,
+    State, Zone, ZoneKind,
+};
 
 /// The time unit is the minute; `clock`, durations, and expiry moments are all
 /// minute counts (L1: `turn` constrains advance granularity only).

@@ -58,6 +58,15 @@ pub struct LegacyAst {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RelationKindAst {
+    pub span: Span,
+    pub name: (Span, String),
+    pub symmetric: Option<Span>,
+    pub exclusive: Option<Span>,
+    pub meta: Vec<MetaLine>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct PredAst {
     pub span: Span,
     pub name: (Span, String),
@@ -80,6 +89,10 @@ pub struct BootAst {
     pub count: Option<(Span, u32)>,
 }
 
+/// One boot `relates <kind> <card>, ...` line: `(kind, object card names)`
+/// in declaration order.
+pub type RelatesAst = ((Span, String), Vec<(Span, String)>);
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RuleAst {
     pub span: Span,
@@ -101,6 +114,8 @@ pub struct CardAst {
     pub uniq: Vec<UniqAst>,
     pub aspects: Vec<(Span, String, i64)>,
     pub boot: Option<BootAst>,
+    /// Boot `relates <kind> <card>, ...` lines, in declaration order.
+    pub relates: Vec<RelatesAst>,
     pub desc: Option<(Span, String)>,
     pub lifetime: Option<(Span, i64)>,
     pub mint: Option<(Span, String)>,
@@ -237,6 +252,7 @@ pub enum TopItem {
     Zones(Vec<ZoneAst>),
     Aspects(Vec<AspectAst>),
     Predicates(Vec<PredAst>),
+    Relations(Vec<RelationKindAst>),
     Cards(Vec<CardAst>),
     Decks(Vec<DeckAst>),
     Legacies(Vec<LegacyAst>),
@@ -262,6 +278,13 @@ pub enum AScope {
     Anywhere(Span),
     Zone(Span, (Span, String)),
     Slot(Span, (Span, String)),
+    /// `related:<kind> (of | to) <card-ref>`.
+    Related {
+        span: Span,
+        kind: (Span, String),
+        of: Box<ACardRef>,
+        incoming: bool,
+    },
 }
 
 impl AScope {
@@ -274,6 +297,29 @@ impl AScope {
             | AScope::Anywhere(s)
             | AScope::Zone(s, _)
             | AScope::Slot(s, _) => s,
+            AScope::Related { span, .. } => span,
+        }
+    }
+}
+
+/// A relation endpoint (language.md §3): a unique card name, the context
+/// subject, or `first(<scope> [<terms>])`.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ACardRef {
+    Name(Span, (Span, String)),
+    Subject(Span),
+    First {
+        span: Span,
+        scope: AScope,
+        terms: Vec<AQueryTerm>,
+    },
+}
+
+impl ACardRef {
+    pub fn span(&self) -> &Span {
+        match self {
+            ACardRef::Name(s, _) | ACardRef::Subject(s) => s,
+            ACardRef::First { span, .. } => span,
         }
     }
 }
@@ -357,6 +403,13 @@ pub enum AExpr {
         span: Span,
         card: (Span, String),
     },
+    /// `rel(<kind>, <card-ref>, <card-ref>)`: reads 0/1.
+    Rel {
+        span: Span,
+        kind: (Span, String),
+        from: Box<ACardRef>,
+        to: Box<ACardRef>,
+    },
     Neg(Span, Box<AExpr>),
     Bin {
         span: Span,
@@ -379,6 +432,7 @@ impl AExpr {
             | AExpr::Count { span, .. }
             | AExpr::Total { span, .. }
             | AExpr::Alive { span, .. }
+            | AExpr::Rel { span, .. }
             | AExpr::Bin { span, .. } => span,
         }
     }
@@ -395,6 +449,13 @@ pub enum ACond {
         l: AExpr,
         r: AExpr,
     },
+    /// A bare `rel(...)` operand in condition position.
+    Rel {
+        span: Span,
+        kind: (Span, String),
+        from: Box<ACardRef>,
+        to: Box<ACardRef>,
+    },
     Call {
         span: Span,
         name: (Span, String),
@@ -408,7 +469,10 @@ impl ACond {
     pub fn span(&self) -> &Span {
         match self {
             ACond::Or(l, _) | ACond::And(l, _) | ACond::Not(l) => l.span(),
-            ACond::Cmp { span, .. } | ACond::Call { span, .. } | ACond::Name(span, _) => span,
+            ACond::Cmp { span, .. }
+            | ACond::Rel { span, .. }
+            | ACond::Call { span, .. }
+            | ACond::Name(span, _) => span,
         }
     }
 }
@@ -544,6 +608,21 @@ pub enum AEffect {
     Continue {
         span: Span,
         recipe: (Span, String),
+    },
+    /// `relate <target> to <target> as <kind>`.
+    Relate {
+        span: Span,
+        from: ATarget,
+        to: ATarget,
+        kind: (Span, String),
+    },
+    /// `unrelate <target> from <target> [as <kind>]`; the omitted kind
+    /// severs every edge between each pair.
+    Unrelate {
+        span: Span,
+        from: ATarget,
+        to: ATarget,
+        kind: Option<(Span, String)>,
     },
     Signal {
         span: Span,

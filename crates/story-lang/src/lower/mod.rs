@@ -18,8 +18,8 @@ use std::sync::Arc;
 use story_content::code;
 use story_content::ir::{
     AspectDecl, AspectKey, Book, BootFace, CardDecl, DeckDecl, EndingDecl, Expr, GameHeader, Guard,
-    InstanceCap, LegacyDecl, LegacyKey, Meta, Rule, SeedSpec, SlotDecl, VerbDecl, VerbMode,
-    ZoneDecl,
+    InstanceCap, LegacyDecl, LegacyKey, Meta, RelationKindDecl, Rule, SeedSpec, SlotDecl, VerbDecl,
+    VerbMode, ZoneDecl,
 };
 use story_content::{Content, Diagnostic};
 use story_core::{CardId, MintPolicy, TriggerRuleId};
@@ -138,6 +138,9 @@ pub(crate) struct Compiler {
     pub aspects: BTreeMap<AspectKey, (i64, Span)>,
     pub legacies: BTreeMap<LegacyKey, Span>,
     pub kinds: BTreeSet<String>,
+    /// The relation-kind registry's own namespace (disjoint from card `kind`
+    /// tags); duplicates are [E232] at the second site.
+    pub relation_kinds: BTreeMap<String, Span>,
     pub cards: BTreeMap<String, CardReg>,
     pub zones: BTreeMap<String, Span>,
     pub decks: BTreeMap<String, Span>,
@@ -167,6 +170,7 @@ impl Compiler {
             aspects: BTreeMap::new(),
             legacies: BTreeMap::new(),
             kinds: BTreeSet::new(),
+            relation_kinds: BTreeMap::new(),
             cards: BTreeMap::new(),
             zones: BTreeMap::new(),
             decks: BTreeMap::new(),
@@ -293,6 +297,23 @@ impl Compiler {
         }
     }
 
+    /// A relation kind read or written must be declared in a `relations`
+    /// block [E248]. Kinds form their own registry, disjoint from card
+    /// `kind` tags.
+    pub(crate) fn check_relation_kind(&mut self, kind: &str, sp: &Span) -> bool {
+        if self.relation_kinds.contains_key(kind) {
+            true
+        } else {
+            self.err(sp.error(
+                code::E248,
+                format!(
+                    "relation kind `{kind}` is read or written but is not declared (the relations registry)"
+                ),
+            ));
+            false
+        }
+    }
+
     pub(crate) fn check_legacy_key(&mut self, key: &str, sp: &Span) -> bool {
         if self.legacies.contains_key(key) {
             true
@@ -372,6 +393,22 @@ impl Compiler {
                 TopItem::Legacies(ls) => {
                     for l in ls {
                         self.claim_legacy(&l.key, &l.span);
+                    }
+                }
+                TopItem::Relations(rs) => {
+                    for r in rs {
+                        if let Some(first) = self.relation_kinds.get(&r.name.1) {
+                            let d = r.name.0.error(
+                                code::E232,
+                                format!("duplicate relation kind `{}`", r.name.1),
+                            );
+                            self.err(d.with_note(format!(
+                                "first declared at {}:{}",
+                                first.file, first.line
+                            )));
+                        } else {
+                            self.relation_kinds.insert(r.name.1.clone(), r.span.clone());
+                        }
                     }
                 }
                 TopItem::Cards(cs) => {
@@ -551,6 +588,22 @@ impl Compiler {
                         );
                     }
                 }
+                TopItem::Relations(rs) => {
+                    for r in rs {
+                        let meta = self.meta_map(&r.meta);
+                        let decl_index = self.next_index();
+                        self.content.relation_kinds.insert(
+                            r.name.1.clone(),
+                            RelationKindDecl {
+                                name: r.name.1.clone(),
+                                symmetric: r.symmetric.is_some(),
+                                exclusive: r.exclusive.is_some(),
+                                meta,
+                                decl_index,
+                            },
+                        );
+                    }
+                }
                 TopItem::Cards(cs) => {
                     for c in cs {
                         self.build_card(c);
@@ -652,6 +705,7 @@ impl Compiler {
             aspects: BTreeMap::new(),
             lifetime: None,
             boot: None,
+            relates: Vec::new(),
             desc: None,
             mint_alias: None,
             on_complete: Vec::new(),
@@ -702,6 +756,23 @@ impl Compiler {
                     zone: b.zone.1.clone(),
                     count: b.count.as_ref().map(|n| n.1).unwrap_or(1),
                 });
+            }
+        }
+        // Boot edges: every named object card must exist [E244]; the kind
+        // must be declared [E248]. Missing live instances are a boot warning,
+        // not a compile error.
+        for (kind, objects) in &c.relates {
+            if !self.check_relation_kind(&kind.1, &kind.0) {
+                continue;
+            }
+            let mut resolved = Vec::new();
+            for (osp, name) in objects {
+                if self.check_card_exists(name, osp) {
+                    resolved.push(CardId::from(name.clone()));
+                }
+            }
+            if !resolved.is_empty() {
+                decl.relates.push((kind.1.clone(), resolved));
             }
         }
         if let Some((sp, text)) = &c.desc {
@@ -1242,6 +1313,10 @@ impl Compiler {
                 self.usage_cond(r, params, usage, stack);
             }
             ast::ACond::Not(l) => self.usage_cond(l, params, usage, stack),
+            ast::ACond::Rel { from, to, .. } => {
+                self.usage_card_ref(from, params, usage, stack);
+                self.usage_card_ref(to, params, usage, stack);
+            }
             ast::ACond::Cmp { l, r, .. } => {
                 self.usage_expr(l, params, usage, stack);
                 self.usage_expr(r, params, usage, stack);
@@ -1307,16 +1382,23 @@ impl Compiler {
                 }
             }
             ast::AExpr::Legacy { .. } => {}
-            ast::AExpr::Count { terms, .. } => {
+            ast::AExpr::Count { scope, terms, .. } => {
+                self.usage_scope(scope, params, usage, stack);
                 for t in terms {
                     self.usage_term(t, params, usage, stack);
                 }
             }
-            ast::AExpr::Total { .. } => {}
+            ast::AExpr::Total { scope, .. } => {
+                self.usage_scope(scope, params, usage, stack);
+            }
             ast::AExpr::Alive { card, .. } => {
                 if let Some((card_u, _)) = usage.get_mut(&card.1) {
                     *card_u = true;
                 }
+            }
+            ast::AExpr::Rel { from, to, .. } => {
+                self.usage_card_ref(from, params, usage, stack);
+                self.usage_card_ref(to, params, usage, stack);
             }
             ast::AExpr::Neg(_, inner) => self.usage_expr(inner, params, usage, stack),
             ast::AExpr::Bin { l, r, .. } => {
@@ -1365,6 +1447,10 @@ impl Compiler {
             ast::AEffect::Destroy { target, .. }
             | ast::AEffect::Consume { target, .. }
             | ast::AEffect::Move { target, .. } => self.usage_target(target, params, usage, stack),
+            ast::AEffect::Relate { from, to, .. } | ast::AEffect::Unrelate { from, to, .. } => {
+                self.usage_target(from, params, usage, stack);
+                self.usage_target(to, params, usage, stack);
+            }
             ast::AEffect::Swap {
                 target, to, into, ..
             } => {
@@ -1476,6 +1562,47 @@ impl Compiler {
             }
         }
     }
+
+    /// A relation endpoint's parameter use: a bare parameter name in
+    /// card-ref position is a card use.
+    fn usage_card_ref(
+        &mut self,
+        r: &ast::ACardRef,
+        params: &HashSet<String>,
+        usage: &mut Usage,
+        stack: &mut Vec<String>,
+    ) {
+        match r {
+            ast::ACardRef::Name(_, (sp, n)) => {
+                if let Some((card_u, _)) = usage.get_mut(n) {
+                    *card_u = true;
+                }
+                let _ = sp;
+            }
+            ast::ACardRef::Subject(_) => {}
+            ast::ACardRef::First { scope, terms, .. } => {
+                self.usage_scope(scope, params, usage, stack);
+                for t in terms {
+                    self.usage_term(t, params, usage, stack);
+                }
+            }
+        }
+    }
+
+    /// A query scope's parameter use: only `related:<kind> of <card-ref>`
+    /// carries a card reference; the other scopes name zones, slots, or the
+    /// whole world.
+    fn usage_scope(
+        &mut self,
+        s: &ast::AScope,
+        params: &HashSet<String>,
+        usage: &mut Usage,
+        stack: &mut Vec<String>,
+    ) {
+        if let ast::AScope::Related { of, .. } = s {
+            self.usage_card_ref(of, params, usage, stack);
+        }
+    }
 }
 
 fn collect_pred_calls(c: &ast::ACond, out: &mut Vec<String>) {
@@ -1485,6 +1612,10 @@ fn collect_pred_calls(c: &ast::ACond, out: &mut Vec<String>) {
             collect_pred_calls(r, out);
         }
         ast::ACond::Not(l) => collect_pred_calls(l, out),
+        ast::ACond::Rel { from, to, .. } => {
+            collect_ref_calls(from, out);
+            collect_ref_calls(to, out);
+        }
         ast::ACond::Cmp { l, r, .. } => {
             collect_expr_calls(l, out);
             collect_expr_calls(r, out);
@@ -1514,6 +1645,10 @@ fn collect_expr_calls(e: &ast::AExpr, out: &mut Vec<String>) {
                 }
             }
         }
+        ast::AExpr::Rel { from, to, .. } => {
+            collect_ref_calls(from, out);
+            collect_ref_calls(to, out);
+        }
         ast::AExpr::Neg(_, inner) => collect_expr_calls(inner, out),
         ast::AExpr::Bin { l, r, .. } => {
             collect_expr_calls(l, out);
@@ -1523,8 +1658,25 @@ fn collect_expr_calls(e: &ast::AExpr, out: &mut Vec<String>) {
     }
 }
 
+fn collect_ref_calls(r: &ast::ACardRef, out: &mut Vec<String>) {
+    match r {
+        ast::ACardRef::Name(..) | ast::ACardRef::Subject(_) => {}
+        ast::ACardRef::First { terms, .. } => {
+            for t in terms {
+                if let ast::AQueryTerm::Call { name, args, .. } = t {
+                    out.push(name.1.clone());
+                    for a in args {
+                        collect_expr_calls(a, out);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Declaration-time name checks inside a predicate body: every aspect key,
-/// legacy key, kind, and card name the body reads must be declared.
+/// legacy key, kind, card name, and relation kind the body reads must be
+/// declared.
 fn check_cond_names(c: &mut Compiler, cond: &ast::ACond, params: &HashSet<String>) {
     match cond {
         ast::ACond::Or(l, r) | ast::ACond::And(l, r) => {
@@ -1535,6 +1687,11 @@ fn check_cond_names(c: &mut Compiler, cond: &ast::ACond, params: &HashSet<String
         ast::ACond::Cmp { l, r, .. } => {
             check_expr_names(c, l, params);
             check_expr_names(c, r, params);
+        }
+        ast::ACond::Rel { kind, from, to, .. } => {
+            c.check_relation_kind(&kind.1, &kind.0);
+            check_card_ref_names(c, from, params);
+            check_card_ref_names(c, to, params);
         }
         ast::ACond::Call { name, args, .. } => {
             if !params.contains(&name.1) && !c.preds.contains_key(&name.1) {
@@ -1550,6 +1707,25 @@ fn check_cond_names(c: &mut Compiler, cond: &ast::ACond, params: &HashSet<String
         ast::ACond::Name(_, (sp, n)) => {
             if !params.contains(n) {
                 c.err(sp.error(code::E244, format!("unknown predicate `{n}`")));
+            }
+        }
+    }
+}
+
+/// Declaration-time card-ref checks: a bare name must be a declared `unique`
+/// card unless it is a visible parameter.
+fn check_card_ref_names(c: &mut Compiler, r: &ast::ACardRef, params: &HashSet<String>) {
+    match r {
+        ast::ACardRef::Name(_, (sp, n)) => {
+            if !params.contains(n) {
+                c.check_card_unique(n, sp);
+            }
+        }
+        ast::ACardRef::Subject(_) => {}
+        ast::ACardRef::First { scope, terms, .. } => {
+            check_scope_names(c, scope, params);
+            for t in terms {
+                check_term_names(c, t, params);
             }
         }
     }
@@ -1574,19 +1750,24 @@ fn check_expr_names(c: &mut Compiler, e: &ast::AExpr, params: &HashSet<String>) 
             c.check_legacy_key(&key.1, &key.0);
         }
         ast::AExpr::Count { scope, terms, .. } => {
-            check_scope_names(c, scope);
+            check_scope_names(c, scope, params);
             for t in terms {
                 check_term_names(c, t, params);
             }
         }
         ast::AExpr::Total { scope, key, .. } => {
-            check_scope_names(c, scope);
+            check_scope_names(c, scope, params);
             c.check_aspect_key(&key.1, &key.0);
         }
         ast::AExpr::Alive { card, .. } => {
             if !params.contains(&card.1) {
                 c.check_card_unique(&card.1, &card.0);
             }
+        }
+        ast::AExpr::Rel { kind, from, to, .. } => {
+            c.check_relation_kind(&kind.1, &kind.0);
+            check_card_ref_names(c, from, params);
+            check_card_ref_names(c, to, params);
         }
         ast::AExpr::Neg(_, inner) => check_expr_names(c, inner, params),
         ast::AExpr::Bin { l, r, .. } => {
@@ -1597,9 +1778,16 @@ fn check_expr_names(c: &mut Compiler, e: &ast::AExpr, params: &HashSet<String>) 
     }
 }
 
-fn check_scope_names(c: &mut Compiler, s: &ast::AScope) {
-    if let ast::AScope::Zone(_, (sp, z)) = s {
-        c.check_zone(z, sp);
+fn check_scope_names(c: &mut Compiler, s: &ast::AScope, params: &HashSet<String>) {
+    match s {
+        ast::AScope::Zone(_, (sp, z)) => {
+            c.check_zone(z, sp);
+        }
+        ast::AScope::Related { kind, of, .. } => {
+            c.check_relation_kind(&kind.1, &kind.0);
+            check_card_ref_names(c, of, params);
+        }
+        _ => {}
     }
 }
 

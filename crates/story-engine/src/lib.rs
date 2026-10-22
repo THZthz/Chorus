@@ -60,7 +60,10 @@ pub enum Event {
     /// A situation adopted a `continue via` target instead of completing:
     /// the same instance goes on executing the target recipe with its timer
     /// re-armed (spec.md §4.2).
-    Continued { situation: SituationId, recipe: RecipeId },
+    Continued {
+        situation: SituationId,
+        recipe: RecipeId,
+    },
     /// A start chain ended silently: no eligible recipe, every `when` false,
     /// or the winner's guard refused.
     ChainEnded { verb: VerbId },
@@ -76,6 +79,23 @@ pub enum Event {
     /// failing verb's open rolls back alone. Advance traffic, not a
     /// Diagnostic.
     ResolutionFailed { sit: SituationId, reason: String },
+    /// A logical relation edge was written by an authored `relate` (one per
+    /// written edge, in the authored orientation). Boot edges emit nothing.
+    Related {
+        from: EntityId,
+        kind: String,
+        to: EntityId,
+    },
+    /// A logical relation edge was removed by an authored `unrelate` or an
+    /// exclusive steal (one per removed edge). A kinded `unrelate a from
+    /// b as k` reports the authored orientation; steal victims and kindless
+    /// severing report the stored orientation. Destruction drops edges
+    /// silently — never an `Unrelated`.
+    Unrelated {
+        from: EntityId,
+        kind: String,
+        to: EntityId,
+    },
 }
 
 /// A player's open request: the verb and the explicit slot bindings.
@@ -153,8 +173,8 @@ impl Engine {
             return Err(DiagKind::InstanceCapReached
                 .in_context(verb.id.to_string(), "the verb's instance cap is full"));
         }
-        self.validate_commit_bindings(&verb, &action.bindings)?;
-        match self.select(Source::Commit, &verb, None, Some(&action.bindings), None) {
+        self.validate_commit_bindings(verb, &action.bindings)?;
+        match self.select(Source::Commit, verb, None, Some(&action.bindings), None) {
             select::Selection::Matched(rec) => Ok(rec.id.clone()),
             select::Selection::GuardRefused(prose) => {
                 Err(DiagKind::GuardRefused.in_context(action.verb.to_string(), prose))
@@ -180,7 +200,7 @@ impl Engine {
                 DiagKind::UnresolvableRef.refused(format!("situation {sit} has no slot `{slot}`"))
             );
         };
-        let mut d = self.check_bindable(sit, &sd, e);
+        let mut d = self.check_bindable(sit, sd, e);
         if let Err(dg) = d.as_mut() {
             dg.context = format!("situation {sit}");
         }
@@ -293,7 +313,7 @@ impl Engine {
                 return Err(DiagKind::UnresolvableRef
                     .refused(format!("situation {sit} has no slot `{slot}`")));
             };
-            self.check_bindable(sit, &sd, e)?;
+            self.check_bindable(sit, sd, e)?;
         }
         let seq = bind_count(&self.state, sit);
         let bound_from = self.state.entities[&e].zone;

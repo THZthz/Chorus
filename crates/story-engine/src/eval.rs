@@ -5,7 +5,7 @@
 
 use crate::Engine;
 use std::collections::{BTreeMap, BTreeSet};
-use story_content::ir::{AspectTerm, CmpOp, Expr, QueryTerm, Scope, Target};
+use story_content::ir::{AspectTerm, CardRef, CmpOp, Expr, QueryTerm, Scope, Target};
 use story_core::{EntityId, RecipeId, SituationId, SlotName, ZoneId};
 
 /// The evaluation context: which situation's scopes read live, whose card the
@@ -74,13 +74,13 @@ impl Engine {
             Expr::Aspect { scope, query, key } => self
                 .scope_entities(scope, ctx)
                 .into_iter()
-                .filter(|e| self.matches(&e, query, ctx))
+                .filter(|e| self.matches(e, query, ctx))
                 .map(|e| self.read(e, key))
                 .sum(),
             Expr::Count { scope, query } => self
                 .scope_entities(scope, ctx)
                 .into_iter()
-                .filter(|e| self.matches(&e, query, ctx))
+                .filter(|e| self.matches(e, query, ctx))
                 .count() as i64,
             Expr::Exists { scope, query } => i64::from(
                 self.scope_entities(scope, ctx)
@@ -90,7 +90,7 @@ impl Engine {
             Expr::Attr { scope, query, key } => self
                 .scope_entities(scope, ctx)
                 .into_iter()
-                .filter(|e| self.matches(&e, query, ctx))
+                .filter(|e| self.matches(e, query, ctx))
                 .map(|e| self.read_attr(e, key))
                 .sum(),
             Expr::Legacy(key) => self.state.legacy.get(key).copied().unwrap_or(0),
@@ -103,6 +103,7 @@ impl Engine {
                 .unwrap_or(0),
             Expr::Clock => self.state.now,
             Expr::Alive(card) => i64::from(self.named_entity(card.as_str()).is_some()),
+            Expr::Rel { kind, from, to } => i64::from(self.eval_rel(kind, from, to, ctx)),
             Expr::Arith { op, left, right } => {
                 let a = self.eval_expr(left, ctx);
                 let b = self.eval_expr(right, ctx);
@@ -149,6 +150,76 @@ impl Engine {
         self.eval_expr(e, ctx) != 0
     }
 
+    // -- relations (kernel-api.md §5, spec.md §4.9) ---------------------------
+
+    /// Resolve one card ref: a unique card's live entity, the context's
+    /// subject, or `first(...)` over a scope. Total: an unresolved ref is a
+    /// dead endpoint (`None`).
+    pub(crate) fn resolve_card_ref(&self, r: &CardRef, ctx: &Ctx) -> Option<EntityId> {
+        match r {
+            CardRef::Name(card) => self.named_entity(card.as_str()),
+            CardRef::Subject => ctx.subject,
+            CardRef::Query { scope, terms } => self
+                .scope_entities(scope, ctx)
+                .into_iter()
+                .find(|e| self.matches(e, terms, ctx)),
+        }
+    }
+
+    /// The `rel(...)` edge test: symmetric kinds hold either way; a dead
+    /// endpoint or an undeclared kind reads false (T17).
+    fn eval_rel(&self, kind: &str, from: &CardRef, to: &CardRef, ctx: &Ctx) -> bool {
+        let (Some(a), Some(b)) = (
+            self.resolve_card_ref(from, ctx),
+            self.resolve_card_ref(to, ctx),
+        ) else {
+            return false;
+        };
+        let symmetric = self
+            .content
+            .relation_kind(kind)
+            .is_some_and(|k| k.symmetric);
+        story_core::edge_exists(&self.state.relations, a, kind, b, symmetric)
+    }
+
+    /// One endpoint's edges of one kind, deduplicated, ascending entity id
+    /// (mint order). Forward (`of`) reads the endpoint's subject entry;
+    /// incoming (`to`) scans for rows pointing at the endpoint; a symmetric
+    /// kind reads its partners under either spelling. A dead endpoint
+    /// enumerates nothing.
+    pub(crate) fn related_entities(
+        &self,
+        x: EntityId,
+        kind: &str,
+        incoming: bool,
+    ) -> Vec<EntityId> {
+        let symmetric = self
+            .content
+            .relation_kind(kind)
+            .is_some_and(|k| k.symmetric);
+        let mut out: BTreeSet<EntityId> = BTreeSet::new();
+        if !incoming || symmetric {
+            if let Some(objects) = self
+                .state
+                .relations
+                .get(&x)
+                .and_then(|kinds| kinds.get(kind))
+            {
+                out.extend(objects.iter().copied());
+            }
+        }
+        if incoming || symmetric {
+            for (subject, kinds) in &self.state.relations {
+                if let Some(objects) = kinds.get(kind) {
+                    if objects.contains(&x) {
+                        out.insert(*subject);
+                    }
+                }
+            }
+        }
+        out.into_iter().collect()
+    }
+
     // -- scopes (kernel-api.md §5, spec.md §4.7) -----------------------------
 
     /// Entities of one scope, in the scope's deterministic order. `Interior`,
@@ -164,6 +235,10 @@ impl Engine {
             Scope::Slot(name) => self.slot_bindings(ctx.sit, ctx.sel_bindings.as_deref(), name),
             Scope::Zone(name) => match self.zone_ids.get(name) {
                 Some(z) => self.zone_subtree_entities(*z),
+                None => Vec::new(),
+            },
+            Scope::Related { kind, of, incoming } => match self.resolve_card_ref(of, ctx) {
+                Some(x) => self.related_entities(x, kind, *incoming),
                 None => Vec::new(),
             },
             Scope::Table => self.table_entities(),
@@ -306,7 +381,7 @@ impl Engine {
                 .state
                 .entities
                 .get(e)
-                .is_some_and(|ent| &ent.name == c.as_str()),
+                .is_some_and(|ent| ent.name == c.as_str()),
             QueryTerm::Kind(k) => self
                 .state
                 .entities
@@ -346,7 +421,7 @@ impl Engine {
         terms: &story_content::ir::SlotDecl,
         ctx: &Ctx,
     ) -> bool {
-        self.matches(&e, &terms.query, ctx)
+        self.matches(e, &terms.query, ctx)
     }
 
     // -- targets (kernel-api.md §8) --------------------------------------------
@@ -367,7 +442,7 @@ impl Engine {
             Target::Query { scope, terms } => self
                 .scope_entities(scope, ctx)
                 .into_iter()
-                .filter(|e| self.matches(&e, terms, ctx))
+                .filter(|e| self.matches(e, terms, ctx))
                 .collect(),
             Target::BareQuery(terms) => {
                 let interior = self.scope_entities(&Scope::Interior, ctx);
@@ -375,7 +450,7 @@ impl Engine {
                 interior
                     .into_iter()
                     .chain(world)
-                    .filter(|e| self.matches(&e, terms, ctx))
+                    .filter(|e| self.matches(e, terms, ctx))
                     .collect()
             }
             Target::Handle(h) => handles.get(h).cloned().unwrap_or_default(),

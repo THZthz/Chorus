@@ -12,8 +12,8 @@ use story_content::runtime::{DiagKind, RuntimeDiagnostic};
 use story_content::Content;
 use story_core::rng::splitmix64;
 use story_core::{
-    Binding, CardId, DeckId, EntityId, SituationId, SituationSource, State, Time, VerbId,
-    Zone, ZoneId, ZoneKind,
+    Binding, CardId, DeckId, EntityId, SituationId, SituationSource, State, Time, VerbId, Zone,
+    ZoneId, ZoneKind,
 };
 
 /// The budget guard of one engine call: the entry checkpoint for the only
@@ -228,6 +228,80 @@ pub(crate) fn boot(
                 continue;
             }
             let _ = engine.mint_body(&own, &id, z, &fctx, &mut ev);
+        }
+    }
+
+    // Boot `relates` edges (spec.md §4.9): after all boot mints, before the
+    // t=0 checkpoint, in card declaration order. Subjects are every live
+    // entity of the declaring card, objects every live entity of each named
+    // card, both in mint order; a named card with no live instance warns and
+    // skips. Boot emits no events.
+    let mut related_cards: Vec<(u32, story_core::CardId, story_content::ir::CardDecl)> = engine
+        .content
+        .cards
+        .values()
+        .filter(|c| !c.relates.is_empty())
+        .map(|c| (c.decl_index, c.id.clone(), c.clone()))
+        .collect();
+    related_cards.sort_by_key(|(idx, _, _)| *idx);
+    for (_, id, decl) in related_cards {
+        let subjects: Vec<EntityId> = engine
+            .state
+            .entities
+            .values()
+            .filter(|e| e.name == id.as_str())
+            .map(|e| e.id)
+            .collect();
+        for (kind, object_names) in &decl.relates {
+            let (symmetric, exclusive) = engine
+                .content
+                .relation_kind(kind)
+                .map(|k| (k.symmetric, k.exclusive))
+                .unwrap_or((false, false));
+            for object_name in object_names {
+                let objects: Vec<EntityId> = engine
+                    .state
+                    .entities
+                    .values()
+                    .filter(|e| e.name == object_name.as_str())
+                    .map(|e| e.id)
+                    .collect();
+                if objects.is_empty() {
+                    diags.push(DiagKind::UnresolvableRef.warning(format!(
+                        "boot `relates {kind} {object_name}` on card `{id}` names no live instance; the edge is skipped"
+                    )));
+                    continue;
+                }
+                for a in &subjects {
+                    for b in &objects {
+                        if a == b {
+                            continue;
+                        }
+                        if exclusive {
+                            let victims: Vec<story_core::RemovedEdge> = if symmetric {
+                                story_core::edges_touching(&engine.state.relations, kind, *a, *b)
+                            } else {
+                                story_core::edges_into(&engine.state.relations, kind, *b)
+                            }
+                            .into_iter()
+                            .filter(|(f, _, t)| {
+                                !(*f == *a && *t == *b) && !(symmetric && *f == *b && *t == *a)
+                            })
+                            .collect();
+                            for (f, k, t) in victims {
+                                story_core::unrelate_edge(&mut engine.state.relations, f, &k, t);
+                            }
+                        }
+                        story_core::relate_edge(
+                            &mut engine.state.relations,
+                            *a,
+                            kind,
+                            *b,
+                            symmetric,
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -543,14 +617,9 @@ impl Engine {
                     })
                     .collect();
                 if !arms.is_empty() {
-                    let start = arms
-                        .iter()
-                        .position(|a| *a == executed)
-                        .unwrap_or(0);
-                    let remaining: Vec<story_core::RecipeId> =
-                        arms.drain(start..).collect();
-                    return self
-                        .continue_transition(sit, recipe_id, remaining, ev, run);
+                    let start = arms.iter().position(|a| *a == executed).unwrap_or(0);
+                    let remaining: Vec<story_core::RecipeId> = arms.drain(start..).collect();
+                    return self.continue_transition(sit, recipe_id, remaining, ev, run);
                 }
             }
         }
@@ -723,7 +792,10 @@ impl Engine {
         }
         let Some(target_id) = adopted else {
             self.release_and_remove(sit);
-            ev.push(Event::SituationCompleted { sit, recipe: current });
+            ev.push(Event::SituationCompleted {
+                sit,
+                recipe: current,
+            });
             return Ok(());
         };
         let target = self.recipe_of(&target_id);

@@ -7,7 +7,7 @@ use super::{Compiler, Env, ParamVal};
 use crate::ast;
 use crate::span::Span;
 use story_content::code;
-use story_content::ir::{self, ArithOp, CmpOp, Expr, LogicOp, QueryTerm, Scope};
+use story_content::ir::{self, ArithOp, CardRef, CmpOp, Expr, LogicOp, QueryTerm, Scope};
 use story_core::CardId;
 
 pub(crate) const INLINE_DEPTH_CAP: u32 = 16;
@@ -43,6 +43,7 @@ impl Compiler {
                     right: Box::new(r),
                 })
             }
+            ast::ACond::Rel { kind, from, to, .. } => self.lower_rel(kind, from, to, env),
             ast::ACond::Call { span, name, args } => self.pred_call(span, name, args, env),
             ast::ACond::Name(sp, name) => {
                 if self.preds.contains_key(&name.1) {
@@ -97,7 +98,7 @@ impl Compiler {
                 }
             }
             ast::AExpr::Count { span, scope, terms } => {
-                let scope = self.lower_scope(scope)?;
+                let scope = self.lower_scope(scope, env)?;
                 let terms = self.lower_query(terms, env);
                 let _ = span;
                 Some(Expr::Count {
@@ -106,7 +107,7 @@ impl Compiler {
                 })
             }
             ast::AExpr::Total { scope, key, .. } => {
-                let scope = self.lower_scope(scope)?;
+                let scope = self.lower_scope(scope, env)?;
                 if !self.check_aspect_key(&key.1, &key.0) {
                     return None;
                 }
@@ -123,6 +124,7 @@ impl Compiler {
                     None
                 }
             }
+            ast::AExpr::Rel { kind, from, to, .. } => self.lower_rel(kind, from, to, env),
             ast::AExpr::Neg(_, inner) => {
                 let inner = self.lower_arith(inner, env)?;
                 Some(Expr::Arith {
@@ -203,7 +205,7 @@ impl Compiler {
         }
     }
 
-    pub(crate) fn lower_scope(&mut self, s: &ast::AScope) -> Option<Scope> {
+    pub(crate) fn lower_scope(&mut self, s: &ast::AScope, env: &mut Env) -> Option<Scope> {
         match s {
             ast::AScope::Interior(_) => Some(Scope::Interior),
             ast::AScope::Table(_) => Some(Scope::Table),
@@ -220,7 +222,79 @@ impl Compiler {
             // Slot scopes read empty wherever the slot is not bound; no
             // compile-time registry check applies (totality, spec.md §4.7).
             ast::AScope::Slot(_, (_, n)) => Some(Scope::Slot(n.clone().into())),
+            ast::AScope::Related {
+                kind, of, incoming, ..
+            } => {
+                if !self.check_relation_kind(&kind.1, &kind.0) {
+                    return None;
+                }
+                let of = self.lower_card_ref(of, env)?;
+                Some(Scope::Related {
+                    kind: kind.1.clone(),
+                    of: Box::new(of),
+                    incoming: *incoming,
+                })
+            }
         }
+    }
+
+    /// Lower a relation endpoint (language.md §3): a visible card parameter
+    /// substitutes (type mismatch [E245]); a bare name is unique-checked
+    /// [E239]; `first(...)` reuses the scope and query machinery.
+    pub(crate) fn lower_card_ref(&mut self, r: &ast::ACardRef, env: &mut Env) -> Option<CardRef> {
+        match r {
+            ast::ACardRef::Name(sp, (nsp, n)) => {
+                if let Some((_, val)) = env.params.iter().rev().find(|(p, _)| p == n) {
+                    return match val.clone() {
+                        ParamVal::Card(id) => Some(CardRef::Name(id)),
+                        ParamVal::Subject => Some(CardRef::Subject),
+                        ParamVal::Int(_) => {
+                            self.err(
+                                sp.error(
+                                    code::E245,
+                                    format!(
+                                        "parameter `{n}` is bound to an integer expression here, not a card reference"
+                                    ),
+                                ),
+                            );
+                            None
+                        }
+                    };
+                }
+                if self.check_card_unique(n, nsp) {
+                    Some(CardRef::Name(CardId::from(n.clone())))
+                } else {
+                    None
+                }
+            }
+            ast::ACardRef::Subject(_) => Some(CardRef::Subject),
+            ast::ACardRef::First { scope, terms, .. } => {
+                let scope = self.lower_scope(scope, env)?;
+                let terms: Vec<QueryTerm> = self.lower_query(terms, env);
+                Some(CardRef::Query { scope, terms })
+            }
+        }
+    }
+
+    /// The `rel(<kind>, <from>, <to>)` operand: kind declared [E248],
+    /// endpoints total (a dead endpoint reads false).
+    fn lower_rel(
+        &mut self,
+        kind: &(Span, String),
+        from: &ast::ACardRef,
+        to: &ast::ACardRef,
+        env: &mut Env,
+    ) -> Option<Expr> {
+        if !self.check_relation_kind(&kind.1, &kind.0) {
+            return None;
+        }
+        let from = self.lower_card_ref(from, env)?;
+        let to = self.lower_card_ref(to, env)?;
+        Some(Expr::Rel {
+            kind: kind.1.clone(),
+            from: Box::new(from),
+            to: Box::new(to),
+        })
     }
 
     pub(crate) fn lower_query(
@@ -242,7 +316,7 @@ impl Compiler {
                 }
                 Some(QueryTerm::Aspect(ir::AspectTerm {
                     key: key.1.clone(),
-                    op: op.map(|o| cmp_op(o)),
+                    op: op.map(cmp_op),
                     value: *value,
                 }))
             }
@@ -446,9 +520,9 @@ impl Compiler {
                     }
                 }
             } else {
-                match self.lower_arith(arg, env) {
-                    Some(x) => bound.push((pname.clone(), ParamVal::Int(x))),
-                    None => return None,
+                {
+                    let x = self.lower_arith(arg, env)?;
+                    bound.push((pname.clone(), ParamVal::Int(x)))
                 }
             }
         }

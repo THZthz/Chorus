@@ -9,7 +9,7 @@ use crate::settle::Run;
 use crate::{Engine, Event, StartSkipReason};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use story_content::ir::{EffectNode, Expr, Into as IntoZone};
+use story_content::ir::{AspectTerm, CmpOp, EffectNode, Expr, Into as IntoZone, QueryTerm, Scope};
 use story_content::runtime::DiagKind;
 use story_core::{EntityId, State};
 
@@ -322,6 +322,12 @@ impl Engine {
                 // records.
                 fctx.continued = Some(recipe.clone());
             }
+            EffectNode::Relate { from, to, kind } => {
+                self.apply_relate(from, to, kind, fctx, recipe, ev);
+            }
+            EffectNode::Unrelate { from, to, kind } => {
+                self.apply_unrelate(from, to, kind.as_deref(), fctx, recipe, ev);
+            }
             EffectNode::Signal { event } => {
                 let Some(book) = self.content.events.get(event).cloned() else {
                     return Err(Fail::new(
@@ -384,6 +390,111 @@ impl Engine {
             }
         }
         Ok(())
+    }
+
+    /// `relate <from> to <to> as <kind>`: subjects × objects in resolved
+    /// order; self-pairs skipped silently; an exclusive kind steals first
+    /// (one `Unrelated` per victim, map order, before the `Related`); one
+    /// `Related` per written logical edge (authored orientation).
+    fn apply_relate(
+        &mut self,
+        from: &story_content::ir::Target,
+        to: &story_content::ir::Target,
+        kind: &str,
+        fctx: &EffectCtx,
+        recipe: Option<story_core::RecipeId>,
+        ev: &mut Vec<Event>,
+    ) {
+        let ctx = fctx.eval_ctx(recipe.as_ref());
+        let subjects = self.resolve_target(from, &ctx, &fctx.handles);
+        let objects = self.resolve_target(to, &ctx, &fctx.handles);
+        let (symmetric, exclusive) = self.relation_flags(kind);
+        for a in subjects {
+            for b in objects.clone() {
+                if a == b {
+                    continue;
+                }
+                if exclusive {
+                    let victims: Vec<story_core::RemovedEdge> = if symmetric {
+                        story_core::edges_touching(&self.state.relations, kind, a, b)
+                    } else {
+                        story_core::edges_into(&self.state.relations, kind, b)
+                    }
+                    .into_iter()
+                    .filter(|(f, _, t)| !(*f == a && *t == b) && !(symmetric && *f == b && *t == a))
+                    .collect();
+                    for (f, k, t) in victims {
+                        if story_core::unrelate_edge(&mut self.state.relations, f, &k, t) {
+                            ev.push(Event::Unrelated {
+                                from: f,
+                                kind: k,
+                                to: t,
+                            });
+                        }
+                    }
+                }
+                if story_core::relate_edge(&mut self.state.relations, a, kind, b, symmetric) {
+                    ev.push(Event::Related {
+                        from: a,
+                        kind: kind.to_string(),
+                        to: b,
+                    });
+                }
+            }
+        }
+    }
+
+    /// `unrelate <from> from <to> [as <kind>]`: an omitted kind severs every
+    /// logical edge between each pair, either direction, each once (stored
+    /// orientation in the events).
+    fn apply_unrelate(
+        &mut self,
+        from: &story_content::ir::Target,
+        to: &story_content::ir::Target,
+        kind: Option<&str>,
+        fctx: &EffectCtx,
+        recipe: Option<story_core::RecipeId>,
+        ev: &mut Vec<Event>,
+    ) {
+        let ctx = fctx.eval_ctx(recipe.as_ref());
+        let subjects = self.resolve_target(from, &ctx, &fctx.handles);
+        let objects = self.resolve_target(to, &ctx, &fctx.handles);
+        for a in subjects {
+            for b in objects.clone() {
+                if a == b {
+                    continue;
+                }
+                match kind {
+                    Some(k) => {
+                        if story_core::unrelate_edge(&mut self.state.relations, a, k, b) {
+                            ev.push(Event::Unrelated {
+                                from: a,
+                                kind: k.to_string(),
+                                to: b,
+                            });
+                        }
+                    }
+                    None => {
+                        for (f, k, t) in story_core::sever_pair(&mut self.state.relations, a, b) {
+                            ev.push(Event::Unrelated {
+                                from: f,
+                                kind: k,
+                                to: t,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The declared flags of a relation kind; the compiler guarantees every
+    /// authored kind is declared, so the fallback is defensive.
+    fn relation_flags(&self, kind: &str) -> (bool, bool) {
+        self.content
+            .relation_kind(kind)
+            .map(|k| (k.symmetric, k.exclusive))
+            .unwrap_or((false, false))
     }
 
     /// `start <verb> [via <recipe>] [count <n>]`: fan-out is best-effort —
@@ -610,6 +721,10 @@ impl Engine {
         if let Some(key) = tok.strip_prefix("legacy.") {
             return self.state.legacy.get(key).copied().unwrap_or(0).to_string();
         }
+        if let Some(rest) = tok.strip_prefix("related:") {
+            let ids = self.related_token_entities(rest, &ctx);
+            return self.render_names(&ids);
+        }
         if let Some((head, key)) = tok.split_once('.') {
             if head == "subject" {
                 return match ctx.subject {
@@ -658,4 +773,159 @@ impl Engine {
             .collect::<Vec<_>>()
             .join(", ")
     }
+
+    // -- related-token reading (language.md §7) -------------------------------
+    //
+    // `{related:<kind> (of|to) <card-ref>}` rides in the narrate template as
+    // text; the checker (story-lang) admits exactly the spellings this
+    // reader understands: a unique name, `subject`, or `first(<scope>
+    // [<terms>])` over the aspect:/kind:/name:/- term forms.
+
+    fn related_token_entities(&self, rest: &str, ctx: &crate::eval::Ctx) -> Vec<EntityId> {
+        let Some((kind, after)) = rest.split_once(char::is_whitespace) else {
+            return Vec::new();
+        };
+        let after = after.trim_start();
+        let (incoming, ref_text) = match strip_direction_word(after) {
+            Some((incoming, t)) => (incoming, t),
+            None => return Vec::new(),
+        };
+        let Some(x) = self.parse_card_ref_text(ref_text, ctx) else {
+            return Vec::new();
+        };
+        self.related_entities(x, kind, incoming)
+    }
+
+    /// The card-ref spelling of a `related:` token, resolved per read.
+    fn parse_card_ref_text(&self, text: &str, ctx: &crate::eval::Ctx) -> Option<EntityId> {
+        let r = self.parse_card_ref_ir(text)?;
+        self.resolve_card_ref(&r, ctx)
+    }
+
+    /// The card-ref spelling as IR, so the shared resolution runs per read.
+    fn parse_card_ref_ir(&self, text: &str) -> Option<story_content::ir::CardRef> {
+        let text = text.trim();
+        if text == "subject" {
+            return Some(story_content::ir::CardRef::Subject);
+        }
+        if let Some(inner) = text.strip_prefix("first(") {
+            let body = inner.strip_suffix(')')?.trim();
+            let (scope_word, term_part) = match body.split_once(char::is_whitespace) {
+                Some((w, t)) => (w, t.trim()),
+                None => (body, ""),
+            };
+            let ctx = crate::eval::Ctx::default();
+            let scope = self.parse_scope_text(scope_word, &ctx)?;
+            let terms = self.parse_terms_text(term_part)?;
+            return Some(story_content::ir::CardRef::Query { scope, terms });
+        }
+        Some(story_content::ir::CardRef::Name(story_core::CardId::from(
+            text.to_string(),
+        )))
+    }
+
+    fn parse_scope_text(&self, scope: &str, ctx: &crate::eval::Ctx) -> Option<Scope> {
+        let _ = ctx;
+        match scope {
+            "world" => return Some(Scope::World),
+            "interior" => return Some(Scope::Interior),
+            "table" => return Some(Scope::Table),
+            "anywhere" => return Some(Scope::Anywhere),
+            "bound" => return Some(Scope::Bindings),
+            _ => {}
+        }
+        if let Some(z) = scope.strip_prefix("zone:") {
+            return Some(Scope::Zone(z.to_string()));
+        }
+        if let Some(s) = scope.strip_prefix("slot:") {
+            return Some(Scope::Slot(story_core::SlotName::from(s.to_string())));
+        }
+        if let Some(rest) = scope.strip_prefix("related:") {
+            let (kind, after) = rest.split_once(char::is_whitespace)?;
+            let after = after.trim_start();
+            let (incoming, ref_text) = match strip_direction_word(after) {
+                Some((incoming, t)) => (incoming, t),
+                None => return None,
+            };
+            let of = self.parse_card_ref_ir(ref_text)?;
+            return Some(Scope::Related {
+                kind: kind.to_string(),
+                of: Box::new(of),
+                incoming,
+            });
+        }
+        None
+    }
+
+    fn parse_terms_text(&self, terms: &str) -> Option<Vec<QueryTerm>> {
+        let mut out = Vec::new();
+        for term in terms.split_whitespace() {
+            if let Some(rest) = term.strip_prefix('-') {
+                let mut inner = self.parse_terms_text(rest)?;
+                out.push(QueryTerm::Not(Box::new(inner.remove(0))));
+                continue;
+            }
+            if let Some(spec) = term.strip_prefix("aspect:") {
+                out.push(parse_aspect_term(spec)?);
+                continue;
+            }
+            if let Some(k) = term.strip_prefix("kind:") {
+                out.push(QueryTerm::Kind(k.to_string()));
+                continue;
+            }
+            if let Some(n) = term.strip_prefix("name:") {
+                out.push(QueryTerm::Name(story_core::CardId::from(n.to_string())));
+                continue;
+            }
+            return None;
+        }
+        Some(out)
+    }
+}
+
+/// `of` / `to` after the kind, word-bounded; returns the incoming flag and
+/// the card-ref text.
+fn strip_direction_word(after: &str) -> Option<(bool, &str)> {
+    for (word, incoming) in [("of", false), ("to", true)] {
+        if let Some(t) = after.strip_prefix(word) {
+            if t.is_empty() || t.starts_with(char::is_whitespace) {
+                return Some((incoming, t.trim()));
+            }
+        }
+    }
+    None
+}
+
+/// `aspect:<k>` with its optional comparison (`aspect:heat>=2`).
+fn parse_aspect_term(spec: &str) -> Option<QueryTerm> {
+    let idx = spec.find(['<', '>', '=', '!']);
+    let Some(i) = idx else {
+        return Some(QueryTerm::Aspect(AspectTerm {
+            key: spec.to_string(),
+            op: None,
+            value: 1,
+        }));
+    };
+    let key = spec[..i].to_string();
+    let rest = &spec[i..];
+    let (op, value_str) = if let Some(v) = rest.strip_prefix(">=") {
+        (CmpOp::Ge, v)
+    } else if let Some(v) = rest.strip_prefix("<=") {
+        (CmpOp::Le, v)
+    } else if let Some(v) = rest.strip_prefix("==") {
+        (CmpOp::Eq, v)
+    } else if let Some(v) = rest.strip_prefix("!=") {
+        (CmpOp::Ne, v)
+    } else if let Some(v) = rest.strip_prefix('>') {
+        (CmpOp::Gt, v)
+    } else {
+        let v = rest.strip_prefix('<')?;
+        (CmpOp::Lt, v)
+    };
+    let value: i64 = value_str.parse().ok()?;
+    Some(QueryTerm::Aspect(AspectTerm {
+        key,
+        op: Some(op),
+        value,
+    }))
 }

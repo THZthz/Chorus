@@ -49,12 +49,15 @@ pub struct State {
     pub entities: BTreeMap<EntityId, Entity>,
     pub zones: BTreeMap<ZoneId, Zone>,
     pub situations: BTreeMap<SituationId, Situation>,
+    pub relations: Relations,                   // subject -> kind -> objects; spec.md §4.9
     pub decks: BTreeMap<DeckId, u64>,           // permutation cursors
     pub recipe_runs: BTreeMap<RecipeId, u32>,   // max counters (+1 at instantiation)
     pub fired_once: BTreeSet<TriggerRuleId>,
     pub legacy: BTreeMap<String, i64>,
     pub ended: Option<EndingId>,
 }
+
+pub type Relations = BTreeMap<EntityId, BTreeMap<String, BTreeSet<EntityId>>>;
 
 pub struct Entity {
     pub id: EntityId, pub name: String, pub prototype: CardId,
@@ -78,7 +81,7 @@ pub enum SituationSource { Commit, Autonomous, Start { parent: SituationId } }
 pub struct Binding { pub entity: EntityId, pub bound_from: ZoneId, pub seq: u64 }   // seq: bind order within the situation
 ```
 
-Key points: aspect keys are flat; **locks are derived** (walk `situations.bindings`; there is no redundant lock table); zones are first-class (the `public × bindable` policy bits carry visibility and bindability, defaults per spec.md §4.1); `clock` reads `state.now`, which starts at 0 at boot. `attrs` never receive writes from authored effects — the compiled IR contains no attribute-writing node.
+Key points: aspect keys are flat; **locks are derived** (walk `situations.bindings`; there is no redundant lock table); zones are first-class (the `public × bindable` policy bits carry visibility and bindability, defaults per spec.md §4.1); `clock` reads `state.now`, which starts at 0 at boot. `attrs` never receive writes from authored effects — the compiled IR contains no attribute-writing node. `relations` stores one row per logical edge — subject by entity id, kinds lexicographic, objects by entity id — a symmetric kind's row under the canonical subject `min(from, to)`; pure edge ops (`relate_edge`, `unrelate_edge`, `sever_pair`, `drop_entity_edges`, `edge_exists`, `edges_into`, `edges_touching`) live beside `State` in `story-core` and take the declared kind's flags from `Content.relation_kinds`. Destruction drops every edge touching the dying card, silently; `move` never touches edges.
 
 A snapshot is the full `State` plus an envelope:
 
@@ -114,6 +117,15 @@ pub enum Event {
     /// A resolution unit failed and rolled back; its situation aborted through
     /// the release path. Advance traffic, deliberately not a Diagnostic.
     ResolutionFailed { sit: SituationId, reason: String },
+    /// A logical relation edge was written by an authored `relate` (one per
+    /// written edge, authored orientation). Boot edges emit nothing.
+    Related { from: EntityId, kind: String, to: EntityId },
+    /// A logical relation edge was removed by an authored `unrelate` or an
+    /// exclusive steal (one per removed edge). A kinded `unrelate a from
+    /// b as k` reports the authored orientation; steal victims and kindless
+    /// severing report the stored orientation. Destruction drops edges
+    /// silently — never an `Unrelated`.
+    Unrelated { from: EntityId, kind: String, to: EntityId },
 }
 pub enum StartSkipReason { InstanceCap, MaterializationFailed }
 ```
@@ -144,6 +156,8 @@ pub enum EffectNode {
     Draw { deck: DeckId, count: Expr, into: Option<Into> },
     Start { verb: VerbId, via: Option<RecipeId>, count: Expr },
     Continue { recipe: RecipeId },                      // recipe effects only; [E247] elsewhere
+    Relate { from: Target, to: Target, kind: String },  // total; one Related per written edge
+    Unrelate { from: Target, to: Target, kind: Option<String> },  // None severs every edge per pair
     Signal { event: String },
     Ending { id: EndingId },
     Branch { cond: Expr, then: Vec<EffectNode>, els: Vec<EffectNode> },
@@ -174,16 +188,18 @@ Extension without kernel changes: host Rust registers `Host` closures by name; `
 ## 5. Engine-Side Queries and Expressions
 
 ```rust
-enum Scope { Interior, Bindings, Slot(SlotName), Zone(ZoneId), Table, World /* public */, Anywhere }
+enum Scope { Interior, Bindings, Slot(SlotName), Zone(ZoneId), Related { kind, of: CardRef, incoming },
+             Table, World /* public */, Anywhere }
+enum CardRef { Name(CardId), Subject, Query { scope, terms } }   // relation endpoints
 enum Expr { Lit(i64), Bool(bool), NamePath { card, key }, Subject(key),
             Aspect { scope, query, key }, Count { scope, query }, Exists { scope, query },
             Attr { scope, query, key }, Legacy(LegacyKey), Roll, Counter, Clock,
-            Alive(String), Arith, Cmp, Logic, Not }
+            Alive(String), Rel { kind, from: CardRef, to: CardRef }, Arith, Cmp, Logic, Not }
 ```
 
 The engine-side grammar mirrors the DSL's (language.md §3). `Interior` is the interior zone of the situation whose resolution is currently running — for a `start` fired inside a completion, the parent situation's interior with its still-locked bindings. `Slot(s)` is the context's binding set for that slot name. `Zone(z)` includes the nested subtree. `Bindings` (the `bound` scope) counts per binding — a card bound in two slots counts twice; it reads empty outside a running situation, as do `Interior` and `Slot`. `Table` is the public live cards plus every situation's non-greedy slot bindings; greedy bindings and situation interiors are excluded. `kind:<k>` terms compare against `Entity.kind`; the compiler validates the kind against the collected card declarations [E203].
 
-**Totality.** Evaluation cannot fail: an aspect read falls back to the key's declared read default — a card without the key and a dead or absent entity alike — and an attr read is 0; empty-set `count` = 0 and `exists` = false; an unbound slot scope is empty; an unbound roll is 0; `x / 0` = 0; a constant zero divisor is a compile error. Derived predicates are inlined at story-lang compile time — the kernel never sees one.
+**Totality.** Evaluation cannot fail: an aspect read falls back to the key's declared read default — a card without the key and a dead or absent entity alike — and an attr read is 0; empty-set `count` = 0 and `exists` = false; an unbound slot scope is empty; an unbound roll is 0; `x / 0` = 0; a constant zero divisor is a compile error. `Rel` with a dead or absent endpoint reads false, and a `Related` scope on one enumerates nothing — `resolve_card_ref` (`Name` → the unique card's live entity, `Subject` → the context's subject, `Query` → the scope's first term-matching candidate in scope order) is total the same way. Symmetric kinds read direction-agnostically; enumeration is deduplicated, ascending entity id (mint order), with no reverse index — incoming enumeration scans rows whose object set contains the endpoint. Derived predicates are inlined at story-lang compile time — the kernel never sees one.
 
 ## 6. Time, Settlement, and Budgets
 
@@ -218,6 +234,7 @@ Implementation notes pairing with spec.md §4.5–§4.7 and language.md §4–§
 - **Start candidacy and materialization.** For `start` and autonomous sources, the minimum-fill test counts greedy candidates in the current state: entities that are unbound, in public bindable zones, and filter-matching for the slot. A recipe passing the test but failing materialization (greedy top-up still short of a minimum) yields `StartSkipped { reason: MaterializationFailed }` with no rollback of the parent resolution.
 - **Locking.** `can_bind` refuses `EntityLocked` for any entity bound by any live instance, regardless of which situation asks.
 - **Context-free books.** `on expire` and `on event` rules evaluate with `sit = None`: `Interior`, `Slot`, and `Bindings` scopes read as empty sets.
+- **Relations.** `Relate` resolves both targets (shared target grammar), then applies subjects × objects in resolved order: self-pairs skipped silently, exclusive kinds steal first (`Unrelated` per victim in map order, stored orientation, before the `Related`), one `Related` per written logical edge (authored orientation). `Unrelate` with a kind removes that edge per pair; without, `sever_pair` removes every logical edge between the pair, either direction, once per edge. `destroy_entity` calls `drop_entity_edges` — one edit covering destroy, consume, swap, and default expiry — silently. Boot applies card `relates` lines after all boot mints and before the t=0 checkpoint, in card declaration order, objects resolving to every live same-name entity; missing objects are boot warnings (`UnresolvableRef`, warning severity) and no events are emitted. Slot eligibility and greedy candidacy never read relations; a slot filter may test them through a `QueryTerm::Pred` whose body evaluates with the candidate as `ctx.subject`.
 
 ## 9. Testable Invariants
 
@@ -239,6 +256,11 @@ Each statement is directly assertable by a test:
 - **T14 Per-binding writes.** `set slot:<name> aspect:<k> += 1` writes exactly once per bound card; `total(bound, aspect:<k>)` counts a twice-bound card twice.
 - **T15 Continuation.** A `continue via` step adopts the target recipe, releases the non-consuming bindings into the interior as unbound storage, re-arms the timer, and emits `Continued`; a target whose `when` misses the interior sums — or whose `max` is spent — completes normally; a timer-bounded self-continue loops once per re-arm, and an instant self-continue loop ends in the Livelock rollback.
 - **T16 Table scope.** `table` counts the public live cards plus every situation's non-greedy slot bindings, and excludes greedy bindings and situation interiors.
+- **T17 Relation totality.** `rel(...)` reads false and `related:` scopes read empty for dead or absent endpoints (an unresolved `first(...)` included); `count`/`total` read 0, existence tests read false, in every book context including context-free ones.
+- **T18 Relation persistence.** Same content + seed + operations give identical `state.relations` (canonical orientation included); `snapshot()` → `restore()` round-trips relations; undo (the host-held pre-action snapshot) restores them bit-for-bit after a steal and after a destruction.
+- **T19 Destroy drops edges.** Destroying either endpoint removes every logical edge touching it, via `destroy`, `consume`, `swap`, and default expiry destruction; the surviving endpoint's other edges survive; the drops are silent.
+- **T20 Symmetric and exclusive maintenance.** A symmetric `relate` stores one canonical row yet reads as `rel` both ways, and `unrelate` clears it; an exclusive directed `relate` removes prior holders (`Unrelated` per victim, map order, before the `Related`); a symmetric exclusive `relate` steals prior partners of either endpoint; non-exclusive kinds accumulate holders.
+- **T21 Event fidelity.** Exactly one `Related` per written and one `Unrelated` per removed logical edge from authored effects and steals; self-pairs, no-op unrelates, and destroy-drops emit nothing.
 
 ## 10. M2 Test Matrix
 
@@ -287,4 +309,17 @@ Behavioral coverage contract: at least one positive and one refusal path per mec
 33. the `table` scope — world cards and non-greedy bindings counted, greedy bindings and interiors excluded.
 34. the widened card-book walk — unbound interior storage books at completion, and the interior-pool catalyst pass for aspect-qualified books, scoped per stack to cards whose own declaration carries the qualifier.
 
-Every entry in §9 (T1–T14) carries an executable assertion as well.
+**Relations entries (spec.md §4.9):**
+
+35. `relate`/`unrelate` basic — the written and removed edges read and speak; multi-target endpoints apply per pair in resolved order;
+36. symmetric two-way read over single canonical storage — one row under the min endpoint, `rel` holds both ways, enumeration matches from either end;
+37. exclusive steal with events — directed per-object eviction and symmetric valence-1 partnership, `Unrelated` per victim before the `Related`;
+38. `rel()` positive/negative/dead-endpoint faces, inside a slot-filter predicate (candidate as subject) and an expiry book (`subject`);
+39. the `related:` scope in `count`/existence/`total` and as an effect target (per-card `set` walk), enumerating over cards living in situation interiors and carrier zones;
+40. boot `relates` lines — edges present at t=0, multi-count objects resolving to every live copy, missing-object warning with play proceeding;
+41. snapshot round-trip and undo of relations, after a steal and after a destruction;
+42. move independence — relations survive `move` into zones and carriers, and die on destroy, silently;
+43. `first(...)` endpoints — oldest-copy resolution, the `slot:` endpoint, empty reads false/empty;
+44. `unrelate` without a kind severs all kinds between the pair, either direction, once per logical edge.
+
+Every entry in §9 (T1–T21) carries an executable assertion as well.

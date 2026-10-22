@@ -111,7 +111,7 @@ impl Engine {
             if except.contains(&ent.id) {
                 return false;
             }
-            let same = &ent.name == card.as_str();
+            let same = ent.name == card.as_str();
             match mint {
                 MintPolicy::Stackable => false,
                 MintPolicy::SingleCopy | MintPolicy::Unique => same,
@@ -184,8 +184,10 @@ impl Engine {
     }
 
     /// Remove a live entity: it drops every binding immediately (no
-    /// dead-reference re-resolution), and its carrier zone, if any, releases
-    /// its occupants to home (spec.md §4.4).
+    /// dead-reference re-resolution), every logical edge touching it (its
+    /// own relations included — silently, as for every destruction), and
+    /// its carrier zone, if any, releases its occupants to home (spec.md
+    /// §4.4, §4.9).
     pub(crate) fn destroy_entity(&mut self, e: EntityId) {
         for sit in self.state.situations.values_mut() {
             for binds in sit.bindings.values_mut() {
@@ -193,6 +195,7 @@ impl Engine {
             }
         }
         self.state.entities.remove(&e);
+        story_core::drop_entity_edges(&mut self.state.relations, e);
         let carrier = self
             .state
             .zones

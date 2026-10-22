@@ -82,6 +82,7 @@ cards
   - `unique` together with `stackable` or `group` is [E221].
 - **Mint aliasing.** `mint <card>` declares an alias: the named card's body is the template for every mint of this name. Boot (`start`) instances always materialize from the card's own declared body.
 - `lifetime <duration>`: every mint arms decay from the mint moment. A bound (locked) card's timer is deferred while locked (spec.md §4.6).
+- `relates <kind> <card>, ...`: boot edges (§2.9) — at boot, every live instance of this card relates toward every live instance of each named card. An unknown kind is [E248]; an unknown card is [E244]; a named card with no live boot instance warns at boot and the edge is skipped.
 - Name paths in expressions (`beacon.heat`) and name targets in effects address `unique` cards only [E239].
 - A card may carry `on complete [<aspect>]` books — §5.
 
@@ -187,6 +188,25 @@ zones
 - `meta <key> <value>`: the key is `lower_snake` and never declared; the value is a double-quoted string. Any number of lines attach to the declaration above them. A repeated key on one declaration is [E236] — as is a repeated `on complete` qualifier on one card (§5).
 - The compiled content carries each declaration's annotations as a key–value string map; the kernel never reads it. Tools hang UI, layout, and documentation data without grammar changes or kernel knowledge.
 
+### 2.9 The `relations` Registry
+
+```
+relations
+  carries exclusive          # directed (default) + exclusive
+  married symmetric exclusive
+  adjacent symmetric
+  north_of                   # directed, no flags
+```
+
+Relation kinds are declared names with flags, forming their own registry — disjoint from card `kind` tags (different namespaces, like aspect keys; no collision rule). A duplicate kind is [E232], reported at the second declaration with both sites named. Flags are order-free; `directed` is the default and has no keyword; an unknown flag is ordinary syntax [E201].
+
+- A **directed** edge is stored under its own subject and tests that direction only.
+- A **symmetric** edge is stored once, under the canonical subject (the smaller entity id — mint order), and every read is direction-agnostic: `rel(married, a, b)` and `rel(married, b, a)` are the same question.
+- An **exclusive** kind is a write-time rule: directed + exclusive keeps at most one `from` per object — a second `relate` *steals* (the prior edge is removed first, each victim emitting `Unrelated`, then the new edge emits `Related`); symmetric + exclusive gives each endpoint valence 1 (partner semantics — a new edge steals every edge of that kind touching either endpoint). Non-exclusive kinds accumulate freely.
+- Boot edges: a card line `relates <kind> <card>, ...` relates every boot instance of the card toward every live instance of each named card, applied after all boot mints and before the t=0 checkpoint, in card declaration order. A named card with no live boot instance is a boot warning (play proceeds) and the edge is skipped; boot emits no events. Edges to cards minted after boot come only from authored `relate` (§4.3).
+
+Every kind read or written anywhere must be declared here; an undeclared kind is [E248].
+
 ## 3. Expressions, Queries, and Scopes
 
 ```
@@ -197,9 +217,19 @@ comparison := arith (">=" | "<=" | ">" | "<" | "==" | "!=") arith
 arith      := term (("+" | "-" | "*" | "/") term)*      # integers; division floors
 ```
 
-**Operands:** unique-card name paths (`beacon.heat`), `count(<scope>, <query>)`, `total(<scope>, aspect:<key>)`, `alive(<card>)`, `clock`, `legacy.<key>`, roll bindings (`sight`, inside the effect list that declared them), and duration literals (their minute count). Division by zero evaluates to 0 (totality preserved); a constant zero divisor is a compile error [E242].
+**Operands:** unique-card name paths (`beacon.heat`), `count(<scope>, <query>)`, `total(<scope>, aspect:<key>)`, `alive(<card>)`, `rel(<kind>, <card-ref>, <card-ref>)`, `clock`, `legacy.<key>`, roll bindings (`sight`, inside the effect list that declared them), and duration literals (their minute count). Division by zero evaluates to 0 (totality preserved); a constant zero divisor is a compile error [E242]. `rel(...)` tests the logical edge between the two endpoints — symmetric kinds hold either way; a dead endpoint reads false; an unknown kind is [E248]. It composes with `and`/`or`/`not` and predicates: predicate card parameters substitute into any card-ref position and are type-checked there ([E245] on a mismatch), so `predicate holds_alice(c) = rel(carries, alice, c)` is a slot filter.
 
-**Scopes:** `interior`, `table`, `world`, `zone:<Z>`, `slot:<name>`, `bound`, `anywhere`.
+**Card refs.** A relation endpoint (`rel(...)` argument, `related:` scope, `{related:...}` token) is one of:
+
+```
+<card-ref> ::= <unique-card>                    # a unique card name [E239]
+             | subject                          # the context card
+             | first(<scope> [<query terms>])   # first match in scope order
+```
+
+`subject` is the query-position candidate inside slot filters and queries, the bound card in a card completion book, the dying card in an expiry book; outside a subject context it reads as a dead endpoint. `first(...)` re-resolves at every evaluation: the scope's first candidate that matches the terms, in the scope's own deterministic order — this is how non-unique cards become endpoint-addressable (`first(related:carries of alice name:sword)`). An unresolved ref is a *dead endpoint*: `rel` reads false and a `related:` scope reads empty — totality, no special cases.
+
+**Scopes:** `interior`, `table`, `world`, `zone:<Z>`, `slot:<name>`, `bound`, `anywhere`, `related:<kind> (of | to) <card-ref>`.
 
 - `interior` — the interior of the situation whose resolution is running;
 - `slot:<name>` — the slot's bound cards in the running situation;
@@ -207,7 +237,11 @@ arith      := term (("+" | "-" | "*" | "/") term)*      # integers; division flo
 - `zone:<Z>` — the zone with its nested subtree;
 - `table` — the public live cards plus every situation's non-greedy slot bindings; greedy bindings and situation interiors are excluded;
 - `world` — public live cards;
-- `anywhere` — all live cards.
+- `anywhere` — all live cards;
+- `related:<kind> of <card-ref>` — the endpoint's edges of one kind (what alice carries);
+- `related:<kind> to <card-ref>` — edges pointing at the endpoint (who relates `north_of` to the hall); for symmetric kinds both spellings read the same partners.
+
+`related:` is a root scope like `slot:`: it *replaces* the scope position (there is no scope algebra) and its results are filtered by ordinary query terms — `count(related:carries of alice, kind:weapon)`. It is **location-transparent**: it enumerates related live cards wherever they live — situation interiors, hidden zones, carriers included — because relations are facts, not locations. Enumeration order is mint order (oldest first), the same law as every scope.
 
 In contexts without a running situation — `on expire` rules, `on event` rules, commit selection, autonomous polls — `interior`, `slot:`, and `bound` read as empty sets.
 
@@ -217,13 +251,13 @@ In contexts without a running situation — `on expire` rules, `on event` rules,
 
 ### 4.1 The Closed Vocabulary
 
-The authored set: `spawn`, `destroy`, `consume`, `swap`, `set`, `move`, `legacy`, `narrate`, `roll`, `draw`, `start`, `continue`, `signal`, `ending`, `if/else`. Nothing else is authored as an effect kind: the situation-abort effect is kernel-only, and host-registered ops are host-only. `effectset` calls (§6) are author-side abbreviation and expand to this set at compile time.
+The authored set: `spawn`, `destroy`, `consume`, `swap`, `set`, `move`, `legacy`, `narrate`, `roll`, `draw`, `start`, `continue`, `signal`, `ending`, `relate`, `unrelate`, `if/else`. Nothing else is authored as an effect kind: the situation-abort effect is kernel-only, and host-registered ops are host-only. `effectset` calls (§6) are author-side abbreviation and expand to this set at compile time.
 
-Effect failure (consume shortage, exhausted deck, name-in-use, invalid roll operands, …) rolls the current resolution unit back to its checkpoint; a retried identical `commit` re-rolls identical dice, because state was restored bit-for-bit (kernel-api.md §9).
+Effect failure (consume shortage, exhausted deck, name-in-use, invalid roll operands, …) rolls the current resolution unit back to its checkpoint; a retried identical `commit` re-rolls identical dice, because state was restored bit-for-bit (kernel-api.md §9). `relate` and `unrelate` are total effects: kinds are compile-checked [E248], endpoints resolve to whatever they resolve to, and there are no failure modes.
 
 ### 4.2 Targets
 
-One target grammar serves `set`, `move`, `destroy`, `swap`, and `consume`:
+One target grammar serves `set`, `move`, `destroy`, `swap`, `consume`, `relate`, and `unrelate`:
 
 ```
 target := <unique-card> "." <aspect>        # name path — set only (the write key is the aspect)
@@ -260,6 +294,8 @@ roll <count>d<sides> [+ <bonus>] as <name>
 draw from <deck> [count <n>] [into (interior | <id>)]
 start <verb> [via <recipe>] [count <n>]
 continue via <recipe>                       # recipe effects only [E247]
+relate <target> to <target> as <kind>
+unrelate <target> from <target> [as <kind>]
 signal <event>
 ending <id>
 if <condition> <effect-lines> [else <effect-lines>]
@@ -275,6 +311,8 @@ if <condition> <effect-lines> [else <effect-lines>]
 - `start` materializes a new instance; failure semantics are spec.md §4.2's taxonomy — silent chain end, or skip on cap/materialization shortfall, never a parent rollback.
 - `continue via <recipe>` continues the running situation into the target recipe instead of completing (spec.md §4.2): the surviving bindings become unbound interior storage, the target's greedy slots pull, and the timer re-arms at `now + duration`. The recipe is spelled locally (a recipe of the same verb) or globally `<verb>.<recipe>`, and may be the executing recipe itself. Branch semantics are ordinary: a `continue` fires only when its branch executes, and the completion then re-checks the recipe's `continue` arms in emission order from the executed one — the first arm whose `when` holds adopts. It is legal only in recipe effects — anywhere in a trigger book is [E247], and an unknown target is [E244].
 - `signal <event>` ignites the `on event <event>` book (§5) — the only way an event book ever fires; an event name no book declares is [E243].
+- `relate <from> to <to> as <kind>` writes one logical edge per subject × object pair (§2.9): both endpoints take the §4.2 target grammar, multi-card endpoints address all matches, and application runs over every pair in resolved order. Self-pairs are skipped silently; each written edge emits `Related`; an exclusive kind steals first (§2.9).
+- `unrelate <from> from <to> [as <kind>]` removes edges: with a kind, that kind's edge between each pair; without, every logical edge between each pair, either direction, once per edge ("sever everything" — symmetric rows are removed once, not twice). Each removed edge emits `Unrelated`; an edge already absent is a silent no-op.
 - `if` takes a condition and deeper-indented effect lines; `else` sits at the `if` line's indent with its own effect lines.
 
 ## 5. Trigger Books
@@ -327,9 +365,10 @@ Every prose string — `narrate`, card `desc`, ending `text`, guard prose — su
 - a unique-card name path (`{beacon.heat}`) renders a value read;
 - a roll binding (`{sight}`) renders the roll result;
 - a spawn handle (`{fresh}`, `{fresh.heat}`) renders its pool's display names, or the oldest card's read (§4.3);
-- `{legacy.<key>}` renders a legacy value.
+- `{legacy.<key>}` renders a legacy value;
+- `{related:<kind> (of | to) <card-ref>}` renders the related cards' display names, comma-joined; an empty set renders the empty string. The card-ref may be a unique name, `subject` (in a subject context), or `first(<scope> [<terms>])` over the checkable term forms (`aspect:`/`kind:`/`name:`/negation).
 
-An unknown token is [E205]. Every prose string is addressable by a template id (its declaration site plus field, with an occurrence index for repeats within one recipe); a load-time override table keyed by template id substitutes alternate text before interpolation — the localization seam (spec.md §7).
+An unknown token is [E205] — including an unknown relation kind or an unresolvable card-ref inside a `related:` token. Every prose string is addressable by a template id (its declaration site plus field, with an occurrence index for repeats within one recipe); a load-time override table keyed by template id substitutes alternate text before interpolation — the localization seam (spec.md §7).
 
 ## 8. Idioms
 
@@ -340,6 +379,19 @@ Compositions the mechanism set makes natural:
 - **Reveal.** Move a card out of a Hidden zone to surface it, or flip a 0/1 aspect as the reveal flag; the rendering layer reads state and decides what showing means (spec.md §7).
 - **Time-of-day patterns.** `clock` arithmetic in `when` conditions: a dawn gate is `clock >= 6h`; an evening window is `clock >= 22h and clock < 24h`; duration literals carry the minute counts.
 - **Disjunctive slot filters via unary predicates.** A slot that accepts any of several aspect arms is one predicate over the candidate card: `predicate fits(p) = p.a >= 1 or p.b >= 1`, called bare in the slot query (`fits()`); conjunction and negation terms compose around the call.
+
+**Relations vs zones vs carriers vs aspects** — the authoritative guidance for the four fact/placement tools (the decision table of spec.md §4.9):
+
+| Authoring need | Use | Why |
+|---|---|---|
+| Map adjacency, up/down/left/right | Directed relation kinds (`north_of` …); `adjacent` symmetric when direction-free | Direction is data; zones are containers, not neighbors; reverse questions are incoming enumerations (`related:north_of to hall`) |
+| Equip / carry as a *fact* (equipped, ownership, curse-marked, "knows") | Directed **exclusive** relation (`carries`) | Survives movement; one-bearer semantics with observable steal |
+| Physical inventory (items live on the body, bindable, move together, scatter home on death) | Carrier zone (`into <card>`) | Location semantics: public+bindable `Of(entity)` zone, zone scopes see it, occupants scatter home on the carrier's death |
+| Social ties, membership, knowledge, debts | Plain directed kinds, non-exclusive (`member_of`, `knows`) | The general case; one-to-many and many-to-one are sets and scans, not special forms |
+| Group with ranked ties ("alice favors bob 3") | Relation for the tie (`favors`), **aspect on the card for the rank** | The edge answers "is there a tie", the aspect answers "how strong"; a rank varying per dynamic pair has no first-class home — declare the keys you know, or keep the rank on the source card |
+| Per-card flags and counters | Aspects | Single-card facts are not edges |
+
+The two carry-like tools compose deliberately: `move torch into alice` (physical) plus `relate alice to torch as wields` (fact) is a normal pair of lines; using only the relation is correct when location is irrelevant. Slot filters can test relations through a unary predicate: `predicate unclaimed(p) = not rel(carries, alice, p)`.
 
 ## 9. Compile Diagnostics
 
@@ -356,7 +408,7 @@ Compile diagnostics carry `file:line:col`, a stable number, and a note phrased a
 | E222 | A recipe declares `craftable` together with `chain-only`. |
 | E230 | A predicate's expansion reaches itself. |
 | E231 | An include cycle. |
-| E232 | An id is declared twice in the one namespace (reported at the second site, both named). |
+| E232 | An id is declared twice in the one namespace, or a relation kind is declared twice in the relations registry (reported at the second site, both named). |
 | E233 | An `effectset` call names no declared macro. |
 | E234 | An `effectset` call's argument count differs from its parameter count. |
 | E235 | An `effectset` expansion reaches itself or exceeds the depth cap (16). |
@@ -372,6 +424,7 @@ Compile diagnostics carry `file:line:col`, a stable number, and a note phrased a
 | E245 | A predicate or effectset parameter is typed or arity-checked against its use (used both ways, wrong argument form, wrong argument or parameter count). |
 | E246 | A magnitude is non-positive where that is required (turn, lifetime, `max`, counts) or out of range (a duration literal past 64 bits). |
 | E247 | `continue` appears outside recipe effects (a trigger book: recipe, card, expiry, or event). |
+| E248 | A relation kind is read or written but is not declared (the relations registry): a `rel(...)` operand, a `related:` scope, `relate`/`unrelate`, a card `relates` line. (Inside a `{related:...}` prose token the unresolvable kind is the token checker's [E205].) |
 | W110 | Two recipes of one verb share a priority and an identical (or missing) `when` (warning; `allow shadow` on the shadowed recipe suppresses it). |
 
 Runtime diagnostics (refusals, effect failures, boot and snapshot kinds) are the engine's catalog: kernel-api.md §7.

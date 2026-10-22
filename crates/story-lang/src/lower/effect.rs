@@ -235,10 +235,10 @@ impl Compiler {
                     return None;
                 }
                 let via = match via {
-                    Some((sp, r)) => match self.resolve_via(&verb.1, r, sp) {
-                        Some(id) => Some(id),
-                        None => return None,
-                    },
+                    Some((sp, r)) => {
+                        let id = self.resolve_via(&verb.1, r, sp)?;
+                        Some(id)
+                    }
                     None => None,
                 };
                 Some(EffectNode::Start {
@@ -252,14 +252,43 @@ impl Compiler {
                 // block; trigger books (recipe, card, expire, event) refuse
                 // with [E247] (language.md §4.3).
                 if !env.in_recipe {
-                    self.err(span.error(
-                        code::E247,
-                        "continue is legal only in recipe effects",
-                    ));
+                    self.err(span.error(code::E247, "continue is legal only in recipe effects"));
                     return None;
                 }
                 let recipe = self.resolve_continue_target(&recipe.0, &recipe.1, env)?;
                 Some(EffectNode::Continue { recipe })
+            }
+            ast::AEffect::Relate { from, to, kind, .. } => {
+                // Kind is mandatory on `relate`; both endpoints use the
+                // shared target grammar. Total effects: no failure modes.
+                if !self.check_relation_kind(&kind.1, &kind.0) {
+                    return None;
+                }
+                let from = self.lower_target(from, env)?;
+                let to = self.lower_target(to, env)?;
+                Some(EffectNode::Relate {
+                    from: Box::new(from),
+                    to: Box::new(to),
+                    kind: kind.1.clone(),
+                })
+            }
+            ast::AEffect::Unrelate { from, to, kind, .. } => {
+                let kind = match kind {
+                    Some((sp, k)) => {
+                        if !self.check_relation_kind(k, sp) {
+                            return None;
+                        }
+                        Some(k.clone())
+                    }
+                    None => None,
+                };
+                let from = self.lower_target(from, env)?;
+                let to = self.lower_target(to, env)?;
+                Some(EffectNode::Unrelate {
+                    from: Box::new(from),
+                    to: Box::new(to),
+                    kind,
+                })
             }
             ast::AEffect::Signal { event, .. } => {
                 if !self.events.contains_key(&event.1) {
@@ -320,12 +349,7 @@ impl Compiler {
     /// The target of `continue via`: a local name resolves against the verb
     /// whose recipe is being lowered, a `<verb>.<recipe>` spelling resolves
     /// globally; anything else is [E244].
-    fn resolve_continue_target(
-        &mut self,
-        sp: &Span,
-        name: &str,
-        env: &Env,
-    ) -> Option<RecipeId> {
+    fn resolve_continue_target(&mut self, sp: &Span, name: &str, env: &Env) -> Option<RecipeId> {
         if let Some((verb, recipe)) = name.split_once('.') {
             if self
                 .verbs
@@ -343,9 +367,10 @@ impl Compiler {
                 return Some(RecipeId::from(format!("{verb}.{name}")));
             }
         }
-        self.err(
-            sp.error(code::E244, format!("unknown recipe `{name}` targeted by `continue`")),
-        );
+        self.err(sp.error(
+            code::E244,
+            format!("unknown recipe `{name}` targeted by `continue`"),
+        ));
         None
     }
 
@@ -412,7 +437,7 @@ impl Compiler {
             }
             ATarget::Slot(_, (_, n)) => Some(Target::Slot(SlotName::from(n.clone()))),
             ATarget::Query { scope, terms, .. } => {
-                let scope = self.lower_scope(scope)?;
+                let scope = self.lower_scope(scope, env)?;
                 let terms = self.lower_query(terms, env);
                 Some(Target::Query { scope, terms })
             }
@@ -458,9 +483,7 @@ impl Compiler {
             ));
             return None;
         }
-        if reg.body.is_none() {
-            return None;
-        }
+        reg.body.as_ref()?;
         if args.len() != reg.params.len() {
             self.err(span.error(
                 code::E234,
@@ -507,14 +530,10 @@ impl Compiler {
                 }
             } else if int_use {
                 let mut tc = TC::new(&arg.toks);
-                match parse_arith(&mut tc, &mut self.diags, false) {
-                    Some(a) => {
-                        if self.lower_arith(&a, env).is_none() {
-                            return None;
-                        }
-                        arg.toks.clone()
-                    }
-                    None => return None,
+                {
+                    let a = parse_arith(&mut tc, &mut self.diags, false)?;
+                    self.lower_arith(&a, env)?;
+                    arg.toks.clone()
                 }
             } else {
                 vec![(psp.clone(), Tok::Int(0))]

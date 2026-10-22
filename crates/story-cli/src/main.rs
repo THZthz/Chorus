@@ -299,6 +299,12 @@ fn print_events(events: &[Event]) {
             Event::ResolutionFailed { sit, reason } => {
                 println!("  [sit {sit} FAILED: {reason}]");
             }
+            Event::Related { from, kind, to } => {
+                println!("  [relate] entity {from} -{kind}-> entity {to}");
+            }
+            Event::Unrelated { from, kind, to } => {
+                println!("  [unrelate] entity {from} -{kind}-/-> entity {to}");
+            }
         }
     }
 }

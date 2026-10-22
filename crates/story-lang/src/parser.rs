@@ -170,6 +170,7 @@ impl<'d> Parser<'d> {
                 "zones" => items.push(TopItem::Zones(self.parse_zones())),
                 "aspects" => items.push(TopItem::Aspects(self.parse_aspects())),
                 "predicates" => items.push(TopItem::Predicates(self.parse_predicates())),
+                "relations" => items.push(TopItem::Relations(self.parse_relations())),
                 "cards" => items.push(TopItem::Cards(self.parse_cards())),
                 "decks" => items.push(TopItem::Decks(self.parse_decks())),
                 "legacies" => items.push(TopItem::Legacies(self.parse_legacies())),
@@ -401,6 +402,78 @@ impl<'d> Parser<'d> {
         out
     }
 
+    /// The `relations` registry (language.md §2): one kind per line, flags
+    /// order-free (`symmetric`, `exclusive`; directed is the default and has
+    /// no keyword).
+    fn parse_relations(&mut self) -> Vec<RelationKindAst> {
+        let line = self.next_line().unwrap();
+        let base = line.indent;
+        let mut out: Vec<RelationKindAst> = Vec::new();
+        self.children(base, |p, l| {
+            if l.first_ident() == Some("meta") {
+                if let Some(k) = out.last_mut() {
+                    k.meta.push(p.meta_line(&l));
+                } else {
+                    p.err_here("meta line before any relation kind");
+                }
+                return;
+            }
+            let mut tc = TC::new(&l.toks);
+            let span = l.first().map(|(s, _)| s.clone()).unwrap();
+            let Some(name) = tc.expect_ident("a relation kind name", p.diags) else {
+                return;
+            };
+            let mut symmetric = None;
+            let mut exclusive = None;
+            while !tc.done() {
+                let Some((sp, tok)) = tc.peek().cloned() else {
+                    break;
+                };
+                let Tok::Ident(flag) = &tok else {
+                    p.diags.push(sp.error(
+                        code::E201,
+                        format!("unexpected `{tok:?}` after the relation kind name"),
+                    ));
+                    tc.next();
+                    continue;
+                };
+                match flag.as_str() {
+                    "symmetric" => {
+                        if symmetric.is_some() {
+                            p.diags.push(sp.error(
+                                code::E236,
+                                "repeated `symmetric` flag on one relation kind",
+                            ));
+                        }
+                        symmetric = Some(sp);
+                    }
+                    "exclusive" => {
+                        if exclusive.is_some() {
+                            p.diags.push(sp.error(
+                                code::E236,
+                                "repeated `exclusive` flag on one relation kind",
+                            ));
+                        }
+                        exclusive = Some(sp);
+                    }
+                    other => p.diags.push(sp.error(
+                        code::E201,
+                        format!("unknown relation flag `{other}` (use `symmetric` or `exclusive`)"),
+                    )),
+                }
+                tc.next();
+            }
+            out.push(RelationKindAst {
+                span,
+                name,
+                symmetric,
+                exclusive,
+                meta: Vec::new(),
+            });
+        });
+        out
+    }
+
     fn parse_predicates(&mut self) -> Vec<PredAst> {
         let line = self.next_line().unwrap();
         let base = line.indent;
@@ -490,6 +563,7 @@ impl<'d> Parser<'d> {
             uniq: Vec::new(),
             aspects: Vec::new(),
             boot: None,
+            relates: Vec::new(),
             desc: None,
             lifetime: None,
             mint: None,
@@ -565,6 +639,26 @@ impl<'d> Parser<'d> {
                                     zone,
                                     count,
                                 });
+                            }
+                            "relates" => {
+                                let Some(kind) = tc.expect_ident("a relation kind", p.diags) else {
+                                    break;
+                                };
+                                let mut objects = Vec::new();
+                                loop {
+                                    if tc.done() {
+                                        break;
+                                    }
+                                    if tc.at_p(&P::Comma) {
+                                        tc.next();
+                                        continue;
+                                    }
+                                    match tc.expect_ident("a card name", p.diags) {
+                                        Some(o) => objects.push(o),
+                                        None => break,
+                                    }
+                                }
+                                ast.relates.push((kind, objects));
                             }
                             "desc" => match tc.expect_str("a description string", p.diags) {
                                 Some(d) => ast.desc = Some(d),
@@ -945,9 +1039,8 @@ impl<'d> Parser<'d> {
                 }
                 Some((s, Tok::Int(_))) | Some((s, Tok::P(P::Minus))) => {
                     let spn = s.clone();
-                    match count_int(&mut tc, "`instances`", self.diags) {
-                        Some((_, c)) => instances = Some(InstancesAst::N(spn, c)),
-                        None => {}
+                    if let Some((_, c)) = count_int(&mut tc, "`instances`", self.diags) {
+                        instances = Some(InstancesAst::N(spn, c))
                     }
                     tc.next();
                 }
@@ -1404,9 +1497,9 @@ impl<'d> Parser<'d> {
                 // full integer expression (language.md §4.3).
                 let mut count = None;
                 if !tc.done() {
-                    match count_expr(&mut tc, &span, "`count`", self.diags) {
-                        Some(c) => count = Some(c),
-                        None => return None,
+                    {
+                        let c = count_expr(&mut tc, &span, "`count`", self.diags)?;
+                        count = Some(c)
                     }
                 }
                 Some(AEffect::Consume {
@@ -1420,9 +1513,9 @@ impl<'d> Parser<'d> {
                 let mut count = None;
                 if tc.at_ident("count") {
                     tc.next();
-                    match count_expr(&mut tc, &span, "`count`", self.diags) {
-                        Some(c) => count = Some(c),
-                        None => return None,
+                    {
+                        let c = count_expr(&mut tc, &span, "`count`", self.diags)?;
+                        count = Some(c)
                     }
                 }
                 if tc.eat_ident("to").is_none() {
@@ -1585,13 +1678,60 @@ impl<'d> Parser<'d> {
             }
             "continue" => {
                 if tc.eat_ident("via").is_none() {
-                    self.diags.push(
-                        span.error(code::E201, "continue is `continue via <recipe>`"),
-                    );
+                    self.diags
+                        .push(span.error(code::E201, "continue is `continue via <recipe>`"));
                     return None;
                 }
                 let recipe = self.parse_recipe_spelling(&mut tc)?;
                 Some(AEffect::Continue { span, recipe })
+            }
+            "relate" => {
+                let from = self.parse_target(&mut tc)?;
+                if tc.eat_ident("to").is_none() {
+                    self.diags.push(span.error(
+                        code::E201,
+                        "relate is `relate <target> to <target> as <kind>`",
+                    ));
+                    return None;
+                }
+                let to = self.parse_target(&mut tc)?;
+                if tc.eat_ident("as").is_none() {
+                    self.diags.push(span.error(
+                        code::E201,
+                        "relate is `relate <target> to <target> as <kind>`",
+                    ));
+                    return None;
+                }
+                let kind = tc.expect_ident("a relation kind", self.diags)?;
+                Some(AEffect::Relate {
+                    span,
+                    from,
+                    to,
+                    kind,
+                })
+            }
+            "unrelate" => {
+                let from = self.parse_target(&mut tc)?;
+                if tc.eat_ident("from").is_none() {
+                    self.diags.push(span.error(
+                        code::E201,
+                        "unrelate is `unrelate <target> from <target> [as <kind>]`",
+                    ));
+                    return None;
+                }
+                let to = self.parse_target(&mut tc)?;
+                let mut kind = None;
+                if tc.at_ident("as") {
+                    tc.next();
+                    kind = tc.expect_ident("a relation kind", self.diags);
+                    kind.as_ref()?;
+                }
+                Some(AEffect::Unrelate {
+                    span,
+                    from,
+                    to,
+                    kind,
+                })
             }
             "ending" => {
                 let id = tc.expect_ident("an ending id", self.diags)?;
@@ -1965,7 +2105,7 @@ fn is_name_path(tc: &TC) -> bool {
 fn starts_scope(tc: &TC) -> bool {
     match tc.peek() {
         Some((_, Tok::Ident(w))) => match w.as_str() {
-            "world" | "interior" | "table" | "anywhere" | "bound" => true,
+            "world" | "interior" | "table" | "anywhere" | "bound" | "related" => true,
             "zone" | "slot" => tc
                 .peek_at(1)
                 .is_some_and(|(_, t)| matches!(t, Tok::P(P::Colon))),
@@ -2033,11 +2173,79 @@ pub fn parse_scope(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Option<AScope> {
                 Some(AScope::Slot(s, name))
             }
         }
+        "related" => {
+            tc.next();
+            if tc.eat_p(&P::Colon).is_none() {
+                diags.push(s.error(code::E201, "expected `related:<kind> (of | to) <card-ref>`"));
+                return None;
+            }
+            let kind = tc.expect_ident("a relation kind", diags)?;
+            let incoming = if tc.eat_ident("of").is_some() {
+                false
+            } else if tc.eat_ident("to").is_some() {
+                true
+            } else {
+                diags.push(s.error(code::E201, "expected `of` or `to` after the relation kind"));
+                return None;
+            };
+            let of = parse_card_ref(tc, diags)?;
+            Some(AScope::Related {
+                span: s,
+                kind,
+                of: Box::new(of),
+                incoming,
+            })
+        }
         other => {
             diags.push(s.error(code::E201, format!("`{other}` is not a scope")));
             None
         }
     }
+}
+
+/// A relation endpoint (language.md §3): a unique card name, `subject`, or
+/// `first(<scope> [<terms>])`.
+pub(crate) fn parse_card_ref(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Option<ACardRef> {
+    let (sp, t) = tc.peek().cloned()?;
+    let Tok::Ident(w) = &t else {
+        diags.push(sp.error(
+            code::E201,
+            "expected a card reference (a unique card name, `subject`, or `first(...)`)",
+        ));
+        return None;
+    };
+    let w = w.clone();
+    if w == "subject" {
+        tc.next();
+        return Some(ACardRef::Subject(sp));
+    }
+    if w == "first"
+        && tc
+            .peek_at(1)
+            .is_some_and(|(_, t)| matches!(t, Tok::P(P::LParen)))
+    {
+        tc.next();
+        tc.next();
+        let Some(scope) = parse_scope(tc, diags) else {
+            return None;
+        };
+        let terms = parse_query_terms(tc, diags);
+        if tc.eat_p(&P::RParen).is_none() {
+            diags.push(sp.error(
+                code::E201,
+                "expected `)` after the `first(...)` card reference",
+            ));
+            return None;
+        }
+        return Some(ACardRef::First {
+            span: sp,
+            scope,
+            terms,
+        });
+    }
+    tc.next();
+    let nsp = sp.clone();
+    Some(ACardRef::Name(nsp, (sp, w)))
 }
 
 /// Space-conjoined query terms (language.md §3). The list ends at end-of-line,
@@ -2048,7 +2256,7 @@ fn parse_query_terms(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Vec<AQueryTerm
         match tc.peek() {
             None | Some((_, Tok::Int(_))) | Some((_, Tok::P(P::RParen))) => return out,
             Some((_, Tok::Ident(w))) => {
-                if matches!(w.as_str(), "count" | "all" | "to" | "into") {
+                if matches!(w.as_str(), "count" | "all" | "to" | "into" | "from" | "as") {
                     return out;
                 }
             }
@@ -2068,7 +2276,7 @@ fn parse_set_query_terms(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Vec<AQuery
         match tc.peek() {
             None | Some((_, Tok::Int(_))) | Some((_, Tok::P(P::RParen))) => return out,
             Some((_, Tok::Ident(w))) => {
-                if matches!(w.as_str(), "count" | "all" | "to" | "into") {
+                if matches!(w.as_str(), "count" | "all" | "to" | "into" | "from" | "as") {
                     return out;
                 }
             }
@@ -2213,10 +2421,12 @@ fn parse_unit(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Option<ACond> {
     if let Some((sp, Tok::Ident(w))) = tc.peek() {
         let sp = sp.clone();
         let w = w.clone();
-        if !matches!(w.as_str(), "count" | "total" | "alive" | "clock" | "legacy")
-            && tc
-                .peek_at(1)
-                .is_some_and(|(_, t)| matches!(t, Tok::P(P::LParen)))
+        if !matches!(
+            w.as_str(),
+            "count" | "total" | "alive" | "clock" | "legacy" | "rel"
+        ) && tc
+            .peek_at(1)
+            .is_some_and(|(_, t)| matches!(t, Tok::P(P::LParen)))
         {
             tc.next();
             tc.next();
@@ -2278,6 +2488,17 @@ fn parse_unit(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Option<ACond> {
         }
         None => match first {
             AExpr::Ident(sp, name) => Some(ACond::Name(sp.clone(), (sp, name))),
+            AExpr::Rel {
+                span,
+                kind,
+                from,
+                to,
+            } => Some(ACond::Rel {
+                span,
+                kind,
+                from,
+                to,
+            }),
             _ => {
                 diags.push(first.span().clone().error(
                     code::E201,
@@ -2465,6 +2686,39 @@ fn parse_arith_atom(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Option<AExpr> {
                         diags.push(sp.error(code::E201, "expected `)`"));
                     }
                     Some(AExpr::Alive { span: sp, card })
+                }
+                "rel" => {
+                    if tc.eat_p(&P::LParen).is_none() {
+                        diags.push(
+                            sp.error(code::E201, "expected `rel(<kind>, <card-ref>, <card-ref>)`"),
+                        );
+                        return None;
+                    }
+                    let kind = tc.expect_ident("a relation kind", diags)?;
+                    if tc.eat_p(&P::Comma).is_none() {
+                        diags.push(sp.error(code::E201, "expected `,` after the relation kind"));
+                        return None;
+                    }
+                    let Some(from) = parse_card_ref(tc, diags) else {
+                        return None;
+                    };
+                    if tc.eat_p(&P::Comma).is_none() {
+                        diags.push(sp.error(code::E201, "expected `,` after the first endpoint"));
+                        return None;
+                    }
+                    let Some(to) = parse_card_ref(tc, diags) else {
+                        return None;
+                    };
+                    if tc.eat_p(&P::RParen).is_none() {
+                        diags.push(sp.error(code::E201, "expected `)`"));
+                        return None;
+                    }
+                    Some(AExpr::Rel {
+                        span: sp,
+                        kind,
+                        from: Box::new(from),
+                        to: Box::new(to),
+                    })
                 }
                 _ => {
                     if tc.at_p(&P::Dot) {

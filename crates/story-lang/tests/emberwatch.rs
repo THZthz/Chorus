@@ -1,12 +1,11 @@
-//! Acceptance: `.artifacts/emberwatch.sw` compiles with zero errors and zero
+//! Acceptance: `docs/emberwatch.sw` compiles with zero errors and zero
 //! warnings, and the compiled shape matches the sample's declaration surface.
 
 use story_content::ir::EffectNode;
 
 #[test]
 fn emberwatch_compiles_clean() {
-    let path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.artifacts/emberwatch.sw");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/emberwatch.sw");
     let out = story_lang::compile_file(&path);
     for d in &out.diagnostics {
         panic!("unexpected diagnostic: {d}");
@@ -93,8 +92,7 @@ fn emberwatch_compiles_clean() {
 
 #[test]
 fn emberwatch_fingerprint_is_stable_across_compiles() {
-    let path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.artifacts/emberwatch.sw");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/emberwatch.sw");
     let a = story_lang::compile_file(&path);
     let b = story_lang::compile_file(&path);
     let fa = a.content.as_ref().unwrap().fingerprint();

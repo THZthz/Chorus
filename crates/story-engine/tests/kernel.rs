@@ -754,7 +754,7 @@ verbs
 /// greedy-ordered slot candidates.
 #[test]
 fn recognition_face_previews_without_mutating() {
-    let src = include_str!("../../../.artifacts/emberwatch.sw");
+    let src = include_str!("../../../docs/emberwatch.sw");
     let mut e = boot(compile(src), 7);
 
     // The would-be selection including the guard outcome.

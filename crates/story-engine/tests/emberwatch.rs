@@ -8,7 +8,7 @@ use common::{
 };
 use story_engine::{Engine, Event, Snapshot};
 
-const EMBERWATCH: &str = include_str!("../../../.artifacts/emberwatch.sw");
+const EMBERWATCH: &str = include_str!("../../../docs/emberwatch.sw");
 
 fn game() -> Engine {
     boot(compile(EMBERWATCH), 7)

@@ -168,7 +168,11 @@ fn pairs(v: &Value, k: &str) -> Vec<(String, i64)> {
 fn str_list(v: &Value, k: &str) -> Vec<String> {
     v.get(k)
         .and_then(|x| x.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -338,7 +342,11 @@ impl<'a> Converter<'a> {
     }
 
     fn key(&self, id: &str) -> String {
-        self.names.key.get(id).cloned().unwrap_or_else(|| mangle(id))
+        self.names
+            .key
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| mangle(id))
     }
 
     fn aspects_of(&self, id: &str) -> Vec<(String, i64)> {
@@ -443,7 +451,12 @@ impl<'a> Converter<'a> {
             for (k, _) in pairs(e, "aspects") {
                 self.registry.insert(k);
             }
-            for sl in e.get("slots").and_then(|x| x.as_array()).into_iter().flatten() {
+            for sl in e
+                .get("slots")
+                .and_then(|x| x.as_array())
+                .into_iter()
+                .flatten()
+            {
                 for dk in ["required", "forbidden", "essential"] {
                     for (k, _) in pairs(sl, dk) {
                         self.registry.insert(k.clone());
@@ -461,14 +474,49 @@ impl<'a> Converter<'a> {
             }
         }
 
-        for (_, r) in &self.d.recipes {
+        for (rid, r) in &self.d.recipes {
+            // The single-offer-slot flattening: a requirement dict with
+            // several keys cannot route all its cards through the one offer
+            // slot, so its positive arms keep the three-scope union in
+            // `when` — the world arm is the documented approximation.
+            let reqs = pairs(r, "requirements");
+            if reqs.len() > 1 && reqs.iter().any(|(_, v)| *v > 0) {
+                self.gaps.hit(
+                    "multi-key requirement dict keeps the world arm",
+                    Class::ConverterIdiom,
+                    "the offer slot binds one card, so a multi-key requirement dict cannot drop the world arm from `when` like a single-key dict does; a tabletop card can satisfy one arm of the dict",
+                    rid,
+                );
+            }
+            // The world-scope flattening for the context dicts: CS reads
+            // tablereqs against AspectsOnTable (World spheres plus every
+            // non-greedy threshold and output sphere — Sphere.IsExteriorSphere
+            // and its ThresholdSphere/OutputSphere overrides) and extantreqs
+            // against AspectsExtant (the table pool plus every situation's
+            // storage/greedy-threshold contents, verb aspects, and running
+            // recipe aspects — HornedAxe.GetAspectsInContext). The language's
+            // `world` scope covers only unbound public cards; a card locked
+            // in another situation's slot is invisible to it.
+            if r.get("tablereqs").is_some() || r.get("extantreqs").is_some() {
+                self.gaps.hit(
+                    "tablereqs/extantreqs read the world scope",
+                    Class::ConverterIdiom,
+                    "CS's AspectsOnTable/AspectsExtant pools include cards locked in situation slots, situation storage, and running-recipe aspects; the language has no cross-situation scope, so `total(world, ...)` under-counts by exactly the bound set",
+                    rid,
+                );
+            }
             for dk in ["requirements", "tablereqs", "extantreqs"] {
                 for (k, _) in pairs(r, dk) {
                     self.registry.insert(k.clone());
                     self.note_group_read(&k);
                 }
             }
-            for sl in r.get("slots").and_then(|x| x.as_array()).into_iter().flatten() {
+            for sl in r
+                .get("slots")
+                .and_then(|x| x.as_array())
+                .into_iter()
+                .flatten()
+            {
                 for dk in ["required", "forbidden", "essential"] {
                     for (k, _) in pairs(sl, dk) {
                         self.registry.insert(k.clone());
@@ -476,7 +524,12 @@ impl<'a> Converter<'a> {
                     }
                 }
             }
-            for m in r.get("mutations").and_then(|x| x.as_array()).into_iter().flatten() {
+            for m in r
+                .get("mutations")
+                .and_then(|x| x.as_array())
+                .into_iter()
+                .flatten()
+            {
                 for dk in ["filter", "mutate"] {
                     if let Some(k) = s(m, dk) {
                         self.registry.insert(k.to_string());
@@ -528,7 +581,8 @@ impl<'a> Converter<'a> {
                     .to_string();
                 if let Some(f) = s(r, "signalEndingFlavour") {
                     if f != base {
-                        self.ending_variants.insert((end.to_string(), f.to_string()));
+                        self.ending_variants
+                            .insert((end.to_string(), f.to_string()));
                     }
                 }
             }
@@ -641,7 +695,12 @@ impl<'a> Converter<'a> {
                 let Some(r) = self.d.recipe(&rid).cloned() else {
                     continue;
                 };
-                for sl in r.get("slots").and_then(|x| x.as_array()).into_iter().flatten() {
+                for sl in r
+                    .get("slots")
+                    .and_then(|x| x.as_array())
+                    .into_iter()
+                    .flatten()
+                {
                     let arms = Self::slot_positive_arms(sl);
                     if arms.len() <= 1 {
                         continue;
@@ -660,7 +719,8 @@ impl<'a> Converter<'a> {
                         .collect::<Vec<_>>()
                         .join(" or ");
                     let name = self.names.reserve_id(&format!("fits.{rid}.{raw}"));
-                    self.pred_names.insert((rid.clone(), raw.to_string()), name.clone());
+                    self.pred_names
+                        .insert((rid.clone(), raw.to_string()), name.clone());
                     self.preds.push((name, pred_body));
                 }
             }
@@ -704,7 +764,10 @@ impl<'a> Converter<'a> {
 
     fn emit(&mut self) -> String {
         let mut out: Vec<String> = Vec::new();
-        out.push("# cultist-simulator.sw — converted from the Cultist Simulator core content tree".into());
+        out.push(
+            "# cultist-simulator.sw — converted from the Cultist Simulator core content tree"
+                .into(),
+        );
         out.push("# by cs2sw: a mechanical, table-driven map of elements, recipes, decks,".into());
         out.push("# endings, and levers onto the .sw grammar. Generated file; edit the".into());
         out.push("# converter, not this text.".into());
@@ -770,7 +833,12 @@ impl<'a> Converter<'a> {
 
     fn uniqueness(&self, e: &Value) -> String {
         if let Some(g) = s(e, "uniquenessgroup") {
-            let gname = self.names.group.get(g).cloned().unwrap_or_else(|| mangle(g));
+            let gname = self
+                .names
+                .group
+                .get(g)
+                .cloned()
+                .unwrap_or_else(|| mangle(g));
             format!("group {gname}")
         } else if truthy(e, "unique") {
             "unique".to_string()
@@ -852,7 +920,11 @@ impl<'a> Converter<'a> {
             // consuming element slots.
             let mut books: Vec<(Option<String>, Vec<(String, Vec<String>)>)> = Vec::new();
             let mut rule_ids: BTreeSet<String> = BTreeSet::new();
-            let push_rule = |books: &mut Vec<(Option<String>, Vec<(String, Vec<String>)>)>, rule_ids: &mut BTreeSet<String>, qual: Option<String>, rule: String, body: Vec<String>| {
+            let push_rule = |books: &mut Vec<(Option<String>, Vec<(String, Vec<String>)>)>,
+                             rule_ids: &mut BTreeSet<String>,
+                             qual: Option<String>,
+                             rule: String,
+                             body: Vec<String>| {
                 let mut rule = rule;
                 let mut i = 2;
                 while !rule_ids.insert(rule.clone()) {
@@ -904,7 +976,10 @@ impl<'a> Converter<'a> {
                         lines.push("    on expire".into());
                         lines.push(format!("      rule {rule}"));
                         lines.push("        effects".into());
-                        lines.push(format!("          swap subject.{} to {tname}", self.key(&id)));
+                        lines.push(format!(
+                            "          swap subject.{} to {tname}",
+                            self.key(&id)
+                        ));
                     }
                     None => {
                         self.gaps.hit(
@@ -1096,7 +1171,10 @@ impl<'a> Converter<'a> {
         if entries.is_empty() {
             return None;
         }
-        let mut lines = vec![format!("  deck {dname}"), format!("    entries {}", entries.join(", "))];
+        let mut lines = vec![
+            format!("  deck {dname}"),
+            format!("    entries {}", entries.join(", ")),
+        ];
         let mut relieved = false;
         if let Some(dc) = s(dk, "defaultcard").and_then(|dc| self.target_card(dc)) {
             lines.push(format!("    fallback {dc}"));
@@ -1116,7 +1194,9 @@ impl<'a> Converter<'a> {
     }
 
     fn gap_relief(&mut self, dk: &Value, id: &str) {
-        let relieved = s(dk, "defaultcard").map(|dc| self.target_card(dc).is_some()).unwrap_or(false)
+        let relieved = s(dk, "defaultcard")
+            .map(|dc| self.target_card(dc).is_some())
+            .unwrap_or(false)
             || truthy(dk, "resetonexhaustion");
         if !relieved {
             self.gaps.hit(
@@ -1170,7 +1250,12 @@ impl<'a> Converter<'a> {
     fn emit_verbs(&mut self, out: &mut Vec<String>) {
         out.push("verbs".into());
         for (verb, recipes) in self.by_verb() {
-            let vname = self.names.verb.get(&verb).cloned().unwrap_or_else(|| verb.clone());
+            let vname = self
+                .names
+                .verb
+                .get(&verb)
+                .cloned()
+                .unwrap_or_else(|| verb.clone());
             let (mode, instances) = if PLAYER_VERBS.contains(&verb.as_str()) {
                 ("committable", "1")
             } else if verb == TIME_VERB {
@@ -1185,7 +1270,12 @@ impl<'a> Converter<'a> {
             out.push(String::new());
 
             for (i, rid) in recipes.iter().enumerate() {
-                let Some(local) = self.names.recipe.get(&(verb.clone(), rid.to_string())).cloned() else {
+                let Some(local) = self
+                    .names
+                    .recipe
+                    .get(&(verb.clone(), rid.to_string()))
+                    .cloned()
+                else {
                     continue;
                 };
                 let Some(r) = self.d.recipe(rid).cloned() else {
@@ -1199,7 +1289,15 @@ impl<'a> Converter<'a> {
         }
     }
 
-    fn emit_recipe(&mut self, out: &mut Vec<String>, verb: &str, rid: &str, local: &str, index: usize, r: &Value) {
+    fn emit_recipe(
+        &mut self,
+        out: &mut Vec<String>,
+        verb: &str,
+        rid: &str,
+        local: &str,
+        index: usize,
+        r: &Value,
+    ) {
         let craftable = self.craftable(r);
         let on_player = PLAYER_VERBS.contains(&verb);
         let warmup = num(r, "warmup").unwrap_or(0);
@@ -1250,11 +1348,20 @@ impl<'a> Converter<'a> {
         }
         let mut taken: BTreeSet<String> = BTreeSet::new();
         taken.insert("offer".to_string());
-        for sl in r.get("slots").and_then(|x| x.as_array()).into_iter().flatten() {
+        for sl in r
+            .get("slots")
+            .and_then(|x| x.as_array())
+            .into_iter()
+            .flatten()
+        {
             let raw = s(sl, "id").unwrap_or("slot");
             let base = {
                 let b = mangle(raw);
-                if b.is_empty() { "slot".to_string() } else { b }
+                if b.is_empty() {
+                    "slot".to_string()
+                } else {
+                    b
+                }
             };
             let mut sname = base.clone();
             let mut i = 2;
@@ -1307,9 +1414,6 @@ impl<'a> Converter<'a> {
                 body.push((ind, format!("narrate \"{t}\"")));
             }
         }
-        for line in self.draws_of(r, rid) {
-            body.push((ind, line));
-        }
 
         let plain_alts: Vec<Value> = entries(r, "alt")
             .into_iter()
@@ -1338,7 +1442,12 @@ impl<'a> Converter<'a> {
                 keys.insert(self.key(&k));
             }
         }
-        for sl in r.get("slots").and_then(|x| x.as_array()).into_iter().flatten() {
+        for sl in r
+            .get("slots")
+            .and_then(|x| x.as_array())
+            .into_iter()
+            .flatten()
+        {
             for (k, _) in pairs(sl, "required") {
                 keys.insert(self.key(&k));
             }
@@ -1346,12 +1455,18 @@ impl<'a> Converter<'a> {
         for (k, _) in pairs(r, "tablereqs") {
             keys.insert(self.key(&k));
         }
-        for m in r.get("mutations").and_then(|x| x.as_array()).into_iter().flatten() {
+        for m in r
+            .get("mutations")
+            .and_then(|x| x.as_array())
+            .into_iter()
+            .flatten()
+        {
             if let Some(k) = s(m, "mutate") {
                 keys.insert(self.key(k));
             }
         }
-        let mut catalysts: BTreeSet<String> = pairs(r, "aspects").into_iter().map(|(k, _)| k).collect();
+        let mut catalysts: BTreeSet<String> =
+            pairs(r, "aspects").into_iter().map(|(k, _)| k).collect();
         for (k, v) in pairs(r, "effects") {
             if v > 0 && !self.is_aspect(&k) && self.d.element(&k).is_some() {
                 catalysts.insert(k.clone());
@@ -1374,9 +1489,25 @@ impl<'a> Converter<'a> {
         format!("(total(interior, aspect:{k}) >= {v} or total(slot:offer, aspect:{k}) >= {v} or total(world, aspect:{k}) >= {v})")
     }
 
-    fn neg3(&self, k: &str, n: i64) -> String {
+    /// The interior+offer sum arm for a single-key positive requirement: CS
+    /// checks requirements against the situation's combined interior
+    /// dictionary — `Situation.GetAspects` sums every interior sphere
+    /// (thresholds, storage, output) plus the verb's aspects into one
+    /// dictionary, so the two counts add before the comparison — never the
+    /// world total (a tabletop card would hijack routing).
+    fn pos2(&self, k: &str, v: i64) -> String {
         let k = self.key(k);
-        format!("(total(interior, aspect:{k}) < {n} and total(slot:offer, aspect:{k}) < {n} and total(world, aspect:{k}) < {n})")
+        format!("(total(interior, aspect:{k}) + total(slot:offer, aspect:{k})) >= {v}")
+    }
+
+    /// The interior+offer sum arm for a negative requirement: the same
+    /// combined interior dictionary — the two counts add before the
+    /// comparison. The sum form degrades gracefully
+    /// for multi-key dicts: the worst case is a recipe CS would refuse
+    /// becomes openable, never the reverse.
+    fn neg_sum(&self, k: &str, n: i64) -> String {
+        let k = self.key(k);
+        format!("(total(interior, aspect:{k}) + total(slot:offer, aspect:{k})) < {n}")
     }
 
     /// CS CanExecuteInContext over the three requirement dicts only: the
@@ -1385,11 +1516,26 @@ impl<'a> Converter<'a> {
     /// slot queries).
     fn when_of(&self, r: &Value) -> Option<String> {
         let mut parts: Vec<String> = Vec::new();
-        for (k, v) in pairs(r, "requirements") {
-            if v > 0 {
-                parts.push(self.pos3(&k, v));
-            } else if v < 0 {
-                parts.push(self.neg3(&k, -v));
+        let reqs = pairs(r, "requirements");
+        // A single-key requirement adds the situation interior and the bound
+        // offer card into one count, mirroring CS's single combined
+        // dictionary; the world total never enters. A multi-key dict keeps
+        // the three-scope union — the one offer slot cannot bind several
+        // cards (the flattening gap row covers the approximation).
+        let single = reqs.len() == 1;
+        for (k, v) in &reqs {
+            if *v > 0 {
+                if single {
+                    parts.push(self.pos2(k, *v));
+                } else {
+                    parts.push(self.pos3(k, *v));
+                }
+            } else if *v < 0 {
+                // An anti-requirement in the requirements dict reads the
+                // situation's own aspect pool (interior spheres plus the
+                // bound offer card) as an arithmetic sum; the world total
+                // would make e.g. a rite on the table brick every job.
+                parts.push(self.neg_sum(k, -*v));
             }
         }
         for dk in ["tablereqs", "extantreqs"] {
@@ -1405,11 +1551,21 @@ impl<'a> Converter<'a> {
         if parts.is_empty() {
             return None;
         }
-        Some(parts.iter().map(|p| format!("({p})")).collect::<Vec<_>>().join(" and "))
+        Some(
+            parts
+                .iter()
+                .map(|p| format!("({p})"))
+                .collect::<Vec<_>>()
+                .join(" and "),
+        )
     }
 
     /// Deck draws for a recipe: deckeffects, then internaldeck wiring, then
-    /// portal consequences. CS draws before effects.
+    /// portal consequences. CS draws before effects, and RunDeckEffect deals
+    /// into the situation's storage sphere: the drawn cards land in the
+    /// interior, count toward the situation's aspects, and ride the normal
+    /// interior-leftover release at completion (the table ejection is the
+    /// completion's job, not the draw's).
     fn draws_of(&mut self, r: &Value, rid: &str) -> Vec<String> {
         let mut out = Vec::new();
         let mut decks: Vec<(String, i64)> = pairs(r, "deckeffects");
@@ -1430,7 +1586,7 @@ impl<'a> Converter<'a> {
                 continue;
             };
             let count = (*n).clamp(1, 12);
-            out.push(format!("draw from {dname} count {count} into table"));
+            out.push(format!("draw from {dname} count {count} into interior"));
         }
         if let Some(pe) = s(r, "portaleffect").map(String::from) {
             match self.d.portals.get(&pe).cloned() {
@@ -1444,7 +1600,7 @@ impl<'a> Converter<'a> {
                         for (deck, n) in pairs(cons, "deckeffects") {
                             if let Some(dname) = self.deck_name(&deck) {
                                 let count = n.clamp(1, 12);
-                                out.push(format!("draw from {dname} count {count} into table"));
+                                out.push(format!("draw from {dname} count {count} into interior"));
                             }
                         }
                     }
@@ -1495,7 +1651,11 @@ impl<'a> Converter<'a> {
             return None;
         }
         let vname = self.names.verb.get(&host).cloned()?;
-        self.names.recipe.get(&(host, tid.to_string())).cloned().map(|l| (vname, l))
+        self.names
+            .recipe
+            .get(&(host, tid.to_string()))
+            .cloned()
+            .map(|l| (vname, l))
     }
 
     /// CS chance/challenges gate: (roll line, condition over the binding).
@@ -1620,8 +1780,11 @@ impl<'a> Converter<'a> {
         self.emit_alt_cascade(body, alts, i + 1, ind + 2, r, rid, stack);
     }
 
-    /// The recipe's own resolution body: mutations, the effects table, the
-    /// ending, then the linked cascade and the additional starts.
+    /// The recipe's own resolution body, in CS completion order: the
+    /// additional-alt gates (RequiresExecutionState.Continue's first
+    /// statement, GetValidOverride), then mutations, deck draws, and the
+    /// effects table (RecipeCompletionEffectCommand.Execute), then the
+    /// ending, then the linked cascade and the inductions.
     fn emit_core(
         &mut self,
         body: &mut Vec<(usize, String)>,
@@ -1630,8 +1793,23 @@ impl<'a> Converter<'a> {
         rid: &str,
         stack: &mut Vec<String>,
     ) {
+        // Additional alts: CS decides their gates in GetValidOverride, before
+        // the recipe's own mutations and effects and before any linked
+        // continuation's effects run (the starvation anti-requirement must
+        // still see the funds card the expenses slot holds). The start both
+        // gates and spawns, so the start lines go here — ahead of everything
+        // this recipe does (CS spawns the queued additions only at the
+        // inductions pass; one `start` line cannot split gate from spawn, so
+        // the gate — the semantics-carrying half — keeps CS's position).
+        self.emit_additional_starts(body, ind, r, rid);
+
         // Mutations.
-        for m in r.get("mutations").and_then(|x| x.as_array()).into_iter().flatten() {
+        for m in r
+            .get("mutations")
+            .and_then(|x| x.as_array())
+            .into_iter()
+            .flatten()
+        {
             let (Some(filt), Some(mutate)) = (s(m, "filter"), s(m, "mutate")) else {
                 self.gaps.hit(
                     "mutation without a filter or mutate key",
@@ -1655,6 +1833,15 @@ impl<'a> Converter<'a> {
                 format!("= {level}")
             };
             body.push((ind, format!("set aspect:{fk} aspect:{mk} {op}")));
+        }
+
+        // Deck draws: CS RunDeckEffect deals into the situation's storage
+        // sphere after the mutation and xtrigger passes and before the
+        // recipe's own effects — so draws come here, after mutations and
+        // before the effects table (and after the alt gates above, which CS
+        // decides in GetValidOverride before ExecuteCurrentRecipe runs).
+        for line in self.draws_of(r, rid) {
+            body.push((ind, line));
         }
 
         // The effects table.
@@ -1688,17 +1875,17 @@ impl<'a> Converter<'a> {
                 let n = v.clamp(1, 20);
                 body.push((ind, format!("spawn {pname} count {n} into table")));
             } else {
-                let n = -v;
+                // A negative effect value drains the executing situation's
+                // interior only (CS RunRecipeEffects -> Sphere.ModifyElementQuantity
+                // -> ReduceElement): it consumes up to |n| units across the
+                // interior's stacks in arrival order, retiring stacks that
+                // reach zero, and stops silently at the last matching unit
+                // (the elementStack == null early return) — so -1 and -999
+                // differ observably whenever the interior holds more than
+                // one unit. The .sw destroy count is the same AtMost cap
+                // (story-engine effects.rs takes min(count, resolved)).
                 let kk = self.key(&k);
-                if n >= 99 {
-                    // CS wipe-the-stack idiom (-99/-100/-999): remove every copy.
-                    body.push((ind, format!("if count(interior, aspect:{kk}) + count(world, aspect:{kk}) >= 1")));
-                    body.push((ind + 2, format!("destroy aspect:{kk}")));
-                } else {
-                    let n = n.clamp(1, 20);
-                    body.push((ind, format!("if count(interior, aspect:{kk}) + count(world, aspect:{kk}) >= {n}")));
-                    body.push((ind + 2, format!("consume aspect:{kk} {n}")));
-                }
+                body.push((ind, format!("destroy interior aspect:{kk} count {}", -v)));
             }
         }
 
@@ -1722,8 +1909,10 @@ impl<'a> Converter<'a> {
         let linked = entries(r, "linked");
         self.emit_linked_cascade(body, &linked, 0, ind, rid, stack);
 
-        // additional alts + inductions: every matching entry opens its own window.
-        self.emit_post_starts(body, ind, r, rid);
+        // Inductions: CS gates them after the effects (the inductions pass
+        // runs post-ExecuteCurrentRecipe), so they stay behind the linked
+        // cascade.
+        self.emit_induction_starts(body, ind, r, rid);
     }
 
     /// The exclusive first-executable cascade over a linked list. Each arm
@@ -1858,9 +2047,6 @@ impl<'a> Converter<'a> {
                 body.push((ind, format!("narrate \"{t}\"")));
             }
         }
-        for line in self.draws_of(&r, tid) {
-            body.push((ind, line));
-        }
         let plain_alts: Vec<Value> = entries(&r, "alt")
             .into_iter()
             .filter(|e| !(e.is_object() && truthy(e, "additional")))
@@ -1872,38 +2058,76 @@ impl<'a> Converter<'a> {
         self.inlined.insert(tid.to_string());
     }
 
-    /// Additional alts and inductions: every matching entry opens its own
-    /// window (parallel fan-out, no exclusivity).
-    fn emit_post_starts(&mut self, body: &mut Vec<(usize, String)>, ind: usize, r: &Value, rid: &str) {
+    /// The additional-alt fan-out: every matching entry starts its own
+    /// situation (gates decided pre-effects, CS GetValidOverride order).
+    fn emit_additional_starts(
+        &mut self,
+        body: &mut Vec<(usize, String)>,
+        ind: usize,
+        r: &Value,
+        rid: &str,
+    ) {
         let additional: Vec<Value> = entries(r, "alt")
             .into_iter()
             .filter(|e| e.is_object() && truthy(e, "additional"))
             .collect();
-        let mut inductions = entries(r, "inductions");
-        inductions.retain(|e| e.is_object() || e.is_string());
-        for e in additional.into_iter().chain(inductions) {
-            let Some(tid) = entry_id(&e) else {
-                continue;
-            };
-            let Some(target) = self.recipe_target(&tid) else {
-                continue;
-            };
-            let (roll_line, cond) = self.chance_gate(&e, rid);
-            if let Some(rl) = roll_line {
-                body.push((ind, rl));
-            }
-            match cond {
-                Some(cl) => {
-                    body.push((ind, format!("if {cl}")));
-                    body.push((ind + 2, format!("start {} via {}", target.0, target.1)));
-                }
-                None => body.push((ind, format!("start {} via {}", target.0, target.1))),
-            }
-            self.note_start(&tid);
+        for e in additional {
+            self.emit_side_start(body, ind, rid, &e);
         }
     }
 
-    fn emit_lever(&mut self, body: &mut Vec<(usize, String)>, ind: usize, rid: &str, key: &str, v: i64) {
+    /// The induction fan-out: every matching entry starts its own situation
+    /// (gates decided post-effects, CS inductions-pass order).
+    fn emit_induction_starts(
+        &mut self,
+        body: &mut Vec<(usize, String)>,
+        ind: usize,
+        r: &Value,
+        rid: &str,
+    ) {
+        let mut inductions = entries(r, "inductions");
+        inductions.retain(|e| e.is_object() || e.is_string());
+        for e in inductions {
+            self.emit_side_start(body, ind, rid, &e);
+        }
+    }
+
+    /// One side-situation start: chance gate, then the start line.
+    fn emit_side_start(
+        &mut self,
+        body: &mut Vec<(usize, String)>,
+        ind: usize,
+        rid: &str,
+        e: &Value,
+    ) {
+        let Some(tid) = entry_id(e) else {
+            return;
+        };
+        let Some(target) = self.recipe_target(&tid) else {
+            return;
+        };
+        let (roll_line, cond) = self.chance_gate(e, rid);
+        if let Some(rl) = roll_line {
+            body.push((ind, rl));
+        }
+        match cond {
+            Some(cl) => {
+                body.push((ind, format!("if {cl}")));
+                body.push((ind + 2, format!("start {} via {}", target.0, target.1)));
+            }
+            None => body.push((ind, format!("start {} via {}", target.0, target.1))),
+        }
+        self.note_start(&tid);
+    }
+
+    fn emit_lever(
+        &mut self,
+        body: &mut Vec<(usize, String)>,
+        ind: usize,
+        rid: &str,
+        key: &str,
+        v: i64,
+    ) {
         let lever_id = key.trim_start_matches("lever_").to_lowercase();
         let default = self
             .d
@@ -1938,7 +2162,11 @@ impl<'a> Converter<'a> {
         let base_flavour = s(base, "flavour").unwrap_or("Melancholy").to_string();
         if let Some(f) = s(r, "signalEndingFlavour") {
             if f != base_flavour {
-                return self.names.ending_variant.get(&(end.to_string(), f.to_string())).cloned();
+                return self
+                    .names
+                    .ending_variant
+                    .get(&(end.to_string(), f.to_string()))
+                    .cloned();
             }
         }
         self.names.ending.get(end).cloned()

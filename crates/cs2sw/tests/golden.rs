@@ -92,8 +92,10 @@ fn golden_slice_converts_and_compiles() {
     assert!(recipe.contains("priority 0"), "content-order priority");
     assert!(recipe.contains("offer: 0..1 open"), "player-verb offer slot");
     assert!(
-        recipe.contains("total(interior, aspect:funds) >= 1"),
-        "when reads the requirements"
+        recipe.contains("total(interior, aspect:funds) >= 1")
+            && recipe.contains("total(slot:offer, aspect:funds) >= 1")
+            && recipe.contains("total(world, aspect:funds) >= 1"),
+        "a multi-key dict keeps the three-scope union (the offer slot binds one card)"
     );
     assert!(
         recipe.contains("narrate \"It is rare for passenger vessels"),

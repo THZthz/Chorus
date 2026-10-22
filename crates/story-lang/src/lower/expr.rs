@@ -206,6 +206,7 @@ impl Compiler {
     pub(crate) fn lower_scope(&mut self, s: &ast::AScope) -> Option<Scope> {
         match s {
             ast::AScope::Interior(_) => Some(Scope::Interior),
+            ast::AScope::Table(_) => Some(Scope::Table),
             ast::AScope::World(_) => Some(Scope::World),
             ast::AScope::Bound(_) => Some(Scope::Bindings),
             ast::AScope::Anywhere(_) => Some(Scope::Anywhere),

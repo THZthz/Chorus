@@ -57,6 +57,10 @@ pub enum Event {
     },
     /// An instance finished its completion sequence.
     SituationCompleted { sit: SituationId, recipe: RecipeId },
+    /// A situation adopted a `continue via` target instead of completing:
+    /// the same instance goes on executing the target recipe with its timer
+    /// re-armed (spec.md §4.2).
+    Continued { situation: SituationId, recipe: RecipeId },
     /// A start chain ended silently: no eligible recipe, every `when` false,
     /// or the winner's guard refused.
     ChainEnded { verb: VerbId },

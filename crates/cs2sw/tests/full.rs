@@ -63,6 +63,11 @@ fn full_conversion_compiles_clean() {
     let s = &conversion.stats;
     assert!(s.cards_out > 1000, "the full card population converts");
     assert!(s.recipes_out > 1800, "the full recipe population converts");
+    assert!(
+        s.slots_out > 3000,
+        "every requirement key is bindable: source slots, verb slots, and synthesized slots, got {}",
+        s.slots_out
+    );
     assert!(s.verbs_out > 60, "player, ambient, shadow, and popup verbs");
     // The F-1 census: same-context linked continuations are reachable
     // (inlined or started); the residual dead set is small and every dead
@@ -74,9 +79,10 @@ fn full_conversion_compiles_clean() {
     );
     assert_eq!(s.dead_verbs, 8, "the dead verbs stay individually reported");
     println!(
-        "full conversion: {} cards, {} recipes, {} verbs, {} decks, {} endings; {} gap rows; dead census: {} recipes / {} verbs",
+        "full conversion: {} cards, {} recipes, {} slots, {} verbs, {} decks, {} endings; {} gap rows; dead census: {} recipes / {} verbs",
         s.cards_out,
         s.recipes_out,
+        s.slots_out,
         s.verbs_out,
         s.decks_out,
         s.endings_out,
@@ -98,33 +104,33 @@ fn playability_smoke_zero_engine_errors() {
         "boot must report no error diagnostics: {boot_errors:#?}"
     );
 
-    // Commit the common verbs with plausible offerings.
-    let offers = ["health", "reason", "passion", "funds", "introjob"];
+    // Commit the common verbs with plausible offerings. Every recipe of a
+    // player verb carries the verb's own mapped slot (`<verb>_<verb>`), whose
+    // filter is the CS verb's drop-slot any-of; the boot cards carry ability
+    // (health/reason/passion), so each lands. (The funds card is locked by
+    // the ambient heartbeat's expenses slot at boot.)
+    let ladders: [(&str, &str, &str); 3] = [
+        ("work", "work_work", "health"),
+        ("dream", "dream_dream", "passion"),
+        ("study", "study_study", "reason"),
+    ];
     let mut committed = Vec::new();
-    for verb in ["work", "dream", "study"] {
-        for offer in offers.iter().map(|o| Some(*o)).chain(std::iter::once(None)) {
-            let bindings = match offer {
-                Some(name) => match find(&engine, name) {
-                    Some(id) => vec![(SlotName::from("offer"), id)],
-                    None => continue,
-                },
-                None => vec![],
-            };
-            let action = CommitAction {
-                verb: VerbId::from(verb),
-                bindings,
-            };
-            match engine.commit(action) {
-                Ok(_) => {
-                    committed.push((verb, offer));
-                    break;
+    for (verb, slot, card) in ladders {
+        match find(&engine, card) {
+            Some(id) => {
+                let action = CommitAction {
+                    verb: VerbId::from(verb),
+                    bindings: vec![(SlotName::from(slot), id)],
+                };
+                match engine.commit(action) {
+                    Ok(_) => committed.push((verb, card)),
+                    // A refusal (the card already bound, nothing eligible)
+                    // never mutates state; only error diagnostics count
+                    // against the zero-error bar.
+                    Err(_) => continue,
                 }
-                // A refusal (the card already bound, nothing eligible) moves
-                // down the offer ladder; only diagnostics with error severity
-                // count against the zero-error bar, and commit refusals never
-                // mutate state.
-                Err(_) => continue,
             }
+            None => continue,
         }
     }
     assert!(
@@ -146,7 +152,9 @@ fn playability_smoke_zero_engine_errors() {
     );
 
     // Advance through two full season cycles (the ambient `needs` window is
-    // 60m): every advance returns Ok and no resolution fails.
+    // 60m): every advance returns Ok and no resolution fails. The heartbeat
+    // never completes now — it continues: needs -> discardseason ->
+    // drawseason -> needs, the funds wipe riding the discardseason step.
     let mut turns = 0;
     let mut resolution_failures = Vec::new();
     let mut journal = Vec::new();
@@ -160,6 +168,9 @@ fn playability_smoke_zero_engine_errors() {
                     }
                     if let Event::SituationCompleted { sit, recipe } = e {
                         journal.push(format!("[sit {sit}] {recipe} completed"));
+                    }
+                    if let Event::Continued { situation, recipe } = e {
+                        journal.push(format!("[sit {situation}] continued via {recipe}"));
                     }
                 }
             }
@@ -177,12 +188,14 @@ fn playability_smoke_zero_engine_errors() {
                 "the funds wipe consumed the expenses-bound cards: {wiped:?}"
             );
             assert!(
-                journal.iter().any(|l| l.contains("time.needs completed")),
-                "needs completed within the first season: {journal:?}"
+                journal
+                    .iter()
+                    .any(|l| l.contains("continued via time_chains.discardseason")),
+                "needs continued into discardseason within the first season: {journal:?}"
             );
             println!(
                 "smoke: the expenses-bound funds card(s) {bound_funds:?} were destroyed at the \
-                 first needs completion (clock {}m)",
+                 discardseason continuation step (clock {}m)",
                 engine.state().now
             );
         }
@@ -223,17 +236,17 @@ fn card_book_fires_at_a_completion_that_binds_the_requirement_card() {
         Engine::boot(content.clone(), EffectRegistry::new(), cs2sw::SEED, None);
     assert!(boot.iter().all(|d| !d.is_error()), "{boot:?}");
 
-    // The offer slot of getcommissionbechet carries the filter
-    // `name:bechetready`; committing a card that does not satisfy it is
-    // refused before opening.
+    // The synthesized requirement slot of getcommissionbechet carries the
+    // filter `name:bechetready`; committing a card that does not satisfy it
+    // is refused before opening.
     let reason = find(&engine, "reason").expect("reason at boot");
     let refusal = engine.commit(CommitAction {
         verb: VerbId::from("talk"),
-        bindings: vec![(SlotName::from("offer"), reason)],
+        bindings: vec![(SlotName::from("req_bechetready"), reason)],
     });
     assert!(
         refusal.is_err(),
-        "the requirement-routed offer slot refuses a non-matching card"
+        "the requirement-routed slot refuses a non-matching card"
     );
 
     // Hand-prepare the save: one `bechetready` card on the table.
@@ -274,13 +287,14 @@ fn card_book_fires_at_a_completion_that_binds_the_requirement_card() {
     };
     engine.restore(&prepared).expect("restore");
 
-    // Commit talk binding the requirement card: the filter accepts it and the
-    // recipe declares its catalyst (`commissiongiven`).
+    // Commit talk binding the requirement card into the synthesized
+    // requirement slot: the filter accepts it and the recipe declares its
+    // catalyst (`commissiongiven`).
     let bechetready = find(&engine, "bechetready").expect("the prepared card");
     let events = engine
         .commit(CommitAction {
             verb: VerbId::from("talk"),
-            bindings: vec![(SlotName::from("offer"), bechetready)],
+            bindings: vec![(SlotName::from("req_bechetready"), bechetready)],
         })
         .expect("the routed commit opens getcommissionbechet");
     for e in &events {

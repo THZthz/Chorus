@@ -60,6 +60,7 @@ fn main() -> ExitCode {
     println!("cards out:          {}", s.cards_out);
     println!("aspect keys:        {}", s.aspect_keys);
     println!("recipes in/out:     {} / {}", s.recipes_in, s.recipes_out);
+    println!("slots out:          {}", s.slots_out);
     println!("verbs out:          {}", s.verbs_out);
     println!("decks out:          {}", s.decks_out);
     println!("endings out:        {}", s.endings_out);

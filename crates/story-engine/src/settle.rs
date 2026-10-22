@@ -4,16 +4,16 @@
 use crate::effects::EffectCtx;
 use crate::mint::Fail;
 use crate::select::{Selection, Source};
-use crate::{DiagExt, Engine, Event, StartSkipReason};
+use crate::{bind_count, DiagExt, Engine, Event, StartSkipReason};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
-use story_content::ir::{Book, SeedSpec, VerbMode};
+use story_content::ir::{Book, EffectNode, SeedSpec, VerbMode};
 use story_content::runtime::{DiagKind, RuntimeDiagnostic};
 use story_content::Content;
 use story_core::rng::splitmix64;
 use story_core::{
-    CardId, DeckId, EntityId, SituationId, SituationSource, State, Time, VerbId, Zone, ZoneId,
-    ZoneKind,
+    Binding, CardId, DeckId, EntityId, SituationId, SituationSource, State, Time, VerbId,
+    Zone, ZoneId, ZoneKind,
 };
 
 /// The budget guard of one engine call: the entry checkpoint for the only
@@ -210,6 +210,7 @@ pub(crate) fn boot(
         now: 0,
         roll: None,
         handles: BTreeMap::new(),
+        continued: None,
     };
     let mut ev = Vec::new();
     for (_, id, face) in card_ids {
@@ -414,6 +415,23 @@ fn next_due(engine: &Engine, target: Time) -> Option<Due> {
 // Completion (spec.md §4.2)
 // ---------------------------------------------------------------------------
 
+/// The `continue via` targets of a recipe's effect list, in static pre-order
+/// — the walk order the arms were emitted in.
+fn continue_arms(effects: &[EffectNode]) -> Vec<EffectNode> {
+    let mut out = Vec::new();
+    for node in effects {
+        match node {
+            EffectNode::Continue { .. } => out.push(node.clone()),
+            EffectNode::Branch { then, els, .. } => {
+                out.extend(continue_arms(then));
+                out.extend(continue_arms(els));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 impl Engine {
     /// The advance-path completion of one queued situation: the unit
     /// checkpoints before its first effect; an effect failure rolls the unit
@@ -459,6 +477,7 @@ impl Engine {
             now: self.state.now,
             roll: None,
             handles: BTreeMap::new(),
+            continued: None,
         };
         // Step 1: the recipe's effects, in order.
         self.run_list(
@@ -485,56 +504,53 @@ impl Engine {
                 self.destroy_entity(b.entity);
             }
         }
-        // Step 3: the recipe's completion book first, then each distinct
-        // locked card's book — deduplicated across slots, ordered by first
-        // bind; an aspect-qualified book fires only when the completing
-        // recipe declares the qualifier (T12).
+        // Step 3: the recipe's completion book first, then every interior
+        // card's book — bound bindings in bind order, then unbound interior
+        // storage in mint order, deduplicated by entity; an aspect-qualified
+        // book fires when the completing recipe declares the qualifier or the
+        // situation's interior aspect pool contains it (T12).
         if let Some(book) = rec.on_complete.clone() {
             let mut fctx = EffectCtx {
                 sit: Some(sit),
                 now: self.state.now,
                 roll: None,
                 handles: BTreeMap::new(),
+                continued: None,
             };
             self.fire_book(&book, &mut fctx, Some(&recipe_id), ev, run)?;
         }
         if self.state.ended.is_none() {
-            // Distinct locked cards, ordered by first bind: a card bound in
-            // two slots walks once (kernel-api.md §8). The books stop at the
-            // first ending: an ending inside one card book closes the run and
-            // no later card book fires.
-            let mut seen = std::collections::BTreeSet::new();
-            let bound_cards: Vec<EntityId> = self
-                .all_bindings(Some(sit))
-                .into_iter()
-                .filter(|e| seen.insert(*e))
-                .collect();
-            for e in bound_cards {
-                if self.state.ended.is_some() {
-                    break;
-                }
-                let Some(ent) = self.state.entities.get(&e) else {
-                    continue;
-                };
-                let decl = self.template(&ent.prototype);
-                for (qual, book) in &decl.on_complete {
-                    if self.state.ended.is_some() {
-                        break;
-                    }
-                    let fires = match qual {
-                        None => true,
-                        Some(k) => rec.declares.iter().any(|d| d == k),
-                    };
-                    if !fires {
-                        continue;
-                    }
-                    let mut fctx = EffectCtx {
-                        sit: Some(sit),
-                        now: self.state.now,
-                        roll: None,
-                        handles: BTreeMap::from([("subject".to_string(), vec![e])]),
-                    };
-                    self.fire_book(book, &mut fctx, Some(&recipe_id), ev, run)?;
+            self.fire_card_books(sit, &rec, ev, run)?;
+        }
+        // The books stop at the first ending: an ending inside one book closes
+        // the run and the situation falls through to its release.
+        if self.state.ended.is_none() {
+            // `continue via`: the recipe's execution has run its effects,
+            // consuming settlement, and books — a `continue` the list
+            // executed (branch semantics are ordinary) picks the walk's
+            // starting arm, and the walk re-checks the arms — a max-exhausted
+            // target missing like a failed `when` — in emission order against
+            // the post-book interior (the linked hand-off order). The first
+            // arm that passes adopts; a miss on every arm completes
+            // (spec.md §4.2).
+            if let Some(executed) = fctx.continued.clone() {
+                let arms = continue_arms(&rec.effects);
+                let mut arms: Vec<story_core::RecipeId> = arms
+                    .into_iter()
+                    .filter_map(|n| match n {
+                        EffectNode::Continue { recipe } => Some(recipe),
+                        _ => None,
+                    })
+                    .collect();
+                if !arms.is_empty() {
+                    let start = arms
+                        .iter()
+                        .position(|a| *a == executed)
+                        .unwrap_or(0);
+                    let remaining: Vec<story_core::RecipeId> =
+                        arms.drain(start..).collect();
+                    return self
+                        .continue_transition(sit, recipe_id, remaining, ev, run);
                 }
             }
         }
@@ -544,6 +560,248 @@ impl Engine {
             sit,
             recipe: recipe_id,
         });
+        Ok(())
+    }
+
+    /// The card-book walk of a completion or continue step: every interior
+    /// card, bound bindings first in bind order (a card bound in two slots
+    /// walks once), then unbound interior storage in mint order, deduplicated
+    /// by entity across both groups (kernel-api.md §8). An aspect-qualified
+    /// book fires under either catalyst pass: the completing recipe's
+    /// `declares` list, or the situation's interior aspect pool — the read
+    /// sums over the interior, bound cards included — containing the
+    /// qualifier. The books stop at the first ending.
+    fn fire_card_books(
+        &mut self,
+        sit: SituationId,
+        rec: &story_content::ir::RecipeDecl,
+        ev: &mut Vec<Event>,
+        run: &mut Run,
+    ) -> Result<(), Fail> {
+        let interior = match self.state.situations.get(&sit) {
+            Some(s) => s.interior,
+            None => return Ok(()),
+        };
+        let mut seen = BTreeSet::new();
+        let mut walk: Vec<EntityId> = self
+            .all_bindings(Some(sit))
+            .into_iter()
+            .filter(|e| seen.insert(*e))
+            .collect();
+        for e in self.zone_entities(interior) {
+            if seen.insert(e) {
+                walk.push(e);
+            }
+        }
+        for e in walk {
+            if self.state.ended.is_some() {
+                break;
+            }
+            let (decl, own_keys) = {
+                let Some(ent) = self.state.entities.get(&e) else {
+                    continue;
+                };
+                // The stack's own declaration — element id and aspect keys,
+                // mutations included — is the candidate set CS
+                // RunXTriggersOnStack scans for declaring elements.
+                (self.template(&ent.prototype), ent.aspects.clone())
+            };
+            for (qual, book) in &decl.on_complete {
+                if self.state.ended.is_some() {
+                    break;
+                }
+                // Two conjuncts over the two catalyst passes: a recipe-declared
+                // qualifier (pass 1, CS Recipe.Aspects) fires the book; the
+                // interior pool (pass 2, CS situation aspects) fires it only on
+                // a stack whose own keys carry the qualifier — a stack's
+                // candidate triggers are those declared on its own elements.
+                let fires = match qual {
+                    None => true,
+                    Some(k) => {
+                        rec.declares.iter().any(|d| d == k)
+                            || (own_keys.get(k).copied().unwrap_or(0) >= 1
+                                && self.interior_aspect_total(interior, k) >= 1)
+                    }
+                };
+                if !fires {
+                    continue;
+                }
+                let mut fctx = EffectCtx {
+                    sit: Some(sit),
+                    now: self.state.now,
+                    roll: None,
+                    handles: BTreeMap::from([("subject".to_string(), vec![e])]),
+                    continued: None,
+                };
+                self.fire_book(book, &mut fctx, Some(&rec.id), ev, run)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The interior aspect pool: the read-value sum of one key over every
+    /// card in the interior, bound cards included (spec.md §4.2).
+    fn interior_aspect_total(&self, interior: ZoneId, key: &str) -> i64 {
+        self.zone_entities(interior)
+            .iter()
+            .map(|e| self.read(*e, key))
+            .sum()
+    }
+
+    /// The continue path: consuming settlement and the books have run; the
+    /// situation adopts the target recipe instead of completing. The step
+    /// charges the per-advance budget, and the native recursion of inline
+    /// instant targets is depth-capped — a breach takes the Livelock rollback
+    /// path (spec.md §4.2, kernel-api.md §6).
+    fn continue_transition(
+        &mut self,
+        sit: SituationId,
+        current: story_core::RecipeId,
+        arms: Vec<story_core::RecipeId>,
+        ev: &mut Vec<Event>,
+        run: &mut Run,
+    ) -> Result<(), Fail> {
+        self.charge(run)?;
+        if run.depth >= crate::MAX_RESOLUTION_DEPTH {
+            self.state = run.entry.clone();
+            return Err(Fail::new(
+                DiagKind::Livelock,
+                format!(
+                    "inline continue resolution exceeds the depth cap of {}",
+                    crate::MAX_RESOLUTION_DEPTH
+                ),
+            ));
+        }
+        run.depth += 1;
+        let out = self.continue_transition_inner(sit, current, arms, ev, run);
+        run.depth -= 1;
+        out
+    }
+
+    fn continue_transition_inner(
+        &mut self,
+        sit: SituationId,
+        current: story_core::RecipeId,
+        arms: Vec<story_core::RecipeId>,
+        ev: &mut Vec<Event>,
+        run: &mut Run,
+    ) -> Result<(), Fail> {
+        let interior = self.state.situations[&sit].interior;
+        // (1) The executing recipe's consuming slots burned at settlement.
+        // (2) Every other binding is released into the interior as unbound
+        // storage: the cards stay part of the situation — interior, unlocked,
+        // never returned to `bound_from`, never re-bound.
+        if let Some(s) = self.state.situations.get_mut(&sit) {
+            s.bindings.clear();
+        }
+        // (3) The transition's one gate, decided pre-materialization (CS
+        // GetNextValidLink decides before the takeover; StartRecipe just
+        // materializes): the walk's arms re-check their `when`s in order
+        // against the released pool — the situation's interior sums — and a
+        // max-exhausted target is a miss like a failed `when` (CS
+        // CanExecuteInContext blocks exhausted linked candidates). The first
+        // arm that passes adopts; a miss on every arm falls through to the
+        // normal completion sequence.
+        let mut adopted: Option<story_core::RecipeId> = None;
+        for arm in &arms {
+            let rec = self.recipe_of(arm);
+            let when_holds = match &rec.when {
+                None => true,
+                Some(w) => {
+                    let ctx = crate::eval::Ctx {
+                        sit: Some(sit),
+                        sel_bindings: None,
+                        subject: None,
+                        roll: None,
+                        recipe: Some(rec.id.clone()),
+                    };
+                    self.eval_cond(w, &ctx)
+                }
+            };
+            if when_holds && self.max_left(&rec) {
+                adopted = Some(rec.id.clone());
+                break;
+            }
+        }
+        let Some(target_id) = adopted else {
+            self.release_and_remove(sit);
+            ev.push(Event::SituationCompleted { sit, recipe: current });
+            return Ok(());
+        };
+        let target = self.recipe_of(&target_id);
+        // (4) The adopted recipe materializes with no further gate: greedy
+        // slots pull from the world per the standard greedy order (the
+        // interior is not bindable, so released storage is never re-bound);
+        // open slots re-open for mid-run `bind`. Greedy is best-effort; no
+        // minimum is validated here — the pre-pull walk was the gate.
+        let pool = self.greedy_pool();
+        for sd in &target.slots {
+            if !sd.greedy {
+                continue;
+            }
+            let Some(max) = sd.max else { continue };
+            let mut taken: Vec<EntityId> = Vec::new();
+            for pick in &pool {
+                if taken.len() >= max as usize {
+                    break;
+                }
+                if taken.contains(pick) || self.is_locked(*pick) {
+                    continue;
+                }
+                let ctx = crate::eval::Ctx::default();
+                if !self.matches_slot(pick, sd, &ctx) {
+                    continue;
+                }
+                taken.push(*pick);
+            }
+            for e in taken {
+                let bound_from = self.state.entities[&e].zone;
+                if let Some(ent) = self.state.entities.get_mut(&e) {
+                    ent.zone = interior;
+                }
+                let seq = bind_count(&self.state, sit);
+                let situation = self.state.situations.get_mut(&sit).expect("live sit");
+                situation
+                    .bindings
+                    .entry(sd.name.clone())
+                    .or_default()
+                    .push(Binding {
+                        entity: e,
+                        bound_from,
+                        seq,
+                    });
+                ev.push(Event::Bound {
+                    sit,
+                    slot: sd.name.clone(),
+                    entity: e,
+                });
+            }
+        }
+        // (5) The situation adopts the target recipe — its verb included
+        // (spec.md §4.2) — spends one `max` count (adoption materializes the
+        // new recipe), and the timer re-arms.
+        let now = self.state.now;
+        {
+            let s = self.state.situations.get_mut(&sit).expect("live sit");
+            s.recipe = target.id.clone();
+            s.verb = target.verb.clone();
+            s.started_at = now;
+            s.ends_at = now.saturating_add(target.duration);
+        }
+        self.state
+            .recipe_runs
+            .entry(target.id.clone())
+            .and_modify(|n| *n += 1)
+            .or_insert(1);
+        ev.push(Event::Continued {
+            situation: sit,
+            recipe: target.id.clone(),
+        });
+        if target.duration == 0 {
+            // A 0-duration target resolves inline as usual, budget-charged.
+            self.charge(run)?;
+            self.completion_steps(sit, ev, run)?;
+        }
         Ok(())
     }
 
@@ -567,6 +825,7 @@ impl Engine {
                 now: self.state.now,
                 roll: None,
                 handles: BTreeMap::new(),
+                continued: None,
             };
             if self
                 .fire_book(&book, &mut fctx, Some(&rec.id), ev, run)
@@ -608,6 +867,7 @@ fn settle_expiry(
             now: engine.state.now,
             roll: None,
             handles: BTreeMap::from([("subject".to_string(), vec![e])]),
+            continued: None,
         };
         match engine.fire_book(&book, &mut fctx, None, ev, run) {
             Ok(()) => {}

@@ -5,7 +5,16 @@ The implementation contract for `story-core` and `story-engine`: host-facing sig
 ## 1. Host-Facing API
 
 ```rust
-pub struct Engine { content: Arc<Content>, registry: EffectRegistry, state: State }
+pub struct Engine {
+    content: Arc<Content>, registry: EffectRegistry, state: State, seed: u64,
+    // Boot-derived from content + seed, read-only after boot: declared-zone
+    // addresses in declaration order, greedy candidate ordering, zone nesting,
+    // the home zone, the turn unit, and the per-deck deal permutations
+    // (`State` carries only the deck cursors).
+    zone_ids: BTreeMap<String, ZoneId>, zone_order: BTreeMap<ZoneId, u32>,
+    zone_parent: BTreeMap<ZoneId, Option<ZoneId>>, home: ZoneId, turn: i64,
+    deck_orders: BTreeMap<DeckId, Vec<CardId>>,
+}
 
 impl Engine {
     pub fn boot(content: Arc<Content>, registry: EffectRegistry, seed: u64,
@@ -66,7 +75,7 @@ pub struct Situation {
     pub started_at: Time, pub ends_at: Time,
 }
 pub enum SituationSource { Commit, Autonomous, Start { parent: SituationId } }
-pub struct Binding { pub entity: EntityId, pub bound_from: ZoneId }
+pub struct Binding { pub entity: EntityId, pub bound_from: ZoneId, pub seq: u64 }   // seq: bind order within the situation
 ```
 
 Key points: aspect keys are flat; **locks are derived** (walk `situations.bindings`; there is no redundant lock table); zones are first-class (the `public × bindable` policy bits carry visibility and bindability, defaults per spec.md §4.1); `clock` reads `state.now`, which starts at 0 at boot. `attrs` never receive writes from authored effects — the compiled IR contains no attribute-writing node.
@@ -91,6 +100,10 @@ pub enum Event {
     Bound { sit: SituationId, slot: SlotName, entity: EntityId },
     /// An instance finished its completion sequence.
     SituationCompleted { sit: SituationId, recipe: RecipeId },
+    /// A situation adopted a `continue via` target instead of completing:
+    /// the same instance goes on executing the target recipe with its timer
+    /// re-armed (spec.md §4.2).
+    Continued { situation: SituationId, recipe: RecipeId },
     /// A start chain ended silently: no eligible recipe, every `when` false,
     /// or the winner's guard refused.
     ChainEnded { verb: VerbId },
@@ -123,13 +136,14 @@ pub enum EffectNode {
     Destroy { target: Target, count: DestroyCount },    // All | AtMost(Expr)
     Consume { target: Target, count: Expr },
     Swap { target: Target, count: Expr, to: CardId, into: Option<Into> },
-    Set { target: Target, key: AspectKey, op: ArithOp, expr: Expr, unclamped: bool },
+    Set { target: Target, key: AspectKey, op: SetOp, expr: Expr, unclamped: bool },
     Move { target: Target, into: Into },
-    Legacy { key: LegacyKey, op: ArithOp, expr: Expr },
+    Legacy { key: LegacyKey, op: SetOp, expr: Expr },   // always clamps at ≥ 0
     Narrate { template: String },
     Roll { count: Expr, sides: Expr, bonus: Expr, bind: String },
     Draw { deck: DeckId, count: Expr, into: Option<Into> },
     Start { verb: VerbId, via: Option<RecipeId>, count: Expr },
+    Continue { recipe: RecipeId },                      // recipe effects only; [E247] elsewhere
     Signal { event: String },
     Ending { id: EndingId },
     Branch { cond: Expr, then: Vec<EffectNode>, els: Vec<EffectNode> },
@@ -146,6 +160,7 @@ pub struct EffectCtx {
     pub now: Time,                      // the stepped now
     pub roll: Option<i64>,              // last-wins roll binding
     pub handles: BTreeMap<HandleName, Vec<EntityId>>,  // mint-ordered pools; cleared at list end
+    pub continued: Option<RecipeId>,    // the `continue via` this list executed; last-wins
 }
 ```
 
@@ -159,14 +174,16 @@ Extension without kernel changes: host Rust registers `Host` closures by name; `
 ## 5. Engine-Side Queries and Expressions
 
 ```rust
-enum Scope { Interior, Bindings, Slot(SlotName), Zone(ZoneId), World /* public */, Anywhere }
-enum Expr { Lit(i64), Bool(bool), Aspect { scope, query, key }, Count, Exists, Attr,
-            BoundCount, Legacy, Roll, Counter, Clock, Alive(String), Arith, Cmp, Logic, Not }
+enum Scope { Interior, Bindings, Slot(SlotName), Zone(ZoneId), Table, World /* public */, Anywhere }
+enum Expr { Lit(i64), Bool(bool), NamePath { card, key }, Subject(key),
+            Aspect { scope, query, key }, Count { scope, query }, Exists { scope, query },
+            Attr { scope, query, key }, Legacy(LegacyKey), Roll, Counter, Clock,
+            Alive(String), Arith, Cmp, Logic, Not }
 ```
 
-The engine-side grammar mirrors the DSL's (language.md §3). `Interior` is the interior zone of the situation whose resolution is currently running — for a `start` fired inside a completion, the parent situation's interior with its still-locked bindings. `Slot(s)` is the context's binding set for that slot name. `Zone(z)` includes the nested subtree. `Bindings` (the `bound` scope) counts per binding — a card bound in two slots counts twice; it reads empty outside a running situation, as do `Interior` and `Slot`. `kind:<k>` terms compare against `Entity.kind`; the compiler validates the kind against the collected card declarations [E203].
+The engine-side grammar mirrors the DSL's (language.md §3). `Interior` is the interior zone of the situation whose resolution is currently running — for a `start` fired inside a completion, the parent situation's interior with its still-locked bindings. `Slot(s)` is the context's binding set for that slot name. `Zone(z)` includes the nested subtree. `Bindings` (the `bound` scope) counts per binding — a card bound in two slots counts twice; it reads empty outside a running situation, as do `Interior` and `Slot`. `Table` is the public live cards plus every situation's non-greedy slot bindings; greedy bindings and situation interiors are excluded. `kind:<k>` terms compare against `Entity.kind`; the compiler validates the kind against the collected card declarations [E203].
 
-**Totality.** Evaluation cannot fail: absent aspect and attr reads are 0; dead entities read 0; empty-set `count` = 0 and `exists` = false; an unbound slot scope is empty; an unbound roll is 0; `x / 0` = 0; a constant zero divisor is a compile error. Derived predicates are inlined at story-lang compile time — the kernel never sees one.
+**Totality.** Evaluation cannot fail: an aspect read falls back to the key's declared read default — a card without the key and a dead or absent entity alike — and an attr read is 0; empty-set `count` = 0 and `exists` = false; an unbound slot scope is empty; an unbound roll is 0; `x / 0` = 0; a constant zero divisor is a compile error. Derived predicates are inlined at story-lang compile time — the kernel never sees one.
 
 ## 6. Time, Settlement, and Budgets
 
@@ -196,8 +213,9 @@ The engine-side grammar mirrors the DSL's (language.md §3). `Interior` is the i
 Implementation notes pairing with spec.md §4.5–§4.7 and language.md §4–§5:
 
 - **Target resolution.** `Name` requires the card to be `unique` (compile-checked [E239]); resolve the live entity by name. `Slot` resolves against the running context's bindings and applies per binding. `Query` collects candidates inside its scope ordered by mint order (oldest first). `BareQuery` resolves interior-first, then world. `Handle` indexes `ctx.handles`; the pool is empty outside its list by construction.
-- **Trigger-rule sources at completion.** The completion step walks, in order: the recipe's `OnComplete` book; then one entry per distinct locked card whose declaration carries a completion book — deduplicated across slots, ordered by first bind — each book walked under the selection law. An aspect-qualified card book is included only when the completing recipe's `declares` list contains the qualifier. Inside a card book, `ctx` binds `subject` to the carrying card. The kernel abort path (steps 3–5 on failure) walks the recipe's book alone.
-- **Start candidacy and materialization.** For `start` and autonomous sources, the minimum-fill test counts greedy candidates in the current state: entities that are unbound, in bindable zones, and filter-matching for the slot. A recipe passing the test but failing materialization (greedy top-up still short of a minimum) yields `StartSkipped { reason: MaterializationFailed }` with no rollback of the parent resolution.
+- **Trigger-rule sources at completion.** The completion step walks, in order: the recipe's `OnComplete` book; then one entry per interior card whose declaration carries a completion book — the bound bindings first, ordered by first bind (deduplicated across slots), then the unbound interior storage cards in mint order, deduplicated by entity across both groups — each book walked under the selection law. An aspect-qualified card book is included when the completing recipe's `declares` list contains the qualifier, or when the situation's interior aspect pool — the read-value sums over the interior, bound cards included — contains it AND the walking card's own declaration — its element id and aspect keys, mutations included — carries the qualifier (the two catalyst passes with their per-stack scoping: recipe declares, then situation aspects over stacks whose own elements declare the trigger). Inside a card book, `ctx` binds `subject` to the carrying card. The kernel abort path (steps 3–5 on failure) walks the recipe's book alone.
+- **Continuation.** The completion path takes the `EffectNode::Continue` the executing recipe's effect list executed — recorded on the taken path, so branch semantics are ordinary and a `continue` inside an untaken branch never fires — and runs the adoption transition after the books: non-consuming bindings released into the interior as unbound storage, then the recipe's `continue` arms (the static pre-order of the list) re-check their `when`s in order against the released pool — the interior sums, the transition's one gate, decided pre-materialization; a recipe whose `max` is spent misses like a failed `when` — starting at the executed arm; the first arm that passes is adopted — recipe and verb both — and then materializes without a further gate: greedy slots pulled from the world, one `max` count spent (adoption materializes the new recipe), the timer re-armed, `Continued` emitted; a miss on every arm completes the situation. Each step charges the budget; the inline resolution of a 0-duration target recurses natively and is depth-capped like every inline chain (§6).
+- **Start candidacy and materialization.** For `start` and autonomous sources, the minimum-fill test counts greedy candidates in the current state: entities that are unbound, in public bindable zones, and filter-matching for the slot. A recipe passing the test but failing materialization (greedy top-up still short of a minimum) yields `StartSkipped { reason: MaterializationFailed }` with no rollback of the parent resolution.
 - **Locking.** `can_bind` refuses `EntityLocked` for any entity bound by any live instance, regardless of which situation asks.
 - **Context-free books.** `on expire` and `on event` rules evaluate with `sit = None`: `Interior`, `Slot`, and `Bindings` scopes read as empty sets.
 
@@ -205,7 +223,7 @@ Implementation notes pairing with spec.md §4.5–§4.7 and language.md §4–§
 
 Each statement is directly assertable by a test:
 
-- **T1 Totality.** Any expression evaluates to a value in any state: absent aspects/attrs read 0; dead entities read 0; empty scopes count 0 / exist false; unbound slot scopes are empty; unbound rolls read 0; `x / 0` = 0.
+- **T1 Totality.** Any expression evaluates to a value in any state: aspect reads fall back to the declared read default and attrs read 0 — a card without the key and a dead or absent entity alike; empty scopes count 0 / exist false; unbound slot scopes are empty; unbound rolls read 0; `x / 0` = 0.
 - **T2 Zero-divisor.** A constant zero divisor is refused at compile time [E242].
 - **T3 Commit atomicity.** Any commit refusal (`NoRecipe`, `GuardRefused`, `InstanceCapReached`, `StoryEnded`, `VerbAutonomous`, …) leaves the state bit-identical and spends zero time.
 - **T4 Per-unit atomicity.** An effect failure rolls the resolution unit back to its checkpoint — `rng_counter` and deck cursors included — aborts the unit's situation through the release path, emits `ResolutionFailed` (a completion unit; a failing expiry unit rolls back silently and spends its timer), and the advance continues.
@@ -216,9 +234,11 @@ Each statement is directly assertable by a test:
 - **T9 Context-free scopes.** Evaluating `interior`, `slot:`, or `bound` inside `on expire` rules, `on event` rules, commit selection, or autonomous polls yields empty sets.
 - **T10 Start candidacy.** A `start`/autonomous open whose slot minimum exceeds the state-countable greedy candidates never materializes; a recipe that matches but materializes short yields `StartSkipped { MaterializationFailed }` with siblings and parent untouched.
 - **T11 Roll validation.** Count 0 applies the bonus only and leaves `rng_counter` unmoved; count < 0 or sides < 1 is an effect failure rolling the unit back.
-- **T12 Card books.** At completion the recipe's book fires first, then card books deduplicated across slots in bind order; an aspect-qualified book fires only under a matching `declares`; inline completions run card books inside one budget unit.
+- **T12 Card books.** At completion the recipe's book fires first, then interior card books — bound bindings deduplicated across slots in bind order, then unbound interior storage in mint order; an aspect-qualified book fires under a matching `declares`, or under an interior pool holding the aspect when the walking card's own declaration carries it too; inline completions run card books inside one budget unit.
 - **T13 Handle scope.** A handle pool is empty outside its effect list; a static reference outside its list is [E238].
 - **T14 Per-binding writes.** `set slot:<name> aspect:<k> += 1` writes exactly once per bound card; `total(bound, aspect:<k>)` counts a twice-bound card twice.
+- **T15 Continuation.** A `continue via` step adopts the target recipe, releases the non-consuming bindings into the interior as unbound storage, re-arms the timer, and emits `Continued`; a target whose `when` misses the interior sums — or whose `max` is spent — completes normally; a timer-bounded self-continue loops once per re-arm, and an instant self-continue loop ends in the Livelock rollback.
+- **T16 Table scope.** `table` counts the public live cards plus every situation's non-greedy slot bindings, and excludes greedy bindings and situation interiors.
 
 ## 10. M2 Test Matrix
 
@@ -263,5 +283,8 @@ Behavioral coverage contract: at least one positive and one refusal path per mec
 29. `kind:` terms — positive, negated, unknown-kind compile refusal;
 30. start/autonomous candidacy by state-countable greedy fill, with the `StartSkipped { MaterializationFailed }` path.
 31. mid-run `bind` — the open-slot happy path: the `Bound` event, the interior move, release to `bound_from`, and open-slot capacity interplay.
+32. `continue via` — adoption, interior storage release, and timer re-arm; the `when`-miss fall-through; per-step books; timer-bounded self-continue; the instant self-continue Livelock bound.
+33. the `table` scope — world cards and non-greedy bindings counted, greedy bindings and interiors excluded.
+34. the widened card-book walk — unbound interior storage books at completion, and the interior-pool catalyst pass for aspect-qualified books, scoped per stack to cards whose own declaration carries the qualifier.
 
 Every entry in §9 (T1–T14) carries an executable assertion as well.

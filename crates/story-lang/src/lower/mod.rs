@@ -110,6 +110,12 @@ pub(crate) struct Env {
     /// True in situation contexts (recipe and card completion books): spawn
     /// and draw default to the interior; elsewhere to `home`.
     pub situation: bool,
+    /// True while lowering a recipe's own `effects` block — the only context
+    /// where `continue via` is legal ([E247]); book rules clear it.
+    pub in_recipe: bool,
+    /// The verb whose recipe is being lowered; local recipe references in
+    /// `continue via` resolve against it.
+    pub verb: Option<String>,
     pub pred_depth: u32,
     pub es_depth: u32,
     pub es_stack: Vec<String>,
@@ -897,6 +903,8 @@ impl Compiler {
             };
             let mut env = Env {
                 situation: true,
+                in_recipe: true,
+                verb: Some(v.name.1.clone()),
                 slots: slot_names.clone(),
                 ..Env::default()
             };
@@ -1390,6 +1398,7 @@ impl Compiler {
             }
             ast::AEffect::Draw { .. } => {}
             ast::AEffect::Start { .. } => {}
+            ast::AEffect::Continue { .. } => {}
             ast::AEffect::Signal { .. } | ast::AEffect::Ending { .. } => {}
             ast::AEffect::If {
                 cond, then, els, ..

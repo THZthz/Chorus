@@ -28,4 +28,5 @@ pub const E243: u32 = 243;
 pub const E244: u32 = 244;
 pub const E245: u32 = 245;
 pub const E246: u32 = 246;
+pub const E247: u32 = 247;
 pub const W110: u32 = 110;

@@ -247,6 +247,20 @@ impl Compiler {
                     count: self.lower_count_opt(count, env)?,
                 })
             }
+            ast::AEffect::Continue { recipe, span } => {
+                // `continue via` is legal only in a recipe's own effects
+                // block; trigger books (recipe, card, expire, event) refuse
+                // with [E247] (language.md §4.3).
+                if !env.in_recipe {
+                    self.err(span.error(
+                        code::E247,
+                        "continue is legal only in recipe effects",
+                    ));
+                    return None;
+                }
+                let recipe = self.resolve_continue_target(&recipe.0, &recipe.1, env)?;
+                Some(EffectNode::Continue { recipe })
+            }
             ast::AEffect::Signal { event, .. } => {
                 if !self.events.contains_key(&event.1) {
                     self.err(event.0.error(
@@ -300,6 +314,38 @@ impl Compiler {
             code::E244,
             format!("unknown recipe `{recipe}` within verb `{verb}`"),
         ));
+        None
+    }
+
+    /// The target of `continue via`: a local name resolves against the verb
+    /// whose recipe is being lowered, a `<verb>.<recipe>` spelling resolves
+    /// globally; anything else is [E244].
+    fn resolve_continue_target(
+        &mut self,
+        sp: &Span,
+        name: &str,
+        env: &Env,
+    ) -> Option<RecipeId> {
+        if let Some((verb, recipe)) = name.split_once('.') {
+            if self
+                .verbs
+                .get(verb)
+                .is_some_and(|v| v.recipes.contains(recipe))
+            {
+                return Some(RecipeId::from(name.to_string()));
+            }
+        } else if let Some(verb) = &env.verb {
+            if self
+                .verbs
+                .get(verb)
+                .is_some_and(|v| v.recipes.contains(name))
+            {
+                return Some(RecipeId::from(format!("{verb}.{name}")));
+            }
+        }
+        self.err(
+            sp.error(code::E244, format!("unknown recipe `{name}` targeted by `continue`")),
+        );
         None
     }
 

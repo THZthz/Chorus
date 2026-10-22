@@ -3,6 +3,21 @@
 //! source shape, every construct the language cannot carry becomes a named
 //! gap row, and every iteration is sorted (or content-ordered for recipes,
 //! which is CS's own first-match order).
+//!
+//! The three-scope story, per the decompile-verified semantics:
+//! - Requirements read the situation's combined interior; every requirement
+//!   key is made bindable through a mapped or synthesized slot, so the `when`
+//!   sums the interior plus the slots that can carry the key (the commit
+//!   selection context sees submitted bindings only through slot scopes).
+//! - `linked` arrays become exclusive `continue via` cascades: the
+//!   same-situation continuation preserves the interior, so chained recipes
+//!   pay and gate out of the parent's storage exactly as CS's situation
+//!   persistence does. Non-additional `alternativerecipes` adopt the same
+//!   shape, gated ahead of the recipe's own body — the override decision is
+//!   CS's first completion statement, and the adopting override's body
+//!   replaces the original's.
+//! - `tablereqs` read the `table` scope (public cards plus non-greedy slot
+//!   bindings) and `extantreqs` the `anywhere` scope.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -100,9 +115,11 @@ pub struct Stats {
     pub endings_out: usize,
     pub aspect_keys: usize,
     pub output_lines: usize,
+    /// Emitted slot lines across all recipes (source + verb + synthesized).
+    pub slots_out: usize,
     /// Dead census: emitted recipes on uncommittable, non-ambient verbs with
-    /// no incoming `start` and no inline coverage, and the verbs whose every
-    /// recipe is dead.
+    /// no incoming `start` or `continue`, and the verbs whose every recipe is
+    /// dead.
     pub dead_recipes: usize,
     pub dead_recipes_referenced: usize,
     pub dead_verbs: usize,
@@ -245,12 +262,31 @@ const TIME_VERB: &str = "time";
 
 pub const SEED: u64 = 1899;
 
-/// How deep same-context linked continuations inline into the parent's
-/// effect list. One level carries the classic case (`needs` ->
-/// `discardseason` sees the funds card bound in the expenses slot); deeper
-/// CS continuations are sequential situation executions and open fresh —
-/// inlining the whole tree would duplicate every branch exponentially.
-const INLINE_LINKED_DEPTH: usize = 1;
+/// Recipes whose completion branches on a named slot's aspects, and the slot
+/// whose absence the branch structure cannot survive: CS demonstrably
+/// requires a doctrine card by the founding's completion (the alt cascade
+/// keys on the doctrine's aspects), so the doctrine-less opening is refused
+/// instead of starting a situation that could only wait. The guard holds
+/// while no doctrine is bound in the slot AND no lore candidate rides the
+/// context's interior — a start fired from a situation that carries a lore
+/// (the founding hand-off) still opens, and the bind lands mid-run.
+/// (CS id, slot name, slot filter aspect, guard prose.)
+const GUARDED_SLOTS: &[(&str, &str, &str, &str)] = &[(
+    "cultfoundation",
+    "doctrine",
+    "lore",
+    "Choose Founding Principles: bind a Lore card as the cult's Doctrine.",
+)];
+
+/// The cap on synthesized requirement slots per recipe; anything beyond is
+/// gap-reported with its keys.
+const MAX_SYNTH_SLOTS: usize = 6;
+
+/// The actions whose CS verb declares its own drop slot (`verbs` table, the
+/// singular `slot` field); mapped onto every recipe of that action.
+fn verb_slot_of<'a>(d: &'a CsData, action: &str) -> Option<&'a Value> {
+    d.verbs.get(action).and_then(|v| v.get("slot"))
+}
 
 // ---------------------------------------------------------------------------
 // the converter
@@ -277,8 +313,14 @@ pub fn convert(d: &CsData) -> Conversion {
         roll_counter: 0,
         preds: Vec::new(),
         pred_names: BTreeMap::new(),
+        verb_preds: BTreeMap::new(),
+        slot_donors: BTreeMap::new(),
+        merged_element_slots: BTreeSet::new(),
+        merge_preds: BTreeMap::new(),
+        plans: BTreeMap::new(),
+        levers_used: BTreeMap::new(),
         started: BTreeSet::new(),
-        inlined: BTreeSet::new(),
+        continued: BTreeSet::new(),
         dead_verb_detail: Vec::new(),
     };
     c.inventory();
@@ -293,6 +335,57 @@ pub fn convert(d: &CsData) -> Conversion {
         skipped: d.skipped.clone(),
         collisions: c.names.collisions.clone(),
         dead_verb_detail: c.dead_verb_detail,
+    }
+}
+
+/// One planned slot of one recipe: the emitted name, its kind (which fixes
+/// the range, flags, and filter at emission), and for a synthesized slot the
+/// requirement key it carries (the name alone can lose the key to dedupe
+/// suffixes).
+#[derive(Clone)]
+struct PlannedSlot {
+    name: String,
+    kind: SlotKind,
+    key: Option<String>,
+    /// The precomputed emission line for a merged element slot (its filter
+    /// terms are fixed at plan time); `None` for every other kind.
+    line: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SlotKind {
+    /// A CS recipe slot: `0..1` plus the CS greedy/consuming flags.
+    Source,
+    /// The owning verb's own slot, name-qualified: `0..1 open`.
+    Verb,
+    /// A requirement key the recipe's own effects pay for: `1..N consuming`.
+    Cost,
+    /// A synthesized requirement slot: `0..1 open <term>`.
+    Req,
+    /// An element slot merged from a referenced card's CS `slots`:
+    /// `0..1 [consuming] open <term>` (CS opens it as a dependent threshold
+    /// of the situation when the card is present).
+    Merged,
+}
+
+/// The slot plan of one recipe: mapped source slots, the owning verb's own
+/// slot, cost slots (requirement key paid by a paired negative effect), and
+/// synthesized requirement slots — every requirement key is bindable.
+#[derive(Default, Clone)]
+struct RecipePlan {
+    slots: Vec<PlannedSlot>,
+    /// Requirement key -> cost slot name (a `1..N consuming` slot).
+    costs: BTreeMap<String, String>,
+}
+
+impl RecipePlan {
+    /// The planned slot names. Every planned slot is a `when` carrier: CS
+    /// sums the whole situation pool, so a card bound in ANY slot contributes
+    /// all its aspects to the requirement check (at commit selection the
+    /// interior is empty and the submitted bindings are visible only through
+    /// the slot scopes).
+    fn carriers(&self) -> Vec<String> {
+        self.slots.iter().map(|s| s.name.clone()).collect()
     }
 }
 
@@ -323,11 +416,27 @@ struct Converter<'a> {
     /// (CS recipe id, raw slot id) -> predicate name for its disjunctive
     /// slot filter.
     pred_names: BTreeMap<(String, String), String>,
+    /// CS action id -> predicate name for the verb slot's disjunctive filter.
+    verb_preds: BTreeMap<String, String>,
+    /// Non-aspect elements carrying CS element `slots`, indexed by their own
+    /// id and by each of their aspect keys — the admission keys a recipe's
+    /// requirements and slot filters can present.
+    slot_donors: BTreeMap<String, BTreeSet<String>>,
+    /// (element id, slot id) pairs merged into some recipe's slot block.
+    merged_element_slots: BTreeSet<(String, String)>,
+    /// (recipe id, donor element id, donor slot id) -> predicate name for a
+    /// merged slot's disjunctive filter.
+    merge_preds: BTreeMap<(String, String, String), String>,
+    /// Per-recipe slot plans (built in the naming pass).
+    plans: BTreeMap<String, RecipePlan>,
+    /// Lever id -> max positive effect count over its sites (the resolver's
+    /// spawn count).
+    levers_used: BTreeMap<String, i64>,
     /// (verb id, CS recipe id) targets of emitted `start` effects (the census).
     started: BTreeSet<(String, String)>,
-    /// CS recipe ids whose behavior was inlined as a same-context linked
-    /// continuation (the census counts them reached).
-    inlined: BTreeSet<String>,
+    /// (verb id, CS recipe id) targets of emitted `continue` effects (the
+    /// census).
+    continued: BTreeSet<(String, String)>,
     /// Per dead verb: (verb id, dead recipe count).
     dead_verb_detail: Vec<(String, usize)>,
 }
@@ -406,22 +515,12 @@ impl<'a> Converter<'a> {
             .unwrap_or_else(|| "(none)".to_string())
     }
 
-    /// The positive requirement arms of one recipe slot: the `required` map
-    /// (CS matches any of its arms) plus `essential` keys, in sorted order.
-    fn slot_positive_arms(sl: &Value) -> Vec<(String, i64)> {
-        let mut arms = pairs(sl, "required");
-        arms.extend(pairs(sl, "essential"));
-        arms.sort();
-        arms.dedup();
-        arms
-    }
-
-    /// The positive arms of a recipe's requirement dict, sorted.
-    fn requirement_arms(r: &Value) -> Vec<(String, i64)> {
-        pairs(r, "requirements")
-            .into_iter()
-            .filter(|(_, v)| *v > 0)
-            .collect()
+    /// The positive `required` arms of one CS slot (CS matches any of them),
+    /// in sorted order. `essential` keys are conjunction terms, not arms
+    /// (CS per-card evaluation: forbidden rejects, essential ANDs, required
+    /// ORs, empty required accepts).
+    fn slot_required_arms(sl: &Value) -> Vec<(String, i64)> {
+        pairs(sl, "required")
     }
 
     /// One slot-filter term for a requirement arm: element-presence filters by
@@ -436,6 +535,52 @@ impl<'a> Converter<'a> {
         } else {
             format!("aspect:{kk}")
         }
+    }
+
+    /// The filter terms of one CS slot: the required arms (a single arm as a
+    /// direct term, several as a derived-predicate call), then the `essential`
+    /// conjunction terms, then the negated `forbidden` terms.
+    fn slot_filter_terms(&self, rid: &str, sl: &Value) -> Vec<String> {
+        let mut terms: Vec<String> = Vec::new();
+        let raw = s(sl, "id").unwrap_or("slot");
+        let arms = Self::slot_required_arms(sl);
+        if arms.len() == 1 {
+            let (k, v) = &arms[0];
+            terms.push(self.arm_term(k, *v));
+        } else if arms.len() > 1 {
+            if let Some(pred) = self.pred_names.get(&(rid.to_string(), raw.to_string())) {
+                terms.push(format!("{pred}()"));
+            }
+        }
+        for (k, v) in pairs(sl, "essential") {
+            terms.push(self.arm_term(&k, v));
+        }
+        for (k, _) in pairs(sl, "forbidden") {
+            terms.push(format!("-aspect:{}", self.key(&k)));
+        }
+        terms
+    }
+
+    /// The filter terms of a verb's own slot, sharing the recipe-slot shape
+    /// (its disjunctive filter is the action's shared predicate).
+    fn verb_slot_filter_terms(&self, action: &str, sl: &Value) -> Vec<String> {
+        let mut terms: Vec<String> = Vec::new();
+        let arms = Self::slot_required_arms(sl);
+        if arms.len() == 1 {
+            let (k, v) = &arms[0];
+            terms.push(self.arm_term(k, *v));
+        } else if arms.len() > 1 {
+            if let Some(pred) = self.verb_preds.get(action) {
+                terms.push(format!("{pred}()"));
+            }
+        }
+        for (k, v) in pairs(sl, "essential") {
+            terms.push(self.arm_term(&k, v));
+        }
+        for (k, _) in pairs(sl, "forbidden") {
+            terms.push(format!("-aspect:{}", self.key(&k)));
+        }
+        terms
     }
 
     // -- pass 1: inventory --------------------------------------------------
@@ -472,43 +617,40 @@ impl<'a> Converter<'a> {
             if let Some(g) = s(e, "uniquenessgroup") {
                 self.registry.insert(g.to_string());
             }
+            // Element-slot donors: only cards can sit in a situation, so only
+            // non-aspect elements with CS `slots` can hand their slots to a
+            // recipe; indexed by their own id and every aspect key.
+            let has_slots = e
+                .get("slots")
+                .and_then(|x| x.as_array())
+                .is_some_and(|a| !a.is_empty());
+            if has_slots && !self.is_aspect(&id) {
+                let mut keys: BTreeSet<String> = BTreeSet::from([(id.clone())]);
+                for (k, _) in pairs(e, "aspects") {
+                    keys.insert(k);
+                }
+                for k in keys {
+                    self.slot_donors.entry(k).or_default().insert(id.clone());
+                }
+            }
         }
 
-        for (rid, r) in &self.d.recipes {
-            // The single-offer-slot flattening: a requirement dict with
-            // several keys cannot route all its cards through the one offer
-            // slot, so its positive arms keep the three-scope union in
-            // `when` — the world arm is the documented approximation.
-            let reqs = pairs(r, "requirements");
-            if reqs.len() > 1 && reqs.iter().any(|(_, v)| *v > 0) {
-                self.gaps.hit(
-                    "multi-key requirement dict keeps the world arm",
-                    Class::ConverterIdiom,
-                    "the offer slot binds one card, so a multi-key requirement dict cannot drop the world arm from `when` like a single-key dict does; a tabletop card can satisfy one arm of the dict",
-                    rid,
-                );
-            }
-            // The world-scope flattening for the context dicts: CS reads
-            // tablereqs against AspectsOnTable (World spheres plus every
-            // non-greedy threshold and output sphere — Sphere.IsExteriorSphere
-            // and its ThresholdSphere/OutputSphere overrides) and extantreqs
-            // against AspectsExtant (the table pool plus every situation's
-            // storage/greedy-threshold contents, verb aspects, and running
-            // recipe aspects — HornedAxe.GetAspectsInContext). The language's
-            // `world` scope covers only unbound public cards; a card locked
-            // in another situation's slot is invisible to it.
-            if r.get("tablereqs").is_some() || r.get("extantreqs").is_some() {
-                self.gaps.hit(
-                    "tablereqs/extantreqs read the world scope",
-                    Class::ConverterIdiom,
-                    "CS's AspectsOnTable/AspectsExtant pools include cards locked in situation slots, situation storage, and running-recipe aspects; the language has no cross-situation scope, so `total(world, ...)` under-counts by exactly the bound set",
-                    rid,
-                );
-            }
+        for (_, r) in &self.d.recipes {
             for dk in ["requirements", "tablereqs", "extantreqs"] {
                 for (k, _) in pairs(r, dk) {
                     self.registry.insert(k.clone());
                     self.note_group_read(&k);
+                }
+            }
+            // Lever effect sites feed the resolver verb (one legacy-gated
+            // recipe pair per lever, `start`-routed from the site).
+            for (k, v) in pairs(r, "effects") {
+                if let Some(lever) = k.strip_prefix("lever_") {
+                    let lever = lever.to_lowercase();
+                    let e = self.levers_used.entry(lever).or_insert(0);
+                    if *e < v {
+                        *e = v;
+                    }
                 }
             }
             for sl in r
@@ -545,6 +687,19 @@ impl<'a> Converter<'a> {
                 if let Some(o) = ch.as_object() {
                     for k in o.keys() {
                         self.registry.insert(k.clone());
+                    }
+                }
+            }
+        }
+
+        // The verb slot tables: their filter keys read as aspects wherever a
+        // mapped verb slot carries them.
+        for v in self.d.verbs.values() {
+            if let Some(sl) = v.get("slot") {
+                for dk in ["required", "forbidden", "essential"] {
+                    for (k, _) in pairs(sl, dk) {
+                        self.registry.insert(k.clone());
+                        self.note_group_read(&k);
                     }
                 }
             }
@@ -631,6 +786,20 @@ impl<'a> Converter<'a> {
             self.names.verb.insert(p, name);
         }
 
+        // The cross-run lever resolver verb and its recipe locals (spec.md
+        // §7.8): reserved in content order so emission and reference agree.
+        if !self.levers_used.is_empty() {
+            let name = self.names.reserve_id("lever_resolver");
+            self.names.verb.insert("lever_resolver".to_string(), name);
+            for lever in self.levers_used.keys() {
+                for suffix in ["routed", "default"] {
+                    let raw = format!("lever_{lever}_{suffix}");
+                    let name = self.names.reserve_id(&raw);
+                    self.names.recipe.insert(("lever_resolver".to_string(), raw), name);
+                }
+            }
+        }
+
         for id in self.d.decks.keys() {
             let raw = format!("deck_{id}");
             let name = self.names.reserve_id(&raw);
@@ -685,11 +854,41 @@ impl<'a> Converter<'a> {
             }
         }
 
-        // Disjunctive slot filters: a slot whose positive requirement arms
-        // exceed one matches any arm (CS any-of), which the query grammar
-        // carries as a unary derived predicate over the candidate card.
-        // Predicates share the one global namespace, so their ids reserve
-        // here, in per-verb content order.
+        // Slot-filter predicates and per-recipe slot plans. A slot whose
+        // positive `required` arms exceed one matches any arm (CS any-of),
+        // which the query grammar carries as a unary derived predicate over
+        // the candidate card (`essential` keys are conjunct terms, not
+        // predicate arms). Predicates share the one global namespace, so
+        // their ids reserve here: one per action's verb-slot filter, then the
+        // recipe slot filters in per-verb content order.
+        for action in PLAYER_VERBS
+            .iter()
+            .map(|v| v.to_string())
+            .chain([TIME_VERB.to_string()])
+        {
+            let Some(sl) = verb_slot_of(self.d, &action) else {
+                continue;
+            };
+            let arms = pairs(sl, "required");
+            if arms.len() <= 1 {
+                continue;
+            }
+            let body = arms
+                .iter()
+                .map(|(k, v)| {
+                    let kk = self.key(k);
+                    if *v > 1 {
+                        format!("p.{kk} >= {v}")
+                    } else {
+                        format!("p.{kk} >= 1")
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" or ");
+            let name = self.names.reserve_id(&format!("fits.{action}_slot"));
+            self.verb_preds.insert(action.clone(), name.clone());
+            self.preds.push((name, body));
+        }
         for (_verb, recipes) in self.by_verb() {
             for rid in recipes {
                 let Some(r) = self.d.recipe(&rid).cloned() else {
@@ -701,7 +900,7 @@ impl<'a> Converter<'a> {
                     .into_iter()
                     .flatten()
                 {
-                    let arms = Self::slot_positive_arms(sl);
+                    let arms = pairs(sl, "required");
                     if arms.len() <= 1 {
                         continue;
                     }
@@ -723,11 +922,309 @@ impl<'a> Converter<'a> {
                         .insert((rid.clone(), raw.to_string()), name.clone());
                     self.preds.push((name, pred_body));
                 }
+                let plan = self.plan_recipe(&rid, &r);
+                self.plans.insert(rid, plan);
             }
         }
 
         self.stats.aspect_elements = self.aspect_ids.len();
         self.stats.aspect_keys = self.names.key.len();
+    }
+
+    /// The slot plan of one recipe: its source slots, the owning verb's own
+    /// slot (name-qualified `<action>_<slotid>`), a consuming cost slot per
+    /// requirement key the recipe's own effects pay for, and a synthesized
+    /// filtered slot per requirement key no mapped source slot admits — every
+    /// requirement is bindable.
+    fn plan_recipe(&mut self, rid: &str, r: &Value) -> RecipePlan {
+        let action = self.action_of(rid);
+        let mut plan = RecipePlan {
+            slots: Vec::new(),
+            costs: BTreeMap::new(),
+        };
+        let mut taken: BTreeSet<String> = BTreeSet::new();
+
+        // Source slots. A key is "covered" when a source slot's positive
+        // filter admits it (required any-of or essential); covered keys need
+        // no synthesized slot.
+        let source: Vec<Value> = r
+            .get("slots")
+            .and_then(|x| x.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let mut covered: BTreeSet<String> = BTreeSet::new();
+        for sl in &source {
+            // A key is covered when a source slot's positive filter admits it
+            // (required any-of or essential); covered keys need no
+            // synthesized slot.
+            let mut admitted: Vec<String> = pairs(sl, "required").into_iter().map(|(k, _)| k).collect();
+            admitted.extend(pairs(sl, "essential").into_iter().map(|(k, _)| k));
+            for k in admitted {
+                covered.insert(k);
+            }
+            let raw = s(sl, "id").unwrap_or("slot");
+            let base = {
+                let b = mangle(raw);
+                if b.is_empty() {
+                    "slot".to_string()
+                } else {
+                    b
+                }
+            };
+            let mut name = base.clone();
+            let mut i = 2;
+            while !taken.insert(name.clone()) {
+                name = format!("{base}_{i}");
+                i += 1;
+            }
+            plan.slots.push(PlannedSlot {
+                name,
+                kind: SlotKind::Source,
+                key: None,
+                line: None,
+            });
+        }
+
+        // The owning verb's own slot, mapped onto every recipe of the action.
+        if let Some(sl) = verb_slot_of(self.d, &action) {
+            let raw = s(sl, "id").unwrap_or("slot");
+            let base = mangle(&format!("{action}_{raw}"));
+            let mut name = base.clone();
+            let mut i = 2;
+            while !taken.insert(name.clone()) {
+                name = format!("{base}_{i}");
+                i += 1;
+            }
+            plan.slots.push(PlannedSlot {
+                name,
+                kind: SlotKind::Verb,
+                key: None,
+                line: None,
+            });
+        }
+
+        let reqs = pairs(r, "requirements");
+
+        // Merged element slots. CS opens a card's element `slots` as dependent
+        // threshold spheres of the situation when that card is present
+        // (SituationDominion.AddDependentSpheresForToken -> Sphere.
+        // GetChildSpheresSpecsToAddIfThisTokenAdded, actionid-matched against
+        // the situation's verb), and their `consumes` slots burn at the
+        // completion flush (ConsumingAngel.MinisterToDepartingToken) — never
+        // at a book. A requirement key or slot filter key of this recipe that
+        // names (or admits, through an aspect) such an element therefore
+        // pulls that element's slots into the block: consuming slots become
+        // `0..1 consuming`, the rest `0..1 open` with their CS filter. The
+        // merged slots cover their own filter keys, so no cost or synthesized
+        // slot duplicates the payment route (the bookdealer's funds Cost slot
+        // is the one consume, not a drain paired with an open slot).
+        let mut admission: BTreeSet<String> = reqs
+            .iter()
+            .filter(|(_, v)| *v > 0)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for sl in &source {
+            for dk in ["required", "essential"] {
+                for (k, _) in pairs(sl, dk) {
+                    admission.insert(k);
+                }
+            }
+        }
+        let mut shapes: BTreeMap<
+            (bool, Vec<(String, i64)>, Vec<(String, i64)>, Vec<(String, i64)>),
+            String,
+        > = BTreeMap::new();
+        for k in &admission {
+            let Some(donors) = self.slot_donors.get(k).cloned() else {
+                continue;
+            };
+            for eid in donors {
+                let Some(e) = self.d.element(&eid).cloned() else {
+                    continue;
+                };
+                let slots: Vec<Value> = e
+                    .get("slots")
+                    .and_then(|x| x.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                for sl in &slots {
+                    if !Self::slot_fits_action(&action, sl) {
+                        continue;
+                    }
+                    let raw = s(sl, "id").unwrap_or("slot").to_string();
+                    let required = pairs(sl, "required");
+                    let essential = pairs(sl, "essential");
+                    let forbidden = pairs(sl, "forbidden");
+                    let consumes = truthy(sl, "consumes");
+                    self.merged_element_slots
+                        .insert((eid.clone(), raw.clone()));
+                    let shape = (
+                        consumes,
+                        required.clone(),
+                        essential.clone(),
+                        forbidden.clone(),
+                    );
+                    if shapes.contains_key(&shape) {
+                        continue;
+                    }
+                    let base = mangle(&format!("{eid}_{raw}"));
+                    let mut name = base.clone();
+                    let mut i = 2;
+                    while !taken.insert(name.clone()) {
+                        name = format!("{base}_{i}");
+                        i += 1;
+                    }
+                    let mut terms: Vec<String> = Vec::new();
+                    if required.len() == 1 {
+                        let (k, v) = &required[0];
+                        terms.push(self.arm_term(k, *v));
+                    } else if required.len() > 1 {
+                        let key = (rid.to_string(), eid.clone(), raw.clone());
+                        let pred = match self.merge_preds.get(&key) {
+                            Some(p) => p.clone(),
+                            None => {
+                                let body = required
+                                    .iter()
+                                    .map(|(k, v)| {
+                                        if *v > 1 {
+                                            format!("p.{} >= {v}", self.key(k))
+                                        } else {
+                                            format!("p.{} >= 1", self.key(k))
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" or ");
+                                let name = self
+                                    .names
+                                    .reserve_id(&format!("fits.{rid}.{eid}.{raw}"));
+                                self.merge_preds.insert(key.clone(), name.clone());
+                                self.preds.push((name.clone(), body));
+                                name
+                            }
+                        };
+                        terms.push(format!("{pred}()"));
+                    }
+                    for (k, v) in &essential {
+                        terms.push(self.arm_term(k, *v));
+                    }
+                    for (k, _) in &forbidden {
+                        terms.push(format!("-aspect:{}", self.key(k)));
+                    }
+                    let mut line = format!("{name}: 0..1");
+                    if consumes {
+                        line.push_str(" consuming");
+                    }
+                    line.push_str(" open");
+                    if !terms.is_empty() {
+                        line.push(' ');
+                        line.push_str(&terms.join(" "));
+                    }
+                    shapes.insert(shape, name.clone());
+                    for (ck, _) in required.iter().chain(essential.iter()) {
+                        covered.insert(ck.clone());
+                    }
+                    plan.slots.push(PlannedSlot {
+                        name,
+                        kind: SlotKind::Merged,
+                        key: None,
+                        line: Some(line),
+                    });
+                }
+            }
+        }
+
+        // Cost slots: a requirement key the recipe's own effects pay for
+        // (positive requirement, paired negative effect) becomes one
+        // `1..N consuming` slot when no source slot already binds the payer;
+        // the paired negative effect drains the interior at the effects pass
+        // (effects run before consuming settlement, so the pay happens once).
+        let effects: std::collections::BTreeMap<String, i64> = pairs(r, "effects").into_iter().collect();
+        let mut cost_keys: Vec<(String, i64)> = Vec::new();
+        for (k, v) in &reqs {
+            if *v <= 0 || covered.contains(k) {
+                continue;
+            }
+            if let Some(n) = effects.get(k) {
+                if -*n >= 1 && -*n <= 12 {
+                    cost_keys.push((k.clone(), -*n));
+                }
+            }
+        }
+        cost_keys.sort();
+        for (k, _) in cost_keys {
+            let base = mangle(&format!("cost_{k}"));
+            let mut name = base.clone();
+            let mut i = 2;
+            while !taken.insert(name.clone()) {
+                name = format!("{base}_{i}");
+                i += 1;
+            }
+            plan.costs.insert(k.clone(), name.clone());
+            plan.slots.push(PlannedSlot {
+                name,
+                kind: SlotKind::Cost,
+                key: Some(k.clone()),
+                line: None,
+            });
+        }
+
+        // Synthesized requirement slots: every remaining positive requirement
+        // key gets `req_<key>: 0..1 open <term>` so the card its gate reads is
+        // bindable. Keys beyond the cap are gap-reported.
+        let mut synth = 0usize;
+        for (k, v) in &reqs {
+            if *v <= 0 || covered.contains(k) || plan.costs.contains_key(k) {
+                continue;
+            }
+            if synth >= MAX_SYNTH_SLOTS {
+                self.gaps.hit(
+                    "requirement keys beyond the synthesized-slot cap",
+                    Class::ConverterIdiom,
+                    &format!(
+                        "the recipe needs more bindable requirement routes than the {MAX_SYNTH_SLOTS}-slot sanity cap; the excess keys gate through the interior sum alone"
+                    ),
+                    &format!("{rid}:{k}"),
+                );
+                continue;
+            }
+            synth += 1;
+            let base = mangle(&format!("req_{k}"));
+            let mut name = base.clone();
+            let mut i = 2;
+            while !taken.insert(name.clone()) {
+                name = format!("{base}_{i}");
+                i += 1;
+            }
+            plan.slots.push(PlannedSlot {
+                name,
+                kind: SlotKind::Req,
+                key: Some(k.clone()),
+                line: None,
+            });
+        }
+        plan
+    }
+
+    /// Whether a CS element slot opens for a situation of `action` (CS
+    /// SituationDominion -> Sphere.GetChildSpheresSpecsToAddIfThisTokenAdded:
+    /// `WildcardMatchId(verbId, cs.ActionId)` — equality, a trailing-`*`
+    /// prefix match, or an empty actionid).
+    fn slot_fits_action(action: &str, sl: &Value) -> bool {
+        let Some(a) = s(sl, "actionid").or_else(|| s(sl, "actionId")) else {
+            return true;
+        };
+        if a.is_empty() {
+            return true;
+        }
+        if a.eq_ignore_ascii_case(action) {
+            return true;
+        }
+        match a.strip_suffix('*') {
+            Some(prefix) => action
+                .to_lowercase()
+                .starts_with(&prefix.to_lowercase()),
+            None => false,
+        }
     }
 
     /// Recipes grouped per emitted verb, CS content order preserved (the
@@ -804,8 +1301,24 @@ impl<'a> Converter<'a> {
         self.emit_cards(&mut out);
         self.emit_decks(&mut out);
         self.emit_endings(&mut out);
+        self.emit_legacies(&mut out);
         self.emit_verbs(&mut out);
         out.join("\n") + "\n"
+    }
+
+    /// The lever keys the resolver verb routes on (spec.md §7.8): one legacy
+    /// key per CS lever with effect sites, declared at 0 — a single run
+    /// routes every lever through the default arm; a host folding incoming
+    /// legacy flips the gate onto the routed arm.
+    fn emit_legacies(&mut self, out: &mut Vec<String>) {
+        if self.levers_used.is_empty() {
+            return;
+        }
+        out.push("legacies".into());
+        for lever in self.levers_used.keys() {
+            out.push(format!("  {}: 0", mangle(lever)));
+        }
+        out.push(String::new());
     }
 
     /// The derived predicates the disjunctive slot filters call (language.md
@@ -900,7 +1413,11 @@ impl<'a> Converter<'a> {
             }
 
             // Storage-only (non-consuming) element slots are reported: the
-            // card keeps its contents instead of burning them.
+            // card keeps its contents instead of burning them. Consuming
+            // element slots burn at CS's completion flush, never at a book:
+            // the converter merges them into the slot block of every recipe
+            // whose requirements or slot filters admit the element, and only
+            // the unmergeable ones are named gaps below.
             let has_storage_slot = e
                 .get("slots")
                 .and_then(|x| x.as_array())
@@ -910,7 +1427,7 @@ impl<'a> Converter<'a> {
                 self.gaps.hit(
                     "non-consuming element slot",
                     Class::ConverterIdiom,
-                    "storage-only element slots bind nothing in the map; where the behavior matters it is expressible via a card on complete book (consuming slots are emitted as books)",
+                    "storage-only element slots bind nothing in the map; where the behavior matters it is expressible via a card on complete book (consuming slots merge into referencing recipes' slot blocks)",
                     &id,
                 );
             }
@@ -1021,10 +1538,13 @@ impl<'a> Converter<'a> {
                 push_rule(&mut books, &mut rule_ids, Some(self.key(&id)), rule, body);
             }
 
-            // Consuming element slots -> an unqualified completion book that
-            // burns one bound card matching the slot filter. Non-consuming
-            // (storage-only) slots bind nothing and are reported.
-            let slots: Vec<Vec<String>> = e
+            // Consuming element slots: the merge sites are settled in the
+            // plan pass; anything unmerged is named here. The old
+            // unqualified consume-book approximation is gone — it fired
+            // after the completion's swap books and ate cards a consuming
+            // slot would have burned earlier (the rite eating its own
+            // freshly summoned spirit).
+            let slots: Vec<(String, Vec<String>)> = e
                 .get("slots")
                 .and_then(|x| x.as_array())
                 .map(|a| {
@@ -1038,28 +1558,34 @@ impl<'a> Converter<'a> {
                                 }
                             }
                             keys.sort();
-                            keys
+                            let raw = s(sl, "id").unwrap_or("slot").to_string();
+                            (raw, keys)
                         })
                         .collect()
                 })
                 .unwrap_or_default();
-            for keys in slots {
+            for (raw, keys) in slots {
+                if self
+                    .merged_element_slots
+                    .contains(&(id.clone(), raw.clone()))
+                {
+                    continue;
+                }
                 if keys.is_empty() {
                     self.gaps.hit(
                         "consuming element slot without a filter",
                         Class::NonGoal,
-                        "nothing identifies the burned card; no rule is emitted",
+                        "nothing identifies the burned card; no merge site can carry it",
                         &id,
                     );
                     continue;
                 }
-                let k = self.key(&keys[0]);
-                let rule = format!("cons_{name}_{}", mangle(&keys[0]));
-                let body = vec![
-                    format!("if count(interior, aspect:{k}) >= 1"),
-                    format!("  consume interior aspect:{k} 1"),
-                ];
-                push_rule(&mut books, &mut rule_ids, None, rule, body);
+                self.gaps.hit(
+                    "consuming element slot with no host recipe",
+                    Class::ConverterIdiom,
+                    "no emitted recipe's requirements or slot filters admit this element, so the consuming slot has no slot block to merge into and its burn is dropped",
+                    &format!("{id}:{raw}"),
+                );
             }
 
             for (qual, rules) in books {
@@ -1281,25 +1807,75 @@ impl<'a> Converter<'a> {
                 let Some(r) = self.d.recipe(rid).cloned() else {
                     continue;
                 };
-                self.emit_recipe(out, &verb, rid, &local, i, &r);
+                self.emit_recipe(out, rid, &local, i, &r);
                 self.stats.recipes_out += 1;
             }
             self.stats.verbs_out += 1;
             out.push(String::new());
         }
+        self.emit_lever_resolver(out);
     }
 
-    fn emit_recipe(
-        &mut self,
-        out: &mut Vec<String>,
-        verb: &str,
-        rid: &str,
-        local: &str,
-        index: usize,
-        r: &Value,
-    ) {
-        let craftable = self.craftable(r);
-        let on_player = PLAYER_VERBS.contains(&verb);
+    /// The cross-run lever resolver (spec.md §7.8): one autonomous verb whose
+    /// recipes are chain-only (the heartbeat cannot open them; only the
+    /// `start` emitted at a lever effect site can), one legacy-gated pair per
+    /// lever — the routed arm answers a host-fed legacy value, the default
+    /// arm spawns the lever's `defaultValue`. The selection law picks the
+    /// arm, so each site emits a plain `start lever_resolver`.
+    fn emit_lever_resolver(&mut self, out: &mut Vec<String>) {
+        if self.levers_used.is_empty() {
+            return;
+        }
+        let vname = self
+            .names
+            .verb
+            .get("lever_resolver")
+            .cloned()
+            .unwrap_or_else(|| "lever_resolver".to_string());
+        out.push(format!("  verb {vname} autonomous instances any"));
+        out.push("    title \"Cross-Run Legacy Resolver\"".into());
+        out.push(String::new());
+        for (lever, count) in self.levers_used.clone() {
+            let default = self
+                .d
+                .levers
+                .get(&lever)
+                .and_then(|l| s(l, "defaultValue"))
+                .and_then(|dv| self.target_card(dv));
+            let Some(cname) = default else {
+                self.gaps.hit(
+                    "lever with no resolvable default",
+                    Class::ExtensionSeam,
+                    "the lever's defaultValue names no card; no resolver recipes are emitted and the lever sites drop their effect",
+                    &lever,
+                );
+                continue;
+            };
+            let n = count.clamp(1, 20);
+            let lkey = mangle(&lever);
+            for (suffix, prio, when) in [
+                ("routed", 0usize, format!("legacy.{lkey} >= 1")),
+                ("default", 1usize, format!("legacy.{lkey} < 1")),
+            ] {
+                let local = self
+                    .names
+                    .recipe
+                    .get(&("lever_resolver".to_string(), format!("lever_{lever}_{suffix}")))
+                    .cloned()
+                    .unwrap_or_else(|| mangle(&format!("lever_{lever}_{suffix}")));
+                out.push(format!("    recipe {local}"));
+                out.push(format!("      priority {prio}"));
+                out.push("      chain-only".into());
+                out.push("      duration 0".into());
+                out.push(format!("      when {when}"));
+                out.push("      effects".into());
+                out.push(format!("        spawn {cname} count {n} into table"));
+            }
+        }
+        out.push(String::new());
+    }
+
+    fn emit_recipe(&mut self, out: &mut Vec<String>, rid: &str, local: &str, index: usize, r: &Value) {
         let warmup = num(r, "warmup").unwrap_or(0);
 
         out.push(format!("    recipe {local}"));
@@ -1328,48 +1904,34 @@ impl<'a> Converter<'a> {
             out.push(format!("      declares {}", declares.join(", ")));
         }
 
-        if let Some(when) = self.when_of(r) {
+        let plan = self.plans.get(rid).cloned().unwrap_or_else(RecipePlan::default);
+
+        if let Some(when) = self.when_of(r, &plan) {
             out.push(format!("      when {when}"));
         }
 
-        let mut slot_lines: Vec<String> = Vec::new();
-        if on_player && craftable {
-            // The offer slot routes the requirement-bearing card into the
-            // situation when the requirement dict is a single conjunct, so
-            // the completing completion binds the card its books key on.
-            let arms = Self::requirement_arms(r);
-            let mut offer = String::from("offer: 0..1 open");
-            if arms.len() == 1 {
-                let (k, v) = &arms[0];
-                offer.push(' ');
-                offer.push_str(&self.arm_term(k, *v));
+        // The doctrine guard: the one recipe whose completion demonstrably
+        // requires a bound card in a named slot (the founding alt cascade
+        // keys on the doctrine's aspects) refuses the doctrine-less opening.
+        for (cs_id, slot, aspect, prose) in GUARDED_SLOTS {
+            if *cs_id == rid {
+                let planned = plan.slots.iter().any(|p| p.name == *slot);
+                if planned {
+                    out.push(format!(
+                        "      guard \"{prose}\" when count(slot:{slot}) < 1 and total(interior, aspect:{aspect}) < 1"
+                    ));
+                }
             }
-            slot_lines.push(offer);
         }
-        let mut taken: BTreeSet<String> = BTreeSet::new();
-        taken.insert("offer".to_string());
-        for sl in r
+
+        let mut slot_lines: Vec<String> = Vec::new();
+        let source: Vec<Value> = r
             .get("slots")
             .and_then(|x| x.as_array())
-            .into_iter()
-            .flatten()
-        {
-            let raw = s(sl, "id").unwrap_or("slot");
-            let base = {
-                let b = mangle(raw);
-                if b.is_empty() {
-                    "slot".to_string()
-                } else {
-                    b
-                }
-            };
-            let mut sname = base.clone();
-            let mut i = 2;
-            while !taken.insert(sname.clone()) {
-                sname = format!("{base}_{i}");
-                i += 1;
-            }
-            let mut line = format!("{sname}: 0..1");
+            .cloned()
+            .unwrap_or_default();
+        for (sl, planned) in source.iter().zip(plan.slots.iter()) {
+            let mut line = format!("{}: 0..1", planned.name);
             if truthy(sl, "greedy") {
                 line.push_str(" greedy");
             }
@@ -1377,28 +1939,62 @@ impl<'a> Converter<'a> {
                 line.push_str(" consuming");
             }
             line.push_str(" open");
-            let mut terms: Vec<String> = Vec::new();
-            // The positive arms match any-of in CS; a single arm is a plain
-            // filter term, several arms become a derived predicate call.
-            let arms = Self::slot_positive_arms(sl);
-            if arms.len() == 1 {
-                let (k, v) = &arms[0];
-                terms.push(self.arm_term(k, *v));
-            } else if arms.len() > 1 {
-                if let Some(pred) = self.pred_names.get(&(rid.to_string(), raw.to_string())) {
-                    terms.push(format!("{pred}()"));
-                }
-            }
-            for (k, _) in pairs(sl, "forbidden") {
-                terms.push(format!("-aspect:{}", self.key(&k)));
-            }
+            let terms = self.slot_filter_terms(rid, sl);
             if !terms.is_empty() {
                 line.push(' ');
                 line.push_str(&terms.join(" "));
             }
             slot_lines.push(line);
         }
+        // The verb slot and the synthesized slots follow the source slots, in
+        // plan order (verb slot first, then cost, then requirement slots).
+        for planned in plan.slots.iter().skip(source.len()) {
+            let line = match planned.kind {
+                SlotKind::Source => continue,
+                SlotKind::Verb => {
+                    let action = self.action_of(rid);
+                    let mut line = format!("{}: 0..1 open", planned.name);
+                    if let Some(sl) = verb_slot_of(self.d, &action) {
+                        let terms = self.verb_slot_filter_terms(&action, sl);
+                        if !terms.is_empty() {
+                            line.push(' ');
+                            line.push_str(&terms.join(" "));
+                        }
+                    }
+                    line
+                }
+                SlotKind::Cost => {
+                    // `cost_<key>: 1..N consuming <term>` — the bind is the
+                    // payment route; the paired negative effect drains the
+                    // interior at the effects pass, and the consuming
+                    // settlement burns the bound payers.
+                    let k = planned.key.clone().unwrap_or_default();
+                    let n = pairs(r, "effects")
+                        .into_iter()
+                        .find(|(ek, _)| *ek == k)
+                        .map(|(_, v)| -v)
+                        .unwrap_or(1)
+                        .clamp(1, 12);
+                    let term = self.arm_term(&k, 1);
+                    format!("{}: 1..{n} consuming open {term}", planned.name)
+                }
+                SlotKind::Req => {
+                    // A synthesized requirement slot: the key's own term.
+                    let k = planned.key.clone().unwrap_or_default();
+                    let term = self.arm_term(&k, 1);
+                    format!("{}: 0..1 open {term}", planned.name)
+                }
+                SlotKind::Merged => {
+                    // A merged element slot: its line is fixed at plan time.
+                    planned.line.clone().unwrap_or_else(|| {
+                        format!("{}: 0..1 open", planned.name)
+                    })
+                }
+            };
+            slot_lines.push(line);
+        }
         if !slot_lines.is_empty() {
+            self.stats.slots_out += slot_lines.len();
             out.push("      slots".into());
             for l in slot_lines {
                 out.push(format!("        {l}"));
@@ -1415,12 +2011,18 @@ impl<'a> Converter<'a> {
             }
         }
 
+        // Additional alts decide ahead of everything (CS GetValidOverride, the
+        // completion's first statement) and their queued spawns fire at the
+        // inductions pass regardless of which recipe the override installed —
+        // so their gated starts sit ahead of the override cascade, evaluated
+        // whether or not an override adopts.
+        self.emit_additional_starts(&mut body, ind, r, rid);
+
         let plain_alts: Vec<Value> = entries(r, "alt")
             .into_iter()
             .filter(|e| !(e.is_object() && truthy(e, "additional")))
             .collect();
-        let mut stack: Vec<String> = vec![rid.to_string()];
-        self.emit_alt_cascade(&mut body, &plain_alts, 0, ind, r, rid, &mut stack);
+        self.emit_alt_cascade(&mut body, &plain_alts, 0, ind, r, rid);
 
         for (i, line) in body {
             out.push(format!("{}{}", " ".repeat(i), line));
@@ -1484,80 +2086,52 @@ impl<'a> Converter<'a> {
         keys.into_iter().collect()
     }
 
-    fn pos3(&self, k: &str, v: i64) -> String {
-        let k = self.key(k);
-        format!("(total(interior, aspect:{k}) >= {v} or total(slot:offer, aspect:{k}) >= {v} or total(world, aspect:{k}) >= {v})")
-    }
-
-    /// The interior+offer sum arm for a single-key positive requirement: CS
-    /// checks requirements against the situation's combined interior
-    /// dictionary — `Situation.GetAspects` sums every interior sphere
-    /// (thresholds, storage, output) plus the verb's aspects into one
-    /// dictionary, so the two counts add before the comparison — never the
-    /// world total (a tabletop card would hijack routing).
-    fn pos2(&self, k: &str, v: i64) -> String {
-        let k = self.key(k);
-        format!("(total(interior, aspect:{k}) + total(slot:offer, aspect:{k})) >= {v}")
-    }
-
-    /// The interior+offer sum arm for a negative requirement: the same
-    /// combined interior dictionary — the two counts add before the
-    /// comparison. The sum form degrades gracefully
-    /// for multi-key dicts: the worst case is a recipe CS would refuse
-    /// becomes openable, never the reverse.
-    fn neg_sum(&self, k: &str, n: i64) -> String {
-        let k = self.key(k);
-        format!("(total(interior, aspect:{k}) + total(slot:offer, aspect:{k})) < {n}")
-    }
-
-    /// CS CanExecuteInContext over the three requirement dicts only: the
-    /// recipe `when`. Slot requirements do not gate the context — slot
-    /// routing lives in the slot filters (the offer slot filter and the
-    /// slot queries).
-    fn when_of(&self, r: &Value) -> Option<String> {
+    /// CS CanExecuteInContext over the three requirement dicts, scoped per
+    /// the verified semantics:
+    /// - `requirements` read the situation's combined interior
+    ///   (`Situation.GetAspects`: every interior sphere plus the verb's
+    ///   aspects). The bound cards across ALL slots live in the interior, so
+    ///   each positive key emits one sum arm — the interior total plus the
+    ///   planned slots whose filter can carry the key (at commit selection
+    ///   the interior is empty and only the submitted bindings, visible
+    ///   through the slot scopes, can satisfy the arm; at a continuation the
+    ///   released storage carries it). Anti-requirements (`-1`) read the
+    ///   interior sum alone: the situation pool, where a bound card counts
+    ///   once.
+    /// - `tablereqs` read the `table` scope (public cards plus every
+    ///   situation's non-greedy slot bindings — AspectsOnTable).
+    /// - `extantreqs` read the `anywhere` scope (all live cards —
+    ///   AspectsExtant, up to running-recipe aspects the language cannot
+    ///   see).
+    fn when_of(&self, r: &Value, plan: &RecipePlan) -> Option<String> {
         let mut parts: Vec<String> = Vec::new();
-        let reqs = pairs(r, "requirements");
-        // A single-key requirement adds the situation interior and the bound
-        // offer card into one count, mirroring CS's single combined
-        // dictionary; the world total never enters. A multi-key dict keeps
-        // the three-scope union — the one offer slot cannot bind several
-        // cards (the flattening gap row covers the approximation).
-        let single = reqs.len() == 1;
-        for (k, v) in &reqs {
-            if *v > 0 {
-                if single {
-                    parts.push(self.pos2(k, *v));
-                } else {
-                    parts.push(self.pos3(k, *v));
+        for (k, v) in pairs(r, "requirements") {
+            let kk = self.key(&k);
+            if v > 0 {
+                let mut sum = format!("total(interior, aspect:{kk})");
+                for c in plan.carriers() {
+                    sum.push_str(&format!(" + total(slot:{c}, aspect:{kk})"));
                 }
-            } else if *v < 0 {
-                // An anti-requirement in the requirements dict reads the
-                // situation's own aspect pool (interior spheres plus the
-                // bound offer card) as an arithmetic sum; the world total
-                // would make e.g. a rite on the table brick every job.
-                parts.push(self.neg_sum(k, -*v));
+                parts.push(format!("({sum} >= {v})"));
+            } else if v < 0 {
+                parts.push(format!("(total(interior, aspect:{kk}) < {})", -v));
             }
         }
         for dk in ["tablereqs", "extantreqs"] {
+            let scope = if dk == "tablereqs" { "table" } else { "anywhere" };
             for (k, v) in pairs(r, dk) {
                 let kk = self.key(&k);
                 if v > 0 {
-                    parts.push(format!("total(world, aspect:{kk}) >= {v}"));
+                    parts.push(format!("(total({scope}, aspect:{kk}) >= {v})"));
                 } else if v < 0 {
-                    parts.push(format!("total(world, aspect:{kk}) < {}", -v));
+                    parts.push(format!("(total({scope}, aspect:{kk}) < {})", -v));
                 }
             }
         }
         if parts.is_empty() {
             return None;
         }
-        Some(
-            parts
-                .iter()
-                .map(|p| format!("({p})"))
-                .collect::<Vec<_>>()
-                .join(" and "),
-        )
+        Some(parts.join(" and "))
     }
 
     /// Deck draws for a recipe: deckeffects, then internaldeck wiring, then
@@ -1658,19 +2232,27 @@ impl<'a> Converter<'a> {
             .map(|l| (vname, l))
     }
 
-    /// CS chance/challenges gate: (roll line, condition over the binding).
-    /// CS's hidden roll becomes roll 1d100 plus the aspect-banded success
-    /// table; the binding is visible to the if-condition only.
-    fn chance_gate(&mut self, e: &Value, rid: &str) -> (Option<String>, Option<String>) {
+    /// CS chance/challenges gate: the roll lines to emit and the success
+    /// condition over their bindings. With `challenges`, CS
+    /// (ChallengeArbiter.GetArbitratedChance) reads each challenge's
+    /// aspect-banded chance over the situation's interior (the table replaces
+    /// the flat chance), takes the MAX across every challenge, and rolls ONCE
+    /// — `Rolld100() > arbitrated` fails. The emission keeps that shape: one
+    /// d100 per gated entry, and the condition ORs every `(challenge × band)`
+    /// pair of `(aspect-level-band and roll <= bandChance)` over the shared
+    /// binding, which collapses at runtime to `roll <= max band chance`. A
+    /// flat `chance` without challenges is one d100 against the entry's
+    /// percentage, sharing the walk's roll binding when one is provided.
+    fn gate_of(
+        &mut self,
+        e: &Value,
+        shared: Option<&str>,
+        rid: &str,
+    ) -> (Vec<String>, Option<String>) {
         let chance = e.get("chance").and_then(|x| x.as_i64()).unwrap_or(100);
         let challenges = e.get("challenges").and_then(|x| x.as_object()).cloned();
         if chance >= 100 && challenges.is_none() {
-            return (None, None);
-        }
-        let bind = self.roll_bind();
-        let mut arms: Vec<String> = Vec::new();
-        if (0..100).contains(&chance) {
-            arms.push(format!("{bind} <= {chance}"));
+            return (Vec::new(), None);
         }
         let mut ch: Vec<(String, String)> = challenges
             .map(|o| {
@@ -1680,34 +2262,46 @@ impl<'a> Converter<'a> {
             })
             .unwrap_or_default();
         ch.sort();
-        for (ak, kind) in &ch {
-            let k = self.key(ak);
-            let table: &[(i64, i64)] = if kind == "base" {
-                &[(1, 30), (5, 70), (10, 90)]
-            } else {
-                &[(5, 10), (10, 30), (15, 70), (20, 90)]
-            };
-            for (i, (lo, val)) in table.iter().enumerate() {
-                let mut band = format!("total(bound, aspect:{k}) >= {lo}");
-                if let Some((hi, _)) = table.get(i + 1) {
-                    band.push_str(&format!(" and total(bound, aspect:{k}) < {hi}"));
+        let mut rolls: Vec<String> = Vec::new();
+        let mut conds: Vec<String> = Vec::new();
+        if ch.is_empty() {
+            let bind = match shared {
+                Some(b) => b.to_string(),
+                None => {
+                    let b = self.roll_bind();
+                    rolls.push(format!("roll 1d100 as {b}"));
+                    b
                 }
-                arms.push(format!("({band} and {bind} <= {val})"));
+            };
+            conds.push(format!("({bind} <= {chance})"));
+        } else {
+            let bind = self.roll_bind();
+            rolls.push(format!("roll 1d100 as {bind}"));
+            let mut pairs: Vec<String> = Vec::new();
+            for (ak, kind) in &ch {
+                let k = self.key(ak);
+                let table: &[(i64, i64)] = if kind == "base" {
+                    &[(1, 30), (5, 70), (10, 90)]
+                } else {
+                    &[(5, 10), (10, 30), (15, 70), (20, 90)]
+                };
+                for (i, (lo, val)) in table.iter().enumerate() {
+                    let mut band = format!("total(interior, aspect:{k}) >= {lo}");
+                    if let Some((hi, _)) = table.get(i + 1) {
+                        band.push_str(&format!(" and total(interior, aspect:{k}) < {hi}"));
+                    }
+                    pairs.push(format!("({band} and {bind} <= {val})"));
+                }
             }
-        }
-        if arms.is_empty() {
-            return (None, None);
+            conds.push(format!("({})", pairs.join(" or ")));
         }
         self.gaps.hit(
-            "chance/challenges gate mapped to a roll",
+            "chance/challenges gate mapped to rolls",
             Class::ConverterIdiom,
-            "CS's hidden roll becomes roll 1d100 plus the aspect-banded success table; deviation: CS rolls each challenge separately and requires every challenge to pass, while the map rolls one shared 1d100 and ORs the aspect bands (shared-roll, ANY vs ALL)",
+            "CS's hidden roll becomes a roll 1d100 line plus the aspect-banded success table; CS's arbiter takes the max challenge chance and rolls once (Rolld100() > arbitrated fails), so the challenge bands OR over one shared binding; deviation: one shared d100 covers a whole linked walk (CS rolls per entry)",
             rid,
         );
-        (
-            Some(format!("roll 1d100 as {bind}")),
-            Some(format!("({})", arms.join(" or "))),
-        )
+        (rolls, Some(conds.join(" and ")))
     }
 
     /// Record a `start` target for the dead census.
@@ -1717,11 +2311,50 @@ impl<'a> Converter<'a> {
         }
     }
 
-    /// The non-additional alt cascade: the first executable entry replaces the
-    /// recipe's own effects (CS alternative resolution), so each arm guards a
-    /// `start` and the deepest `else` carries the recipe's own body — which
-    /// includes its linked cascade.
-    #[allow(clippy::too_many_arguments)]
+    /// Record a `continue` target for the dead census.
+    fn note_continue(&mut self, tid: &str) {
+        if let Some(host) = self.host.get(tid) {
+            self.continued.insert((host.clone(), tid.to_string()));
+        }
+    }
+
+    /// A continuation target: (verb name, local recipe name), spelled
+    /// globally. Any emitted recipe qualifies — a continuation adopts the
+    /// target's verb, so ambient-verb targets are the heartbeat loop itself.
+    fn continue_target(&mut self, tid: &str) -> Option<(String, String)> {
+        let host = match self.host.get(tid) {
+            Some(h) => h.clone(),
+            None => {
+                self.gaps.hit(
+                    "chain target is not an emitted recipe",
+                    Class::NonGoal,
+                    "the target was skipped upstream; the chain entry is dropped",
+                    tid,
+                );
+                return None;
+            }
+        };
+        let vname = self.names.verb.get(&host).cloned()?;
+        self.names
+            .recipe
+            .get(&(host, tid.to_string()))
+            .cloned()
+            .map(|l| (vname, l))
+    }
+
+    /// The non-additional alt cascade: the first executable entry REPLACES the
+    /// recipe being executed, in place, in the same situation with the same
+    /// spheres (CS RequiresExecutionState.Continue: `situation.CurrentRecipe =
+    /// validOverride; situation.ExecuteCurrentRecipe();` — the override's body
+    /// runs INSTEAD of the original's, whose effects never fire). Each arm is
+    /// therefore a gated `continue via` — the same-situation adoption — and
+    /// the deepest `else` carries the recipe's own body, linked cascade
+    /// included, which runs only when no override adopts. The decision sits
+    /// ahead of the body because CS resolves the override as the completion's
+    /// first statement, before ExecuteCurrentRecipe. A target with a warmup
+    /// re-arms the timer for it (a 0-warmup target — the ladder case —
+    /// resolves inline at once); CS's override executes without a warmup, so
+    /// the re-arm is the mapped shape's one pacing deviation.
     fn emit_alt_cascade(
         &mut self,
         body: &mut Vec<(usize, String)>,
@@ -1730,10 +2363,9 @@ impl<'a> Converter<'a> {
         ind: usize,
         r: &Value,
         rid: &str,
-        stack: &mut Vec<String>,
     ) {
         if i >= alts.len() {
-            self.emit_core(body, ind, r, rid, stack);
+            self.emit_core(body, ind, r, rid);
             return;
         }
         let e = alts[i].clone();
@@ -1744,27 +2376,32 @@ impl<'a> Converter<'a> {
                 "the entry names no recipe; it is dropped",
                 rid,
             );
-            self.emit_alt_cascade(body, alts, i + 1, ind, r, rid, stack);
+            self.emit_alt_cascade(body, alts, i + 1, ind, r, rid);
             return;
         };
-        let Some(target) = self.recipe_target(&tid) else {
-            self.emit_alt_cascade(body, alts, i + 1, ind, r, rid, stack);
+        let Some(target) = self.continue_target(&tid) else {
+            self.emit_alt_cascade(body, alts, i + 1, ind, r, rid);
             return;
         };
-        let gate = self.d.recipe(&tid).and_then(|t| self.when_of(t));
-        let (roll_line, cond) = self.chance_gate(&e, rid);
+        let plan = self.plans.get(&tid).cloned().unwrap_or_default();
+        let gate = self
+            .d
+            .recipe(&tid)
+            .and_then(|t| self.when_of(t, &plan));
+        let (rolls, cond) = self.gate_of(&e, None, rid);
         let gates: Vec<String> = gate.into_iter().chain(cond).collect();
-        if let Some(rl) = roll_line {
+        for rl in rolls {
             body.push((ind, rl));
         }
         if gates.is_empty() {
-            // An unconditional alternative fully replaces the recipe.
-            body.push((ind, format!("start {} via {}", target.0, target.1)));
-            self.note_start(&tid);
+            // An unconditional alternative adopts the situation outright; the
+            // core body never runs.
+            body.push((ind, format!("continue via {}.{}", target.0, target.1)));
+            self.note_continue(&tid);
             self.gaps.hit(
                 "unconditional alt replaces the recipe body",
                 Class::ConverterIdiom,
-                "CS resolves the alternative over the recipe's own effects; the core body never runs",
+                "CS resolves the alternative over the recipe's own effects; the arm's unconditional continue adopts the situation and the core body never runs",
                 rid,
             );
             return;
@@ -1774,35 +2411,28 @@ impl<'a> Converter<'a> {
         } else {
             body.push((ind, format!("if {}", gates[0])));
         }
-        body.push((ind + 2, format!("start {} via {}", target.0, target.1)));
-        self.note_start(&tid);
+        body.push((
+            ind + 2,
+            format!("continue via {}.{}", target.0, target.1),
+        ));
+        self.note_continue(&tid);
         body.push((ind, "else".into()));
-        self.emit_alt_cascade(body, alts, i + 1, ind + 2, r, rid, stack);
+        let mark = body.len();
+        self.emit_alt_cascade(body, alts, i + 1, ind + 2, r, rid);
+        if body.len() == mark {
+            // The cascade is exhausted past this arm: the else has no
+            // branch to fill, so the arm ends the walk.
+            body.pop();
+        }
     }
 
-    /// The recipe's own resolution body, in CS completion order: the
-    /// additional-alt gates (RequiresExecutionState.Continue's first
-    /// statement, GetValidOverride), then mutations, deck draws, and the
-    /// effects table (RecipeCompletionEffectCommand.Execute), then the
-    /// ending, then the linked cascade and the inductions.
-    fn emit_core(
-        &mut self,
-        body: &mut Vec<(usize, String)>,
-        ind: usize,
-        r: &Value,
-        rid: &str,
-        stack: &mut Vec<String>,
-    ) {
-        // Additional alts: CS decides their gates in GetValidOverride, before
-        // the recipe's own mutations and effects and before any linked
-        // continuation's effects run (the starvation anti-requirement must
-        // still see the funds card the expenses slot holds). The start both
-        // gates and spawns, so the start lines go here — ahead of everything
-        // this recipe does (CS spawns the queued additions only at the
-        // inductions pass; one `start` line cannot split gate from spawn, so
-        // the gate — the semantics-carrying half — keeps CS's position).
-        self.emit_additional_starts(body, ind, r, rid);
-
+    /// The recipe's own resolution body, in CS completion order: mutations,
+    /// deck draws, and the effects table (RecipeCompletionEffectCommand.
+    /// Execute), then the ending, then the linked cascade and the inductions.
+    /// It runs only when no non-additional alt adopted the situation (the
+    /// alt cascade guards it as its deepest else — CS executes the override's
+    /// body instead of this one).
+    fn emit_core(&mut self, body: &mut Vec<(usize, String)>, ind: usize, r: &Value, rid: &str) {
         // Mutations.
         for m in r
             .get("mutations")
@@ -1872,8 +2502,12 @@ impl<'a> Converter<'a> {
                     );
                     continue;
                 };
+                // CS RunRecipeEffects writes the situation's storage sphere:
+                // the spawn lands in the interior, feeds the completion's
+                // books and any continuation's `when` out of the same pool,
+                // and rides the interior-leftover release at completion.
                 let n = v.clamp(1, 20);
-                body.push((ind, format!("spawn {pname} count {n} into table")));
+                body.push((ind, format!("spawn {pname} count {n} into interior")));
             } else {
                 // A negative effect value drains the executing situation's
                 // interior only (CS RunRecipeEffects -> Sphere.ModifyElementQuantity
@@ -1904,10 +2538,12 @@ impl<'a> Converter<'a> {
             }
         }
 
-        // linked: CS walks the entries in order and executes the first whose
-        // requirements pass; later entries never run.
+        // linked: CS scans the entries in order after the effects; the first
+        // roll-passing, requirement-satisfying, non-additional entry takes
+        // over the same situation, and `additional: true` entries spawn side
+        // situations instead.
         let linked = entries(r, "linked");
-        self.emit_linked_cascade(body, &linked, 0, ind, rid, stack);
+        self.emit_linked_cascade(body, &linked, ind, rid);
 
         // Inductions: CS gates them after the effects (the inductions pass
         // runs post-ExecuteCurrentRecipe), so they stay behind the linked
@@ -1915,25 +2551,63 @@ impl<'a> Converter<'a> {
         self.emit_induction_starts(body, ind, r, rid);
     }
 
-    /// The exclusive first-executable cascade over a linked list. Each arm
-    /// guards the entry's target `when` plus its chance roll; a same-context
-    /// target (same CS action id) inlines its behavior into the parent's
-    /// effect list — the continuation runs in the parent situation with the
-    /// parent's bindings in scope — and a cross-context target gates a
-    /// `start` of the other verb's situation.
+    /// The linked list: the `additional: true` entries spawn gated side
+    /// situations (CS GetNextValidLink's spawnAdditionals), then the
+    /// non-additional entries walk an exclusive if/else cascade of
+    /// `continue via` arms — the same-situation continuation. Each arm gates
+    /// the target's `when` plus its chance/challenges; the walk shares one
+    /// flat d100 (arms compare the binding, CS's hidden roll made visible);
+    /// challenged entries roll their own d100 and pass at the max banded
+    /// chance (CS's arbiter rolls once against the max). An
+    /// unconditional entry ends the walk. Loops are the engine's to bound:
+    /// each step re-arms the timer, and the gated arms make every CS cycle
+    /// strictly progress (the needs/discardseason/drawseason heartbeat).
     fn emit_linked_cascade(
         &mut self,
         body: &mut Vec<(usize, String)>,
         linked: &[Value],
+        ind: usize,
+        rid: &str,
+    ) {
+        // Side situations first: they never take over the walk.
+        for e in linked {
+            if e.is_object() && truthy(e, "additional") {
+                self.emit_side_start(body, ind, rid, e);
+            }
+        }
+        let walk: Vec<&Value> = linked
+            .iter()
+            .filter(|e| !(e.is_object() && truthy(e, "additional")))
+            .collect();
+        // One shared d100 per walk when any arm carries a flat chance.
+        let shared = walk
+            .iter()
+            .any(|e| {
+                let chance = e.get("chance").and_then(|x| x.as_i64()).unwrap_or(100);
+                (0..100).contains(&chance) && e.get("challenges").is_none()
+            })
+            .then(|| {
+                let b = self.roll_bind();
+                body.push((ind, format!("roll 1d100 as {b}")));
+                b
+            });
+        self.emit_linked_walk(body, &walk, 0, ind, rid, shared.as_deref());
+    }
+
+    /// The exclusive walk over the non-additional linked entries.
+    fn emit_linked_walk(
+        &mut self,
+        body: &mut Vec<(usize, String)>,
+        walk: &[&Value],
         i: usize,
         ind: usize,
         rid: &str,
-        stack: &mut Vec<String>,
+        shared: Option<&str>,
     ) {
-        if i >= linked.len() {
+        if i >= walk.len() {
             return;
         }
-        let e = linked[i].clone();
+        let e = walk[i].clone();
         let Some(tid) = entry_id(&e) else {
             self.gaps.hit(
                 "linked entry without an id",
@@ -1941,49 +2615,27 @@ impl<'a> Converter<'a> {
                 "the entry names no recipe; it is dropped",
                 rid,
             );
-            self.emit_linked_cascade(body, linked, i + 1, ind, rid, stack);
+            self.emit_linked_walk(body, walk, i + 1, ind, rid, shared);
             return;
         };
-        if tid == rid {
-            self.gaps.hit(
-                "self-link (CS situation persistence)",
-                Class::ConverterIdiom,
-                "player-verb self-links re-commit (the player re-runs the verb); only ambient-verb self-links ride the heartbeat; no start is emitted",
-                rid,
-            );
-            self.emit_linked_cascade(body, linked, i + 1, ind, rid, stack);
-            return;
-        }
-        let Some(target) = self.recipe_target(&tid) else {
-            self.emit_linked_cascade(body, linked, i + 1, ind, rid, stack);
+        let Some(target) = self.continue_target(&tid) else {
+            self.emit_linked_walk(body, walk, i + 1, ind, rid, shared);
             return;
         };
-        let same_context = self.action_of(rid) == self.action_of(&tid);
-        let gate = self.d.recipe(&tid).and_then(|t| self.when_of(t));
-        let (roll_line, cond) = self.chance_gate(&e, rid);
+        let plan = self.plans.get(&tid).cloned().unwrap_or_default();
+        let gate = self
+            .d
+            .recipe(&tid)
+            .and_then(|t| self.when_of(t, &plan));
+        let (rolls, cond) = self.gate_of(&e, shared, rid);
         let gates: Vec<String> = gate.into_iter().chain(cond).collect();
-        if let Some(rl) = roll_line {
+        for rl in rolls {
             body.push((ind, rl));
         }
-        // Same-context continuations run in the parent situation, but only
-        // the first continuation level inlines; deeper levels open fresh.
-        let inline = same_context && stack.len() <= INLINE_LINKED_DEPTH;
         if gates.is_empty() {
             // The first executable entry always runs; later entries never do.
-            if inline {
-                self.emit_target_inline(body, ind, &tid, stack);
-            } else {
-                if same_context {
-                    self.gaps.hit(
-                        "deep linked continuation starts fresh",
-                        Class::ConverterIdiom,
-                        "the inline map carries the parent context one continuation deep; deeper same-context linked steps open a fresh situation and parent-bound cards do not carry over",
-                        &format!("{rid}:{tid}"),
-                    );
-                }
-                body.push((ind, format!("start {} via {}", target.0, target.1)));
-                self.note_start(&tid);
-            }
+            body.push((ind, format!("continue via {}.{}", target.0, target.1)));
+            self.note_continue(&tid);
             return;
         }
         if gates.len() > 1 {
@@ -1991,71 +2643,16 @@ impl<'a> Converter<'a> {
         } else {
             body.push((ind, format!("if {}", gates[0])));
         }
-        if inline {
-            self.emit_target_inline(body, ind + 2, &tid, stack);
-        } else {
-            if same_context {
-                self.gaps.hit(
-                    "deep linked continuation starts fresh",
-                    Class::ConverterIdiom,
-                    "the inline map carries the parent context one continuation deep; deeper same-context linked steps open a fresh situation and parent-bound cards do not carry over",
-                    &format!("{rid}:{tid}"),
-                );
-            } else {
-                self.gaps.hit(
-                    "cross-context linked step starts fresh",
-                    Class::ConverterIdiom,
-                    "cross-verb linked steps run in a fresh situation (context handoff is explicit in CS via slot re-binding); parent-bound cards do not carry over",
-                    &format!("{rid}:{tid}"),
-                );
-            }
-            body.push((ind + 2, format!("start {} via {}", target.0, target.1)));
-            self.note_start(&tid);
-        }
+        body.push((ind + 2, format!("continue via {}.{}", target.0, target.1)));
+        self.note_continue(&tid);
         body.push((ind, "else".into()));
-        self.emit_linked_cascade(body, linked, i + 1, ind + 2, rid, stack);
-    }
-
-    /// Inline a same-context linked continuation: the target recipe's
-    /// behavior runs as effects of the parent completion, so the parent's
-    /// bound cards stay in scope (the classic `needs` -> `discardseason`
-    /// funds wipe sees the funds card bound in the expenses slot). Only the
-    /// first continuation level reaches here.
-    fn emit_target_inline(
-        &mut self,
-        body: &mut Vec<(usize, String)>,
-        ind: usize,
-        tid: &str,
-        stack: &mut Vec<String>,
-    ) {
-        if stack.iter().any(|s| s == tid) {
-            self.gaps.hit(
-                "linked continuation re-enters the chain",
-                Class::ConverterIdiom,
-                "CS re-runs the linked loop over sequential situation executions; the inline map runs each context once and cuts re-entry (player verbs re-commit, the ambient heartbeat re-opens)",
-                &format!("{}->{tid}", stack.last().map(String::as_str).unwrap_or("?")),
-            );
-            return;
+        let mark = body.len();
+        self.emit_linked_walk(body, walk, i + 1, ind + 2, rid, shared);
+        if body.len() == mark {
+            // The walk is exhausted past this arm: the else has no branch
+            // to fill, so the arm ends the walk.
+            body.pop();
         }
-        let Some(r) = self.d.recipe(tid).cloned() else {
-            return;
-        };
-        stack.push(tid.to_string());
-        if let Some(sd) = s(&r, "startdescription") {
-            let t = escape_sw(sd);
-            if !t.is_empty() {
-                body.push((ind, format!("narrate \"{t}\"")));
-            }
-        }
-        let plain_alts: Vec<Value> = entries(&r, "alt")
-            .into_iter()
-            .filter(|e| !(e.is_object() && truthy(e, "additional")))
-            .collect();
-        // The alt cascade's deepest else carries the target's own body: its
-        // effects, its linked cascade, and its additional starts.
-        self.emit_alt_cascade(body, &plain_alts, 0, ind, &r, tid, stack);
-        stack.pop();
-        self.inlined.insert(tid.to_string());
     }
 
     /// The additional-alt fan-out: every matching entry starts its own
@@ -2106,8 +2703,8 @@ impl<'a> Converter<'a> {
         let Some(target) = self.recipe_target(&tid) else {
             return;
         };
-        let (roll_line, cond) = self.chance_gate(e, rid);
-        if let Some(rl) = roll_line {
+        let (rolls, cond) = self.gate_of(e, None, rid);
+        for rl in rolls {
             body.push((ind, rl));
         }
         match cond {
@@ -2135,25 +2732,34 @@ impl<'a> Converter<'a> {
             .get(&lever_id)
             .and_then(|l| s(l, "defaultValue"))
             .and_then(|dv| self.target_card(dv));
-        match default {
-            Some(cname) if v > 0 => {
-                let n = v.clamp(1, 20);
-                body.push((ind, format!("spawn {cname} count {n} into table")));
-                self.gaps.hit(
-                    "lever redirect spawns the lever default",
-                    Class::ConverterIdiom,
-                    "CS resolves the lever key against cross-run history; a single run lands on defaultValue",
-                    &format!("{rid}:{key}"),
-                );
+        if default.is_some() && v > 0 {
+            // The site hands off to the resolver verb; the selection law
+            // picks the legacy-gated arm (spec.md §7.8).
+            let vname = self
+                .names
+                .verb
+                .get("lever_resolver")
+                .cloned()
+                .unwrap_or_else(|| "lever_resolver".to_string());
+            let n = v.clamp(1, 20);
+            if n > 1 {
+                body.push((ind, format!("start {vname} count {n}")));
+            } else {
+                body.push((ind, format!("start {vname}")));
             }
-            _ => {
-                self.gaps.hit(
-                    "lever effect with no resolvable default",
-                    Class::ExtensionSeam,
-                    "cross-run card redirects need a legacy-to-card seam; the effect is dropped. Designed disposition (recommended idiom): an autonomous legacy-gated resolver verb — `when legacy.<lever> >= n` choosing the spawn — kept as the one genuine seam",
-                    &format!("{rid}:{key}"),
-                );
-            }
+            self.gaps.hit(
+                "lever redirect routes through the legacy resolver",
+                Class::ConverterIdiom,
+                "CS resolves the lever key against cross-run history; the site starts the resolver verb, whose legacy-gated recipes spawn the defaultValue (a host folding incoming legacy flips the routed arm)",
+                &format!("{rid}:{key}"),
+            );
+        } else {
+            self.gaps.hit(
+                "lever effect with no resolvable default",
+                Class::ExtensionSeam,
+                "the lever's defaultValue names no card (or the effect value is not positive); the resolver has nothing to spawn and the effect is dropped",
+                &format!("{rid}:{key}"),
+            );
         }
     }
 
@@ -2174,8 +2780,7 @@ impl<'a> Converter<'a> {
 
     /// The dead census: emitted recipes that no route reaches — player verbs
     /// commit, the ambient heartbeat re-opens, a `start` opens, or a
-    /// same-context linked continuation inlines — plus the verbs whose every
-    /// recipe is dead.
+    /// `continue` adopts — plus the verbs whose every recipe is dead.
     fn census(&mut self) {
         let mut referenced: BTreeSet<String> = BTreeSet::new();
         for (_, r) in &self.d.recipes {
@@ -2197,7 +2802,7 @@ impl<'a> Converter<'a> {
             let mut dead_here = 0usize;
             for rid in &rids {
                 let reached = self.started.contains(&(verb.clone(), rid.clone()))
-                    || self.inlined.contains(rid);
+                    || self.continued.contains(&(verb.clone(), rid.clone()));
                 if !reached {
                     dead_here += 1;
                     if referenced.contains(rid) {

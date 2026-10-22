@@ -536,3 +536,84 @@ fn negative_counts_are_diagnosed() {
         out.diagnostics
     );
 }
+
+/// `continue via` lowers to `EffectNode::Continue` with the recipe resolved
+/// locally (a recipe of the same verb) or globally (`<verb>.<recipe>`);
+/// a recipe may target itself (spec.md §4.2).
+#[test]
+fn continue_via_lowers_local_and_global_spellings() {
+    let content = compile_body(
+        "\
+verbs
+  verb hop committable instances 1
+    recipe go
+      priority 10
+      duration 5m
+      slots
+        s: 0..1
+      effects
+        continue via back
+    recipe back
+      priority 20
+      duration 5m
+      effects
+        continue via hop.go
+  verb crosser uncommittable instances 1
+    recipe cross
+      chain-only
+      duration 1m
+      effects
+        continue via hop.go
+",
+    );
+    let go = &content.verbs["hop"].recipes["go"];
+    assert!(matches!(
+        &go.effects[0],
+        EffectNode::Continue { recipe } if recipe.as_str() == "hop.back"
+    ));
+    let back = &content.verbs["hop"].recipes["back"];
+    assert!(
+        matches!(
+            &back.effects[0],
+            EffectNode::Continue { recipe } if recipe.as_str() == "hop.go"
+        ),
+        "self-continue is legal"
+    );
+    let cross = &content.verbs["crosser"].recipes["cross"];
+    assert!(
+        matches!(
+            &cross.effects[0],
+            EffectNode::Continue { recipe } if recipe.as_str() == "hop.go"
+        ),
+        "the global spelling addresses any verb's recipe"
+    );
+}
+
+/// The `table` scope lowers to `Scope::Table` in expressions, conditions,
+/// and targets (language.md §3).
+#[test]
+fn table_scope_lowers_to_scope_table() {
+    let content = verb_with_effects(
+        "narrate \"gone\"\nif count(table, aspect:spark) >= 1\n  destroy table aspect:spark count 1",
+    );
+    let effects = &content.verbs["v"].recipes["r"].effects;
+    assert!(matches!(&effects[0], EffectNode::Narrate { .. }));
+    let EffectNode::Branch { cond, then, .. } = &effects[1] else {
+        panic!("expected a branch");
+    };
+    let is_table_count = match cond {
+        Expr::Cmp { left, .. } => matches!(**left, Expr::Count { scope: Scope::Table, .. }),
+        _ => false,
+    };
+    assert!(is_table_count, "{cond:?}");
+    assert!(matches!(
+        &then[0],
+        EffectNode::Destroy {
+            target: Target::Query {
+                scope: Scope::Table,
+                ..
+            },
+            ..
+        }
+    ));
+}

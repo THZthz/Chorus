@@ -131,7 +131,7 @@ verb tend committable instances 1
 - **Recipe fields** (order-free within the block): `label`, `priority`, eligibility flags, `max`, `duration`, `declares`, `when`, `guard`, `allow shadow`, `slots`, `effects`.
 - **Selection happens at instance opening.** Verify slot minimums against the source's bindings (or state-countable greedy fill for `start`/autonomous — spec.md §4.3), scan for the first eligible recipe whose `when` holds, then open the window, lock cards, and arm the timer.
 - **`duration` is recipe-level and mandatory.** Verbs declare no timing. Every recipe declares `duration <literal>` — the minutes the instance runs after opening; `0` is the instant recipe, completing inline inside its opener's action (spec.md §4.2). A recipe without a `duration` line is a compile error [E237]. Duration is orthogonal to selection: it never enters candidacy, `when`, or guard evaluation, and it arms only at materialization.
-- **`declares <aspect>, ...`** lists aspect keys this recipe declares, comma-separated; every key must be in the aspects registry [E203]. An aspect-qualified card completion book fires only at a recipe that declares that aspect (§5).
+- **`declares <aspect>, ...`** lists aspect keys this recipe declares, comma-separated; every key must be in the aspects registry [E203]. An aspect-qualified card completion book fires at a recipe that declares that aspect, or — when the walking card's own declaration carries the qualifier — at any completing recipe whose interior pool contains it (§5).
 - Two recipes of one verb that share a priority and an identical (or missing) `when` raise the [W110] shadowing warning; `allow shadow`, written on the shadowed recipe (the second declaration), suppresses it. Disjoint `when`s never shadow.
 - `guard "<prose>" when <cond>`: guards are checked at opening, in declaration order, before any time is spent and before any card locks; a hit cancels the whole commit with the guard-refused diagnostic.
 - **Slots are recipe-level.** `name: range [flags] [query]` — range `N` | `N..M` | `N..` (`min > max` is [E240]); flags `greedy` (auto-pull; requires a finite max — [E241]), `consuming` (burned at settlement), `open` (re-bindable mid-run), `take` (cards return to their bound-from zone at release); the query may call derived predicates. Explicit fills come first; greedy tops up after selection. Bindings lock until completion. Slot names appear in conditions as the `slot:<name>` scope and in prose as `{<name>}`.
@@ -199,12 +199,13 @@ arith      := term (("+" | "-" | "*" | "/") term)*      # integers; division flo
 
 **Operands:** unique-card name paths (`beacon.heat`), `count(<scope>, <query>)`, `total(<scope>, aspect:<key>)`, `alive(<card>)`, `clock`, `legacy.<key>`, roll bindings (`sight`, inside the effect list that declared them), and duration literals (their minute count). Division by zero evaluates to 0 (totality preserved); a constant zero divisor is a compile error [E242].
 
-**Scopes:** `interior`, `world`, `zone:<Z>`, `slot:<name>`, `bound`, `anywhere`.
+**Scopes:** `interior`, `table`, `world`, `zone:<Z>`, `slot:<name>`, `bound`, `anywhere`.
 
 - `interior` — the interior of the situation whose resolution is running;
 - `slot:<name>` — the slot's bound cards in the running situation;
 - `bound` — every card bound in the running situation across all slots, **counted per binding**: a card bound in two slots counts twice;
 - `zone:<Z>` — the zone with its nested subtree;
+- `table` — the public live cards plus every situation's non-greedy slot bindings; greedy bindings and situation interiors are excluded;
 - `world` — public live cards;
 - `anywhere` — all live cards.
 
@@ -216,7 +217,7 @@ In contexts without a running situation — `on expire` rules, `on event` rules,
 
 ### 4.1 The Closed Vocabulary
 
-The authored set: `spawn`, `destroy`, `consume`, `swap`, `set`, `move`, `legacy`, `narrate`, `roll`, `draw`, `start`, `signal`, `ending`, `if/else`. Nothing else is authored as an effect kind: the situation-abort effect is kernel-only, and host-registered ops are host-only. `effectset` calls (§6) are author-side abbreviation and expand to this set at compile time.
+The authored set: `spawn`, `destroy`, `consume`, `swap`, `set`, `move`, `legacy`, `narrate`, `roll`, `draw`, `start`, `continue`, `signal`, `ending`, `if/else`. Nothing else is authored as an effect kind: the situation-abort effect is kernel-only, and host-registered ops are host-only. `effectset` calls (§6) are author-side abbreviation and expand to this set at compile time.
 
 Effect failure (consume shortage, exhausted deck, name-in-use, invalid roll operands, …) rolls the current resolution unit back to its checkpoint; a retried identical `commit` re-rolls identical dice, because state was restored bit-for-bit (kernel-api.md §9).
 
@@ -258,6 +259,7 @@ narrate "<prose>"
 roll <count>d<sides> [+ <bonus>] as <name>
 draw from <deck> [count <n>] [into (interior | <id>)]
 start <verb> [via <recipe>] [count <n>]
+continue via <recipe>                       # recipe effects only [E247]
 signal <event>
 ending <id>
 if <condition> <effect-lines> [else <effect-lines>]
@@ -266,11 +268,12 @@ if <condition> <effect-lines> [else <effect-lines>]
 
 - `spawn` mints from the card's template (or its `mint` alias); `count` default 1; the zone defaults to `interior` in a situation context, else `home`.
 - **Handles.** `spawn <card> ... as <handle>` binds the minted card(s) to `<handle>` for the enclosing effect list only: subsequent effects in that list address the pool via `<handle>`, oldest-first for multi-card pools, and narrate tokens may reference `{<handle>}` (display names) and `{<handle>.<aspect>}` (the oldest card's read). A handle is visible at and after its spawn line, including nested `if` branches and subsequent `effectset` expansions, and nowhere else; a handle target with no enclosing spawn is [E238], an orphan handle-shaped token is [E205] (§7).
-- `set` / `legacy` write with `=` / `+=` / `-=`, clamped at ≥ 0 unless suffixed `unclamped`.
+- `set` writes with `=` / `+=` / `-=`, clamped at ≥ 0 unless suffixed `unclamped`; `legacy` writes the same arithmetic and always clamps at ≥ 0.
 - **Effect counts are full integer expressions** — the `count <n>` of `spawn` / `destroy` / `swap` / `draw` / `start` and the trailing `<n>` of `consume` take the §3 grammar (`spawn coin count 1 + total(world, aspect:coal)` is legal), evaluated at effect time; a negative count is the effect failure, and a constant negative is [E246]. The expression ends at end-of-line: a following `into`, `as`, `to`, or `via` clause is no operator.
 - **`roll` takes full integer expressions** in count, sides, and bonus — `roll 1d6 + warden.watch as sight`, `roll total(bound, aspect:dice)d6 as storm`, `roll 0d6 + legacy.favor as grace` are all legal. Operands are validated at effect time: count ≥ 0, sides ≥ 1; a violation is an effect failure (unit rollback). Count 0 applies the bonus only and leaves the rng counter unmoved. The result binds `<name>` for subsequent `if` conditions and `{<name>}` tokens in the same effect list (last wins).
 - `draw`'s count defaults to 1; the target defaults to `interior` when the effect runs in a situation context, else `home`. Exhaustion walks `fallback` → `wrap` → the exhaustion failure (§2.7).
 - `start` materializes a new instance; failure semantics are spec.md §4.2's taxonomy — silent chain end, or skip on cap/materialization shortfall, never a parent rollback.
+- `continue via <recipe>` continues the running situation into the target recipe instead of completing (spec.md §4.2): the surviving bindings become unbound interior storage, the target's greedy slots pull, and the timer re-arms at `now + duration`. The recipe is spelled locally (a recipe of the same verb) or globally `<verb>.<recipe>`, and may be the executing recipe itself. Branch semantics are ordinary: a `continue` fires only when its branch executes, and the completion then re-checks the recipe's `continue` arms in emission order from the executed one — the first arm whose `when` holds adopts. It is legal only in recipe effects — anywhere in a trigger book is [E247], and an unknown target is [E244].
 - `signal <event>` ignites the `on event <event>` book (§5) — the only way an event book ever fires; an event name no book declares is [E243].
 - `if` takes a condition and deeper-indented effect lines; `else` sits at the `if` line's indent with its own effect lines.
 
@@ -294,7 +297,7 @@ on event <name>        # top level: fires only when an effect executes signal <n
 Every book holds rules of one shape: `rule <id> [priority <n>] [once] [when <cond>]` with an `effects` block. A book walks its rules under the selection law — `min_by (priority, decl_index)` — and the first rule whose `when` holds fires; `once` marks the rule spent for the run.
 
 - **Recipe books** fire at the recipe's completion step 3, with the situation's bindings still locked and its interior alive.
-- **Card books** (`on complete [<aspect>]` inside a `card`) let a card bring its own completion behavior into any situation that binds it — the genre's "when this card is used, X" pattern — without rewriting every binding recipe. Sequencing at completion: the recipe's own book first, then each locked card's book, deduplicated across slots (a card bound twice walks once), in bind order. The aspect-qualified form fires only when the completing recipe `declares` that aspect; an unqualified book fires at every completion. Inside a card book, `subject` is the bound card carrying the book. Card books run within inline completions of instant recipes too, counting inside that one resolution against the per-advance budget (spec.md §4.2). Two blocks with the same qualifier on one card are [E236].
+- **Card books** (`on complete [<aspect>]` inside a `card`) let a card bring its own completion behavior into any situation that binds it — the genre's "when this card is used, X" pattern — without rewriting every binding recipe. Sequencing at completion: the recipe's own book first, then every interior card's book — the bound cards, deduplicated across slots (a card bound twice walks once), in bind order, then the unbound interior storage cards in mint order. The aspect-qualified form fires when the completing recipe `declares` that aspect, or when the situation's interior aspect pool — the read-value sums over the interior, bound cards included — contains it and the walking card's own declaration (its element id and aspect keys) carries the qualifier; an unqualified book fires at every completion. Inside a card book, `subject` is the bound card carrying the book. Card books run within inline completions of instant recipes too, counting inside that one resolution against the per-advance budget (spec.md §4.2). Two blocks with the same qualifier on one card are [E236].
 - **Expiry books** fire instead of default destruction; their rules address the dying card as `subject`; while the card is bound they do not fire (spec.md §4.6).
 - **Event books** live at top level; `signal <name>` is their only ignition [E243].
 
@@ -368,6 +371,7 @@ Compile diagnostics carry `file:line:col`, a stable number, and a note phrased a
 | E244 | An unknown id is referenced: card, verb, recipe, zone, deck, ending, or predicate. |
 | E245 | A predicate or effectset parameter is typed or arity-checked against its use (used both ways, wrong argument form, wrong argument or parameter count). |
 | E246 | A magnitude is non-positive where that is required (turn, lifetime, `max`, counts) or out of range (a duration literal past 64 bits). |
+| E247 | `continue` appears outside recipe effects (a trigger book: recipe, card, expiry, or event). |
 | W110 | Two recipes of one verb share a priority and an identical (or missing) `when` (warning; `allow shadow` on the shadowed recipe suppresses it). |
 
 Runtime diagnostics (refusals, effect failures, boot and snapshot kinds) are the engine's catalog: kernel-api.md §7.

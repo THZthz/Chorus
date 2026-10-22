@@ -745,3 +745,97 @@ verbs
         None,
     );
 }
+
+#[test]
+fn e247_continue_inside_a_recipe_book() {
+    let body = "\
+verbs
+  verb v committable instances 1
+    recipe r
+      duration 0m
+      effects
+        narrate \"ok\"
+      on complete
+        rule beat
+          effects
+            continue via r  # ERR
+";
+    expect_error(
+        &fixture(body),
+        code::E247,
+        "continue is legal only in recipe effects",
+        None,
+    );
+}
+
+#[test]
+fn e247_continue_inside_a_top_level_event_book() {
+    let body = "\
+verbs
+  verb v committable instances 1
+    recipe r
+      duration 0m
+      effects
+        narrate \"ok\"
+
+on event dawn
+  rule rise
+    effects
+      continue via v.r  # ERR
+";
+    expect_error(
+        &fixture(body),
+        code::E247,
+        "continue is legal only in recipe effects",
+        None,
+    );
+}
+
+#[test]
+fn e244_continue_unknown_target() {
+    let body = "\
+verbs
+  verb v committable instances 1
+    recipe r
+      duration 0m
+      effects
+        continue via nowhere  # ERR
+";
+    expect_error(
+        &fixture(body),
+        code::E244,
+        "unknown recipe `nowhere` targeted by `continue`",
+        None,
+    );
+}
+
+#[test]
+fn e244_continue_unknown_global_target() {
+    let body = "\
+verbs
+  verb v committable instances 1
+    recipe r
+      duration 0m
+      effects
+        continue via other.missing  # ERR
+";
+    expect_error(
+        &fixture(body),
+        code::E244,
+        "unknown recipe `other.missing` targeted by `continue`",
+        None,
+    );
+}
+
+#[test]
+fn e201_continue_without_via() {
+    let body = "\
+verbs
+  verb v committable instances 1
+    recipe r
+      duration 0m
+      effects
+        continue  # ERR
+";
+    expect_error(&fixture(body), code::E201, "continue is `continue via <recipe>`", None);
+}

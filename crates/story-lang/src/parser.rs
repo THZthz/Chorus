@@ -1583,6 +1583,16 @@ impl<'d> Parser<'d> {
                 let event = tc.expect_ident("an event name", self.diags)?;
                 Some(AEffect::Signal { span, event })
             }
+            "continue" => {
+                if tc.eat_ident("via").is_none() {
+                    self.diags.push(
+                        span.error(code::E201, "continue is `continue via <recipe>`"),
+                    );
+                    return None;
+                }
+                let recipe = self.parse_recipe_spelling(&mut tc)?;
+                Some(AEffect::Continue { span, recipe })
+            }
             "ending" => {
                 let id = tc.expect_ident("an ending id", self.diags)?;
                 Some(AEffect::Ending { span, id })
@@ -1661,6 +1671,18 @@ impl<'d> Parser<'d> {
                 None
             }
         }
+    }
+
+    /// A recipe reference: a local name, or the global `<verb>.<recipe>`
+    /// spelling (language.md §1). Returns the joined spelling.
+    fn parse_recipe_spelling(&mut self, tc: &mut TC) -> Option<(Span, String)> {
+        let (sp, name) = tc.expect_ident("a recipe name", self.diags)?;
+        if tc.at_p(&P::Dot) {
+            tc.next();
+            let (_, rest) = tc.expect_ident("a recipe name after the dot", self.diags)?;
+            return Some((sp, format!("{}.{}", name, rest)));
+        }
+        Some((sp, name))
     }
 
     fn parse_into(&mut self, tc: &mut TC) -> Option<AInto> {
@@ -1943,7 +1965,7 @@ fn is_name_path(tc: &TC) -> bool {
 fn starts_scope(tc: &TC) -> bool {
     match tc.peek() {
         Some((_, Tok::Ident(w))) => match w.as_str() {
-            "world" | "interior" | "anywhere" | "bound" => true,
+            "world" | "interior" | "table" | "anywhere" | "bound" => true,
             "zone" | "slot" => tc
                 .peek_at(1)
                 .is_some_and(|(_, t)| matches!(t, Tok::P(P::Colon))),
@@ -1981,6 +2003,10 @@ pub fn parse_scope(tc: &mut TC, diags: &mut Vec<Diagnostic>) -> Option<AScope> {
         "interior" => {
             tc.next();
             Some(AScope::Interior(s))
+        }
+        "table" => {
+            tc.next();
+            Some(AScope::Table(s))
         }
         "world" => {
             tc.next();

@@ -28,6 +28,9 @@ pub enum Scope {
     Slot(SlotName),
     /// A declared zone with its nested subtree.
     Zone(ZoneName),
+    /// Every card in a public zone plus every situation's non-greedy slot
+    /// bindings; greedy bindings and situation interiors are excluded.
+    Table,
     /// Public live cards.
     World,
     /// All live cards.
@@ -272,6 +275,10 @@ pub enum EffectNode {
         via: Option<RecipeId>,
         count: Expr,
     },
+    /// Same-situation continuation: legal only in recipe effects (the
+    /// compiler enforces it). At settlement the situation adopts the target
+    /// recipe instead of completing (spec.md §4.2).
+    Continue { recipe: RecipeId },
     Signal {
         event: String,
     },

@@ -19,13 +19,14 @@ pub fn render_markdown(c: &Conversion) -> String {
     let _ = write!(out, "| aspect registry keys | {} |\n", s.aspect_keys);
     let _ = write!(out, "| recipes in | {} |\n", s.recipes_in);
     let _ = write!(out, "| recipes out | {} |\n", s.recipes_out);
+    let _ = write!(out, "| slots out | {} |\n", s.slots_out);
     let _ = write!(out, "| verbs out | {} |\n", s.verbs_out);
     let _ = write!(out, "| decks out | {} |\n", s.decks_out);
     let _ = write!(out, "| endings out | {} |\n", s.endings_out);
     let _ = write!(out, "| output lines | {} |\n", s.output_lines);
 
     out.push_str("\n## Dead census\n\n");
-    out.push_str("Emitted recipes on uncommittable, non-ambient verbs that no route reaches: no incoming `start` and no inline coverage as a same-context linked continuation. Player-verb recipes commit, ambient-verb recipes ride the heartbeat.\n\n");
+    out.push_str("Emitted recipes on uncommittable, non-ambient verbs that no route reaches: no incoming `start` and no adoption as a `continue` target. Player-verb recipes commit, ambient-verb recipes ride the heartbeat.\n\n");
     out.push_str("| census | count |\n|---|---|\n");
     let _ = write!(out, "| dead recipes | {} |\n", s.dead_recipes);
     let _ = write!(

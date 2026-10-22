@@ -106,8 +106,9 @@ impl Engine {
         }
     }
 
-    /// The recipe's lifetime open-count cap: spent at instantiation.
-    fn max_left(&self, rec: &RecipeDecl) -> bool {
+    /// The recipe's lifetime open-count cap: spent at materialization —
+    /// adoption included, which materializes the new recipe in place.
+    pub(crate) fn max_left(&self, rec: &RecipeDecl) -> bool {
         match rec.max {
             Some(m) => self.state.recipe_runs.get(&rec.id).copied().unwrap_or(0) < m,
             None => true,

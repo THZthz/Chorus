@@ -2864,8 +2864,9 @@ verbs
     }
 
     // matrix 25
-    /// An aspect-qualified book stays silent at a recipe that does not
-    /// declare the aspect; the completion itself is unaffected.
+    /// An aspect-qualified book stays silent when the recipe does not declare
+    /// the aspect and the situation's interior pool does not contain it; the
+    /// completion itself is unaffected.
     #[test]
     fn matrix_25_card_books_neg() {
         let src = r#"
@@ -2883,7 +2884,6 @@ aspects
 cards
   card omened
     stackable
-    aspects stamped 1
     start in hall
     on complete [stamped]
       rule vision
@@ -2901,7 +2901,7 @@ verbs
         let events = common::commit_named(&mut e, "rite_b", &[("f", "omened")]).expect("completes");
         assert!(
             narration(&events).is_empty(),
-            "the qualified book never fires without `declares`"
+            "the qualified book never fires without `declares` or an interior pool holding the aspect"
         );
         assert_eq!(completed_count(&events), 1);
     }

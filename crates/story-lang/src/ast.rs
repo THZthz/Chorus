@@ -256,6 +256,7 @@ pub type Toks = Vec<(Span, Tok)>;
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum AScope {
     Interior(Span),
+    Table(Span),
     World(Span),
     Bound(Span),
     Anywhere(Span),
@@ -267,6 +268,7 @@ impl AScope {
     pub fn span(&self) -> &Span {
         match self {
             AScope::Interior(s)
+            | AScope::Table(s)
             | AScope::World(s)
             | AScope::Bound(s)
             | AScope::Anywhere(s)
@@ -537,6 +539,11 @@ pub enum AEffect {
         verb: (Span, String),
         via: Option<(Span, String)>,
         count: Option<AExpr>,
+    },
+    /// `continue via <recipe>` — a recipe's effects only ([E247] elsewhere).
+    Continue {
+        span: Span,
+        recipe: (Span, String),
     },
     Signal {
         span: Span,

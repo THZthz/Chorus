@@ -4,7 +4,7 @@
 //! default, empty scopes count 0, division by zero is 0.
 
 use crate::Engine;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use story_content::ir::{AspectTerm, CmpOp, Expr, QueryTerm, Scope, Target};
 use story_core::{EntityId, RecipeId, SituationId, SlotName, ZoneId};
 
@@ -166,9 +166,41 @@ impl Engine {
                 Some(z) => self.zone_subtree_entities(*z),
                 None => Vec::new(),
             },
+            Scope::Table => self.table_entities(),
             Scope::World => self.public_entities(),
             Scope::Anywhere => self.state.entities.values().map(|e| e.id).collect(),
         }
+    }
+
+    /// The `table` scope: every card in a public zone plus every situation's
+    /// non-greedy slot bindings; greedy bindings and situation interiors are
+    /// excluded (spec.md §4.7). Public cards come first in mint order, then
+    /// the bindings by situation id, slot declaration order, and bind order.
+    pub(crate) fn table_entities(&self) -> Vec<EntityId> {
+        let mut ids = self.public_entities();
+        let mut seen: BTreeSet<EntityId> = ids.iter().copied().collect();
+        for sit in self.state.situations.values() {
+            let Some(rec) = self.content.recipe(sit.recipe.as_str()) else {
+                continue;
+            };
+            for sd in &rec.slots {
+                if sd.greedy {
+                    continue;
+                }
+                let Some(binds) = sit.bindings.get(&sd.name) else {
+                    continue;
+                };
+                let mut ordered: Vec<(u64, EntityId)> =
+                    binds.iter().map(|b| (b.seq, b.entity)).collect();
+                ordered.sort_by_key(|(seq, _)| *seq);
+                for (_, e) in ordered {
+                    if seen.insert(e) {
+                        ids.push(e);
+                    }
+                }
+            }
+        }
+        ids
     }
 
     pub(crate) fn zone_entities(&self, z: ZoneId) -> Vec<EntityId> {

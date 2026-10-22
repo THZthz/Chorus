@@ -31,6 +31,7 @@ where
 /// The per-resolution-unit effect context (kernel-api.md §4). `subject` for
 /// card-completion and expiry books rides in `handles` under that name, which
 /// is how the compiled IR addresses it.
+#[derive(Default)]
 pub struct EffectCtx {
     /// `None` in context-free books (expire, event) and commit selection.
     pub sit: Option<story_core::SituationId>,
@@ -40,6 +41,11 @@ pub struct EffectCtx {
     pub roll: Option<i64>,
     /// Spawn-handle pools, mint-ordered; cleared when their effect list ends.
     pub handles: BTreeMap<String, Vec<EntityId>>,
+    /// The `continue via` target this list executed, if any: recorded on the
+    /// taken path (a `continue` inside an untaken branch never fires) and
+    /// read by the completion's adoption transition. Last-wins, like the
+    /// roll binding.
+    pub continued: Option<story_core::RecipeId>,
 }
 
 impl EffectCtx {
@@ -308,6 +314,14 @@ impl Engine {
                 let n = self.eval_count(count, &fctx.eval_ctx(recipe.as_ref()))?;
                 self.apply_start(verb, via.as_ref(), n, fctx, ev, run)?;
             }
+            EffectNode::Continue { recipe } => {
+                // Recorded, not walked: the completion path turns the
+                // executed `continue` into the adoption transition of
+                // spec.md §4.2 after the books phase. Branch semantics are
+                // ordinary — a `continue` inside an untaken branch never
+                // records.
+                fctx.continued = Some(recipe.clone());
+            }
             EffectNode::Signal { event } => {
                 let Some(book) = self.content.events.get(event).cloned() else {
                     return Err(Fail::new(
@@ -323,6 +337,7 @@ impl Engine {
                     now: fctx.now,
                     roll: None,
                     handles: BTreeMap::new(),
+                    continued: None,
                 };
                 self.fire_book(&book, &mut fresh, None, ev, run)?;
             }

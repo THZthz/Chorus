@@ -91,6 +91,11 @@ fn main() {
             ["bind", sit, slot, card] => {
                 do_bind(&mut engine, &mut undo, sit, slot, card);
             }
+            ["give", card] => do_give(&mut engine, &mut undo, card, 1),
+            ["give", card, n] => match n.parse::<i64>() {
+                Ok(n) if n > 0 => do_give(&mut engine, &mut undo, card, n),
+                _ => println!("  give takes a positive count"),
+            },
             ["undo"] => match undo.pop() {
                 Some(snap) => match engine.restore(&snap) {
                     Ok(()) => println!("  undone"),
@@ -108,8 +113,75 @@ fn main() {
 fn print_help() {
     println!(
         "  verbs | commit <verb> [slot=card ...] | bind <sit> <slot> <card> | \
-         advance [n] | state | undo | quit"
+         give <card> [n] | advance [n] | state | undo | quit"
     );
+}
+
+/// `give <card> [n]`: mint n copies of a declared card onto the home zone.
+/// The host route is snapshot surgery (L2: the snapshot is the save) — the
+/// engine's mint pipeline runs through authored effects only, and the probe
+/// driver owns the undo snapshot either way.
+fn do_give(engine: &mut Engine, undo: &mut Vec<story_engine::Snapshot>, card: &str, n: i64) {
+    let Some(decl) = engine
+        .content()
+        .cards
+        .get(&story_core::CardId::from(card))
+        .cloned()
+    else {
+        println!("  no card declared named `{card}`");
+        return;
+    };
+    let snap = engine.snapshot();
+    let Ok(mut state) = serde_json::from_slice::<story_core::State>(&snap.state) else {
+        println!("  state deserialization failed");
+        return;
+    };
+    let Some(home) = state
+        .zones
+        .values()
+        .find(|z| matches!(z.kind, story_core::ZoneKind::Table))
+        .map(|z| z.id)
+    else {
+        println!("  no table zone");
+        return;
+    };
+    let body = decl
+        .mint_alias
+        .as_ref()
+        .and_then(|a| engine.content().cards.get(a))
+        .unwrap_or(&decl);
+    let mut minted = 0;
+    for _ in 0..n {
+        let id = story_core::EntityId(state.next_entity);
+        state.next_entity += 1;
+        state.entities.insert(
+            id,
+            story_core::Entity {
+                id,
+                name: decl.id.to_string(),
+                prototype: decl.id.clone(),
+                kind: body.kind.clone(),
+                aspects: body.aspects.clone(),
+                attrs: Default::default(),
+                zone: home,
+                mint: body.mint.clone(),
+                expires_at: None,
+            },
+        );
+        minted += 1;
+    }
+    let prepared = story_engine::Snapshot {
+        format: snap.format,
+        content_fingerprint: snap.content_fingerprint,
+        state: serde_json::to_vec(&state).expect("serialize"),
+    };
+    match engine.restore(&prepared) {
+        Ok(()) => {
+            undo.push(snap);
+            println!("  gave {minted} x {card}");
+        }
+        Err(d) => println!("  refused: {d}"),
+    }
 }
 
 fn find_entity(engine: &Engine, name: &str) -> Option<EntityId> {
@@ -133,7 +205,15 @@ fn do_commit(
             println!("  bindings are slot=card, e.g. fuel=coal");
             return;
         };
-        let Some(e) = find_entity(engine, card) else {
+        // `slot=#<id>` addresses an entity directly (the probe driver's
+        // escape hatch when several copies share a name).
+        let e = card
+            .strip_prefix('#')
+            .and_then(|n| n.parse::<u64>().ok())
+            .map(story_core::EntityId)
+            .filter(|id| engine.state().entities.contains_key(id))
+            .or_else(|| find_entity(engine, card));
+        let Some(e) = e else {
             println!("  no live card named `{card}`");
             return;
         };
@@ -207,6 +287,9 @@ fn print_events(events: &[Event]) {
             }
             Event::SituationCompleted { sit, recipe } => {
                 println!("  [sit {sit}] {recipe} completed");
+            }
+            Event::Continued { situation, recipe } => {
+                println!("  [sit {situation}] continues via {recipe}");
             }
             Event::ChainEnded { verb } => println!("  [chain {verb} ended]"),
             Event::StartSkipped { verb, reason } => {

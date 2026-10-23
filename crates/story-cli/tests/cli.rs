@@ -413,14 +413,18 @@ fn audit_reports_the_known_emberwatch_findings() {
         .expect("the audit report states its exploration size");
     assert!(explored.contains("states ("), "{explored}");
     assert!(explored.contains("TRUNCATED"), "{explored}");
-    // The one provable recipe shadowing.
-    assert!(out.contains("shadowing: 1 finding(s)"), "{out}");
-    assert!(out.contains("verb tend: \"feed\" shadows \"routine\""), "{out}");
-    // The dead handbook (dawns_seen is only written past the last dawn).
+    // Three semantic shadowing pairs: the bell's event rules, the log's
+    // continue target, and feed ahead of polish.
+    assert!(out.contains("shadowing: 3 finding(s)"), "{out}");
+    assert!(out.contains("verb log: \"write\" shadows \"close\""), "{out}");
+    assert!(out.contains("verb tend: \"feed\" shadows \"polish\""), "{out}");
+    // The authored-dead recipes: the handbook (dawns_seen is only written
+    // past the last dawn) and routine (polish wins the equal-priority scan).
     assert!(out.contains("recipe tend.handbook"), "{out}");
-    // Reachable runtime faults with replaying witnesses.
-    assert!(out.contains("reachable faults: 12 finding(s)"), "{out}");
-    assert!(out.contains("resolution failed"), "{out}");
+    assert!(out.contains("recipe tend.routine"), "{out}");
+    // The gnaw-vs-decay race sits deeper in the night than this bound: no
+    // fault is reachable within 8000 states, and the report says so.
+    assert!(out.contains("reachable faults: 0 finding(s)"), "{out}");
 }
 
 // ---------------------------------------------------------------------------

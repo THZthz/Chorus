@@ -234,66 +234,73 @@ fn the_depleted_night_is_not_winnable_but_never_stuck() {
 }
 
 #[test]
-fn the_auditor_finds_the_shadow_and_the_dead_handbook() {
+fn the_auditor_maps_the_night_dead_content_and_the_decay_race() {
     let mut a = common::analyzer(ember(), 7);
     let report = audit(
         &mut a,
         &ExploreConfig {
-            max_states: 8_000,
+            max_states: 60_000,
             max_time: Some(430),
             ..Default::default()
         },
     );
-    // The one semantic shadowing: feed (priority 20, no when) always wins
-    // the tend scan before routine (priority 100, no when) — a guard
-    // refusal at feed stops the scan exactly like a match.
-    let feed_routine = report
+    // Three semantic shadowing pairs, one per shape: the event rule whose
+    // priority gate hides the once-rule, the continue target behind its
+    // chain's entry, and the feed/polish pair `allow shadow` silences at
+    // compile time but the scan still orders.
+    assert_eq!(report.shadowing.len(), 3, "{:?}", report.shadowing);
+    let event_pair = report
         .shadowing
         .iter()
-        .find(|s| s.shadower == "feed" && s.shadowed == "routine")
-        .expect("feed shadows routine");
-    assert!(!feed_routine.conditional);
-    // No other recipe pair of one verb provably shadows.
-    assert_eq!(report.shadowing.len(), 1, "{:?}", report.shadowing);
-
-    // The handbook needs `dawns_seen >= 1`, which only the survived dawn
-    // writes — and that ends the run: never openable within the bounds.
-    let handbook = report
-        .unreachable
+        .find(|s| s.shadower.contains("toll_panic"))
+        .expect("the bell's panic rule shadows the once-rule");
+    assert!(event_pair.shadowed.contains("toll_once"));
+    assert!(report
+        .shadowing
         .iter()
-        .find(|u| u.kind == "recipe" && u.id == "tend.handbook")
-        .expect("the handbook is dead");
-    assert_eq!(handbook.evidence, Evidence::NotWithinBounds);
-    // The despair ending is statically reachable (dread_first's absent
-    // read holds on the default, and the dread climb grounds broken), so
-    // it must never be reported statically dead; within a truncated
-    // exploration it may only appear as bounds-conditional.
+        .any(|s| s.verb.as_ref().map(|v| v.as_str()) == Some("log") && s.shadower == "write" && s.shadowed == "close"));
+    assert!(report
+        .shadowing
+        .iter()
+        .any(|s| s.verb.as_ref().map(|v| v.as_str()) == Some("tend") && s.shadower == "feed" && s.shadowed == "polish"));
+
+    // Two authored-dead recipes: the handbook (its dawn gate is only written
+    // past the last dawn) and routine (polish wins the equal-priority scan).
+    for dead in ["tend.handbook", "tend.routine"] {
+        let u = report
+            .unreachable
+            .iter()
+            .find(|u| u.kind == "recipe" && u.id == dead)
+            .unwrap_or_else(|| panic!("{dead} is dead content"));
+        assert_eq!(u.evidence, Evidence::NotWithinBounds);
+    }
+    // The despair ending is genuinely reachable (teeth failures and the
+    // unread-portent dread stack), so it must never be reported statically
+    // dead; within a truncated exploration it may only appear
+    // bounds-conditional.
     assert!(!report.unreachable.iter().any(
         |u| u.kind == "ending" && u.id == "despair" && u.evidence == Evidence::StaticallyProved
     ));
 
-    // The reachable runtime faults: the gnaw-vs-tea decay race (a consume
-    // whose target can decay between the open's `when` and the completion
-    // — spec §7.3's example), each with a replaying witness whose final
-    // step carries the fault.
-    let races: Vec<_> = report
-        .faults
+    // The gnaw-vs-decay race: the bread absorbs the early gnaw ticks, so the
+    // race sits deep in the night — one fault within the bounds, its witness
+    // ending on the ResolutionFailed.
+    assert_eq!(
+        report.faults.len(),
+        1,
+        "{:?}",
+        report.faults.iter().map(|f| format!("{:?}", f.event)).collect::<Vec<_>>()
+    );
+    let last = report.faults[0].witness.records.last().unwrap();
+    assert!(last.events.iter().any(|e| matches!(
+        e,
+        story_engine::Event::ResolutionFailed { .. }
+    )));
+    assert!(report.faults[0]
+        .witness
+        .records
         .iter()
-        .filter(|f| matches!(f.event, story_analyze::FaultEvent::ResolutionFailed { .. }))
-        .collect();
-    assert!(!races.is_empty(), "the decay race is reachable");
-    for f in &races {
-        let last = f.witness.records.last().unwrap();
-        assert!(last.events.iter().any(|e| matches!(
-            e,
-            story_engine::Event::ResolutionFailed { .. }
-        )));
-        assert!(f.witness.records.iter().any(|r| matches!(
-            r.step,
-            PlayerStep::Commit { .. } | PlayerStep::Advance { .. }
-        )));
-    }
-    let _ = SearchObjective::FewestActions;
+        .any(|r| matches!(r.step, PlayerStep::Commit { .. } | PlayerStep::Advance { .. })));
 }
 
 #[test]

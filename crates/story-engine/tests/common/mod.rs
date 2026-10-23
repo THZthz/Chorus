@@ -128,6 +128,10 @@ pub fn ended(engine: &Engine) -> Option<String> {
 }
 
 /// Serialized state bytes — the determinism and drift witness.
+pub fn legacy_out(engine: &Engine) -> &std::collections::BTreeMap<String, i64> {
+    engine.legacy_out()
+}
+
 pub fn state_bytes(engine: &Engine) -> Vec<u8> {
     serde_json::to_vec(engine.state()).expect("state serializes")
 }

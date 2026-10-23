@@ -421,6 +421,31 @@ fn the_decaying_consume_race_yields_a_replaying_fault_witness() {
 }
 
 #[test]
+fn the_report_carries_its_exploration_context() {
+    // INTERVALS has a finite state space (no unbounded legacy writes), so
+    // the generous bounds explore it whole.
+    let content = common::compile(INTERVALS);
+    let mut a = common::analyzer(content, explore_seed());
+    let report = audit(&mut a, &explore());
+    assert!(report.explored_nodes > 0, "{:?}", report.explored_nodes);
+    assert!(!report.truncated, "{:?}", report.explored_nodes);
+
+    // A one-expansion budget truncates: the findings are then explicitly
+    // bounds-conditional through the report itself.
+    let content = common::compile(SHADOWED);
+    let mut a = common::analyzer(content, explore_seed());
+    let report = audit(
+        &mut a,
+        &ExploreConfig {
+            max_states: 1,
+            ..explore()
+        },
+    );
+    assert!(report.truncated, "{:?}", report.explored_nodes);
+    assert!(report.explored_nodes > 0, "{:?}", report.explored_nodes);
+}
+
+#[test]
 fn start_skipped_materialization_is_reachable() {
     let content = common::compile(SKIPPED);
     let mut a = common::analyzer(content, explore_seed());

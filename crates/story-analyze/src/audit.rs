@@ -71,6 +71,13 @@ pub struct AuditReport {
     pub shadowing: Vec<Shadowing>,
     pub unreachable: Vec<Unreachable>,
     pub faults: Vec<FaultWitness>,
+    /// How many states the audit's exploration reached: the size the
+    /// not-within-bounds findings are conditional on.
+    pub explored_nodes: usize,
+    /// Whether the exploration hit its bounds: the bounds-conditional
+    /// findings are then incomplete (states past the bounds were never
+    /// visited).
+    pub truncated: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +96,8 @@ pub fn audit(analyzer: &mut Analyzer, explore: &ExploreConfig) -> AuditReport {
         shadowing,
         unreachable,
         faults,
+        explored_nodes: graph.nodes.len(),
+        truncated: graph.truncated,
     }
 }
 

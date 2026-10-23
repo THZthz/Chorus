@@ -1,6 +1,10 @@
-//! A thin dev driver (spec.md §3): load one root `.sw` file, boot the engine,
-//! and follow a dumb terminal loop. Mutates the state only through
-//! story-engine's API; the undo stack is host-held (L2).
+//! A thin dev driver (spec.md §3) and design analyzer front end: `play`
+//! loads one root `.sw` file, boots the engine, and follows a dumb terminal
+//! loop (mutating the state only through story-engine's API; the undo stack
+//! is host-held, L2); `analyze` boots the same content and runs
+//! story-analyze's design-time analyses, printing reports to stdout.
+
+mod analyze;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -9,11 +13,57 @@ use story_content::ir::VerbMode;
 use story_core::{EntityId, SituationId, SlotName, VerbId};
 use story_engine::{CommitAction, EffectRegistry, Engine, Event};
 
+const USAGE: &str = "\
+story-cli — the Chorus² dev driver and design analyzer
+
+USAGE:
+    story-cli play <file.sw> [--seed N]
+    story-cli analyze <file.sw> [options]
+    story-cli <file.sw> [--seed N]            alias for play
+
+PLAY — the interactive terminal driver; commands at the `>` prompt:
+    verbs | commit <verb> [slot=card ...] | bind <sit> <slot> <card> |
+    give <card> [n] | advance [n] | state | undo | quit
+    --seed N    host seed when the content declares `seed host` (default 1)
+
+ANALYZE — boot the content and run design analyses; reports go to stdout.
+    story-cli analyze <file.sw> [options]
+    --reach <goal> | --classify | --mdp [<goal>] | --audit | --pareto <objs>
+    run `story-cli analyze --help` for the full option reference.
+Notes:
+    Analyses exit 0 even when the answer is \"unreachable\"; exit 1 on compile
+    or boot failure; exit 2 on usage errors.";
+
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        None => usage_exit(2),
+        Some("play") => play(&args[1..]),
+        Some("analyze") => std::process::exit(analyze::run(&args[1..])),
+        Some("help" | "--help" | "-h") => println!("{USAGE}"),
+        Some(other) => {
+            // The bare form is an alias for play: a first argument that
+            // names an existing file drives it, anything else is an
+            // unknown subcommand.
+            if std::path::Path::new(other).is_file() {
+                play(&args);
+            } else {
+                eprintln!("story-cli: unknown subcommand or missing file `{other}`");
+                usage_exit(2);
+            }
+        }
+    }
+}
+
+fn usage_exit(code: i32) -> ! {
+    eprintln!("{USAGE}");
+    std::process::exit(code);
+}
+
+fn play(args: &[String]) {
     let mut path: Option<String> = None;
     let mut seed: u64 = 1;
-    let mut i = 1;
+    let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--seed" => {
@@ -25,7 +75,7 @@ fn main() {
         i += 1;
     }
     let Some(path) = path else {
-        eprintln!("usage: story-cli <file.sw> [--seed N]");
+        eprintln!("usage: story-cli play <file.sw> [--seed N]");
         std::process::exit(2);
     };
     let out = story_lang::compile_file(std::path::Path::new(&path));

@@ -8,6 +8,7 @@ story-core = { workspace = true }
 story-content = { workspace = true }
 story-engine = { workspace = true }
 story-lang = { workspace = true }
+story-analyze = { workspace = true, features = ["lang"] }
 serde_json = { workspace = true }
 
 [[bin]]

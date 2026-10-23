@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use story_content::Content;
-use story_core::{RecipeId, State, Time};
+use story_core::{CardId, RecipeId, State, Time};
 use story_content::runtime::RuntimeDiagnostic;
 use story_engine::{ChanceOutcome, ChancePoint, EffectRegistry, Engine, Event};
 
@@ -108,8 +108,16 @@ impl Analyzer {
         &self.symmetry
     }
 
+    /// The Tier-1 causal graph; the heuristic-feasibility gate reads it per
+    /// state.
     pub fn causal(&self) -> &CausalGraph {
         &self.causal
+    }
+
+    /// Whether the content registers host ops: the causal graph is then
+    /// incomplete and heuristic pruning must stay off.
+    pub fn host_opaque(&self) -> bool {
+        self.causal.host_opaque()
     }
 
     pub fn start(&self) -> &State {
@@ -211,6 +219,21 @@ impl Analyzer {
         }));
         let mut expansions = 0usize;
         let mut truncated = false;
+        let mut pruned = 0usize;
+        // The extinction half of the feasibility gate: goal cards that are
+        // gone for good once they leave the table.
+        let goal_cards: Vec<CardId> = goal_facts
+            .iter()
+            .filter_map(|f| match f {
+                causal::Fact::CardLive(c) => Some(c.clone()),
+                _ => None,
+            })
+            .collect();
+        let recipe_mintable = if query.prune && !goal_cards.is_empty() {
+            self.causal.recipe_mintable_cards()
+        } else {
+            BTreeSet::new()
+        };
         let mut witnesses: Vec<WitnessPath> = Vec::new();
         let mut witnessed_sigs: BTreeSet<Vec<Option<RecipeId>>> = BTreeSet::new();
         let mut dropped = 0usize;
@@ -354,8 +377,38 @@ impl Analyzer {
                     for (b, c) in best.iter_mut().zip(&cost) {
                         *b = (*b).min(*c);
                     }
-                    let h = if self.heuristic {
-                        self.h_of(&state_after, &goal_facts)
+                    // Feasibility pruning, extinction half (opt-in): a goal
+                    // card that is neither live nor recipe-mintable is gone
+                    // for the run, so the branch is dead. Sound for
+                    // authored content; host-opaque content keeps the gate
+                    // off (the graph is incomplete).
+                    if query.prune
+                        && !goal_cards.is_empty()
+                        && goal_cards.iter().any(|c| {
+                            !state_after
+                                .entities
+                                .values()
+                                .any(|e| &e.prototype == c)
+                                && !recipe_mintable.contains(c)
+                        })
+                    {
+                        pruned += 1;
+                        continue;
+                    }
+                    // Heuristic feasibility pruning (opt-in): a state whose
+                    // goal facts cannot be grounded even in the delete
+                    // relaxation is not expanded. The relaxation misses
+                    // decrease-chain routes, so a pruned run's empty answer
+                    // is weaker than exhaustive unreachability; host-opaque
+                    // content keeps the gate off (the graph is incomplete).
+                    let h = if self.heuristic || query.prune {
+                        *self.engine.state_mut() = state_after.clone();
+                        let raw = self.causal.h_add(&state_after, &self.engine, &goal_facts);
+                        if query.prune && !self.causal.host_opaque() && raw >= u32::MAX / 4 {
+                            pruned += 1;
+                            continue;
+                        }
+                        i64::from(raw.min(4096))
                     } else {
                         0
                     };
@@ -386,6 +439,7 @@ impl Analyzer {
             witnesses,
             truncated,
             expansions,
+            pruned,
             witnesses_dropped_by_the_oracle: dropped,
         }
     }
@@ -393,11 +447,6 @@ impl Analyzer {
     /// The `h_add` value of the goal facts at a state (§4 output 4); a
     /// saturated estimate caps the penalty so the queue keeps a sensible
     /// order.
-    fn h_of(&mut self, state: &State, goal_facts: &BTreeSet<causal::Fact>) -> i64 {
-        *self.engine.state_mut() = state.clone();
-        i64::from(self.causal.h_add(state, &self.engine, goal_facts).min(4096))
-    }
-
     /// Replay-verified coalescing of consecutive Advance records (§5.4):
     /// two records merge only if executing `advance(dt1 + dt2)` from the
     /// first record's entry state reproduces a canonical key equal to the
@@ -487,6 +536,16 @@ impl Analyzer {
             max_time: config.max_time,
             max_states: config.max_states,
             allow_mid_run_bind: config.allow_mid_run_bind,
+            prune: false,
+        };
+        // Feasibility pruning expands only toward a target: without
+        // `stop_at` there is nothing to be "impossible" for, so the flag is
+        // ignored (the classification and audit consumers keep their full
+        // edge sets by default).
+        let prune_facts = if config.prune && !self.causal.host_opaque() {
+            config.stop_at.as_ref().map(causal::goal_facts)
+        } else {
+            None
         };
         let mut gen = self.generator(&query);
         let start_key = CanonicalStateKey::of_with(&self.start, &self.content, &self.symmetry);
@@ -547,6 +606,13 @@ impl Analyzer {
                             events: &record.events,
                         };
                         if !inv.holds(&ctx) {
+                            continue;
+                        }
+                    }
+                    if let Some(facts) = &prune_facts {
+                        *self.engine.state_mut() = record.state_after.clone();
+                        let raw = self.causal.h_add(&record.state_after, &self.engine, facts);
+                        if raw >= u32::MAX / 4 {
                             continue;
                         }
                     }
@@ -611,7 +677,7 @@ impl Analyzer {
 }
 
 /// The exploration configuration of `explore` (§7.1): canonical-key dedup
-/// alone, so backward closure sees the full explored edge set.
+/// alone by default, so backward closure sees the full explored edge set.
 #[derive(Clone)]
 pub struct ExploreConfig {
     pub rng_mode: RngMode,
@@ -622,6 +688,11 @@ pub struct ExploreConfig {
     /// collection for the Pareto engine keeps exploring past the goal).
     pub stop_at: Option<GoalPredicate>,
     pub allow_mid_run_bind: bool,
+    /// Heuristic feasibility pruning toward `stop_at` (ignored without it):
+    /// branches whose goal facts cannot be grounded even in the delete
+    /// relaxation are not expanded, so the explored graph loses edges and
+    /// every downstream finding becomes an under-approximation.
+    pub prune: bool,
 }
 
 impl Default for ExploreConfig {
@@ -633,6 +704,7 @@ impl Default for ExploreConfig {
             invariant: None,
             stop_at: None,
             allow_mid_run_bind: true,
+            prune: false,
         }
     }
 }
@@ -827,6 +899,10 @@ pub struct SolveOutcome {
     pub witnesses: Vec<WitnessPath>,
     pub truncated: bool,
     pub expansions: usize,
+    /// Branches skipped by the heuristic feasibility gate (`prune`): states
+    /// whose goal facts cannot be grounded even in the delete relaxation.
+    /// Witnesses are unaffected — they replay either way.
+    pub pruned: usize,
     pub witnesses_dropped_by_the_oracle: usize,
 }
 
@@ -836,6 +912,7 @@ impl SolveOutcome {
             witnesses: Vec::new(),
             truncated: false,
             expansions: 0,
+            pruned: 0,
             witnesses_dropped_by_the_oracle: 0,
         }
     }
@@ -843,6 +920,6 @@ impl SolveOutcome {
     /// Whether the query is answered definitively within the bounds (a
     /// witness exists, or the space was exhausted without one).
     pub fn conclusive(&self) -> bool {
-        !self.truncated
+        !self.truncated && self.pruned == 0
     }
 }

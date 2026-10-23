@@ -168,6 +168,24 @@ impl CausalGraph {
         self.host_opaque
     }
 
+    /// The cards some recipe's effect list can bring back live. The
+    /// feasibility gate ignores boot and deck instantiations here: those
+    /// happen once, so an extinct card with no recipe producer is gone for
+    /// the run.
+    pub fn recipe_mintable_cards(&self) -> BTreeSet<CardId> {
+        let mut out = BTreeSet::new();
+        for edge in &self.edges {
+            if matches!(edge.site, Site::Recipe(_)) {
+                for f in &edge.produces {
+                    if let Fact::CardLive(card) = f {
+                        out.insert(card.clone());
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// Indexes of the edges that can produce the fact. An increase producer
     /// of `(card, key)` also produces `CardHasAspect(card, key)` — raising
     /// the value from the declared default makes the aspect hold.
@@ -1128,7 +1146,31 @@ impl CausalGraph {
             cost.insert(fact, 0);
         }
         // Fixpoint relaxation (the hypergraph is small; plain sweeps are
-        // exact and allocation-free).
+        // exact and allocation-free). An edge requiring an aspect read is
+        // grounded by the aspect's increase capability: raising the value
+        // from the declared default makes the read hold — the same bridge
+        // `producers_of` uses.
+        fn increase<'a>(
+            cost: &'a BTreeMap<Fact, u32>,
+            r: &Fact,
+        ) -> Option<&'a u32> {
+            cost.get(r).or_else(|| match r {
+                Fact::CardHasAspect(card, key) => cost
+                    .get(&Fact::AspectCanIncrease {
+                        card: Some(card.clone()),
+                        key: key.clone(),
+                        unclamped: false,
+                    })
+                    .or_else(|| {
+                        cost.get(&Fact::AspectCanIncrease {
+                            card: Some(card.clone()),
+                            key: key.clone(),
+                            unclamped: true,
+                        })
+                    }),
+                _ => None,
+            })
+        }
         let mut rounds = 0;
         loop {
             let mut changed = false;
@@ -1137,7 +1179,7 @@ impl CausalGraph {
                 let mut sum = 1u32;
                 let mut ready = true;
                 for r in &edge.requires {
-                    match cost.get(r) {
+                    match increase(&cost, r) {
                         Some(c) => sum = sum.saturating_add(*c),
                         None => {
                             ready = false;
@@ -1161,7 +1203,7 @@ impl CausalGraph {
         }
         goals
             .iter()
-            .map(|g| cost.get(g).copied().unwrap_or(u32::MAX / 4))
+            .map(|g| increase(&cost, g).copied().unwrap_or(u32::MAX / 4))
             .fold(0u32, |a, b| a.saturating_add(b))
     }
 

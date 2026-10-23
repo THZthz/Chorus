@@ -72,6 +72,12 @@ MODIFIERS:
                          the content has no game turn to override, the
                          settings line says the override was not applied
     --seed N             host seed when the content declares `seed host`
+    --prune              skip branches that look impossible (goal facts
+                         cannot be grounded even in the causal relaxation).
+                         Heuristic: it can mis-prune decrease-chain routes,
+                         so with no witness the answer reads NO WITNESS
+                         UNDER PRUNING, never UNREACHABLE. Witness-bearing
+                         answers are unaffected. Inert for host-op content.
     --profile            accumulate span wall times and print the table to
                          stderr when the run ends
     --jobs <n>           section concurrency cap (default 1); a full
@@ -120,6 +126,7 @@ struct Options {
     turn: Option<Time>,
     seed: u64,
     profile: bool,
+    prune: bool,
     /// Section concurrency cap. The explorations are allocation-heavy
     /// (~1 GB per full state space on emberwatch), so more concurrent
     /// sections trade wall time for memory pressure.
@@ -177,6 +184,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         turn: None,
         seed: 1,
         profile: false,
+        prune: false,
         jobs: 1,
     };
     let mut i = 0usize;
@@ -273,6 +281,10 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--profile" => {
                 no_inline(inline, "--profile")?;
                 opts.profile = true;
+            }
+            "--prune" => {
+                no_inline(inline, "--prune")?;
+                opts.prune = true;
             }
             "--jobs" => {
                 let v = take_value(inline, args, &mut i, "--jobs")?;
@@ -485,9 +497,10 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         _ => opts.seed,
     };
     // The sequential boot is the diagnostic face: it reports boot traffic
-    // once and gates the run on error diagnostics. The section threads boot
-    // privately and silently below.
-    let (_, diags) = {
+    // once, gates the run on error diagnostics, and answers whether
+    // heuristic pruning is available (host ops make the causal graph
+    // incomplete). The section threads boot privately and silently below.
+    let (boot_analyzer, diags) = {
         let _span = tracing::info_span!("boot").entered();
         Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None)
     };
@@ -497,6 +510,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
     if diags.iter().any(|d| d.is_error()) {
         return Err(Failure::Run("boot failed with error diagnostic(s)".to_string()));
     }
+    let prune = opts.prune && !boot_analyzer.host_opaque();
     if let Some(game) = content.game.as_ref() {
         println!("{} — seed {}, turn {}m", game.title, seed, game.turn);
     }
@@ -515,6 +529,13 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
     }
     if let Some(t) = opts.turn {
         settings.push(turn_setting(t, content.game.is_some()));
+    }
+    if opts.prune {
+        if prune {
+            settings.push("prune on".to_string());
+        } else {
+            settings.push("prune unavailable (host ops)".to_string());
+        }
     }
     println!("settings: {}", settings.join(" | "));
 
@@ -559,7 +580,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
             let mut analyzer = boot_quiet(content, seed);
             let mut out = String::new();
             for (desc, goal) in goals {
-                reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts);
+                reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts, prune);
             }
             out
         }));
@@ -570,7 +591,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         sections.push(Box::new(move || {
             let mut analyzer = boot_quiet(content, seed);
             let mut out = String::new();
-            classify_section(&mut out, &mut analyzer, goal.as_ref().map(|(_, g)| g), opts);
+            classify_section(&mut out, &mut analyzer, goal.as_ref().map(|(_, g)| g), opts, prune);
             out
         }));
     }
@@ -581,7 +602,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         sections.push(Box::new(move || {
             let analyzer = boot_quiet(content, seed);
             let mut out = String::new();
-            mdp_section(&mut out, &analyzer, &desc, goal, opts);
+            mdp_section(&mut out, &analyzer, &desc, goal, opts, prune);
             out
         }));
     }
@@ -593,7 +614,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         sections.push(Box::new(move || {
             let analyzer = boot_quiet(content, seed);
             let mut out = String::new();
-            pareto_section(&mut out, &analyzer, &desc, goal, &objectives, opts);
+            pareto_section(&mut out, &analyzer, &desc, goal, &objectives, opts, prune);
             out
         }));
     }
@@ -602,7 +623,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         sections.push(Box::new(move || {
             let mut analyzer = boot_quiet(content, seed);
             let mut out = String::new();
-            audit_section(&mut out, &mut analyzer, opts);
+            audit_section(&mut out, &mut analyzer, opts, prune);
             out
         }));
     }
@@ -706,11 +727,12 @@ fn turn_setting(turn: Time, applied: bool) -> String {
 
 const DEFAULT_MAX_STATES: usize = 100_000;
 
-fn explore_config(opts: &Options) -> ExploreConfig {
+fn explore_config(opts: &Options, prune: bool) -> ExploreConfig {
     ExploreConfig {
         rng_mode: opts.rng,
         max_states: opts.max_states.unwrap_or(DEFAULT_MAX_STATES),
         max_time: opts.max_time,
+        prune,
         ..Default::default()
     }
 }
@@ -733,6 +755,7 @@ fn reach_section(
     desc: &str,
     goal: GoalPredicate,
     opts: &Options,
+    prune: bool,
 ) {
     let _span = tracing::info_span!("reach").entered();
     outln!(out);
@@ -740,6 +763,7 @@ fn reach_section(
     let mut query = ReachQuery::new(goal);
     query.rng_mode = opts.rng;
     query.max_time = opts.max_time;
+    query.prune = prune;
     if let Some(n) = opts.max_states {
         query.max_states = n;
     }
@@ -753,6 +777,12 @@ fn reach_section(
 fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options) {
     let status = if !outcome.witnesses.is_empty() {
         format!("REACHABLE — {} witness(es)", outcome.witnesses.len())
+    } else if outcome.pruned > 0 {
+        format!(
+            "NO WITNESS UNDER PRUNING — {pruned} branch(es) looked impossible and were \
+             not explored",
+            pruned = outcome.pruned
+        )
     } else if outcome.truncated {
         "INCONCLUSIVE — the search hit its bounds before exhausting the space".to_string()
     } else {
@@ -778,6 +808,13 @@ fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options) {
             "bounds: truncated at max_states {}{} — a no-witness answer is bounds-conditional",
             opts.max_states.unwrap_or(DEFAULT_MAX_STATES),
             opts.max_time.map_or_else(String::new, |t| format!(", max-time {t}m"))
+        );
+    }
+    if outcome.pruned > 0 {
+        outln!(
+            out,
+            "pruned: {} — heuristic feasibility; witnesses are unaffected",
+            outcome.pruned
         );
     }
     if outcome.witnesses_dropped_by_the_oracle > 0 {
@@ -866,18 +903,24 @@ fn classify_section(
     analyzer: &mut Analyzer,
     goal: Option<&GoalPredicate>,
     opts: &Options,
+    prune: bool,
 ) {
     let _span = tracing::info_span!("classify").entered();
     outln!(out);
     outln!(out, "== classify ==");
-    let config = ClassifyConfig {
-        explore: explore_config(opts),
+    let mut config = ClassifyConfig {
+        explore: explore_config(opts, prune),
         winning_endings: goal.and_then(|g| match g {
             GoalPredicate::Ending(id) => Some(ending_set(id.as_ref())),
             _ => None,
         })
         .unwrap_or_default(),
     };
+    if prune {
+        // Pruning expands toward the borrowed goal, so the closure becomes
+        // an under-approximation — stated on the report.
+        config.explore.stop_at = goal.cloned();
+    }
     let note = if config.winning_endings.is_empty() {
         "none configured — winnable is empty (pass --reach ending:<ID> to set one); the \
          softlock set still measures reachability of any ending"
@@ -899,6 +942,13 @@ fn classify_section(
         c.graph.edges.len(),
         truncated_note(c.graph.truncated, opts),
     );
+    if prune && goal.is_some() {
+        outln!(
+            out,
+            "bounds: feasibility pruning toward the goal — the closure is an \
+             under-approximation"
+        );
+    }
     outln!(
         out,
         "winnable states: {}{}",
@@ -945,6 +995,7 @@ fn mdp_section(
     desc: &str,
     goal: GoalPredicate,
     opts: &Options,
+    prune: bool,
 ) {
     let _span = tracing::info_span!("mdp").entered();
     outln!(out);
@@ -952,6 +1003,7 @@ fn mdp_section(
     let mut config = MdpConfig::new(goal);
     config.rng_mode = opts.rng;
     config.max_time = opts.max_time;
+    config.prune = prune;
     // --max-states is the expansion bound everywhere: the game graph's node
     // budget here. max_actions/max_depth keep the crate defaults.
     config.max_nodes = opts.max_states.unwrap_or(DEFAULT_MAX_STATES);
@@ -1001,6 +1053,7 @@ fn pareto_section(
     goal: GoalPredicate,
     objectives: &[(String, Objective)],
     opts: &Options,
+    prune: bool,
 ) {
     let _span = tracing::info_span!("pareto").entered();
     let obj_desc: Vec<&str> = objectives.iter().map(|(text, _)| text.as_str()).collect();
@@ -1012,7 +1065,7 @@ fn pareto_section(
         obj_desc.join(", ")
     );
     let mut config = ParetoConfig::new(goal, only);
-    config.explore = explore_config(opts);
+    config.explore = explore_config(opts, prune);
     let report = pareto_analyze(analyzer, &config);
     if report.frontier.is_empty() {
         outln!(out, "frontier: empty — no explored state satisfies the goal within the bounds");
@@ -1079,11 +1132,11 @@ fn joined_or_dash<T: std::fmt::Display>(items: impl Iterator<Item = T>) -> Strin
 
 // -- audit ------------------------------------------------------------------
 
-fn audit_section(out: &mut String, analyzer: &mut Analyzer, opts: &Options) {
+fn audit_section(out: &mut String, analyzer: &mut Analyzer, opts: &Options, prune: bool) {
     let _span = tracing::info_span!("audit").entered();
     outln!(out);
     outln!(out, "== audit ==");
-    let report = audit(analyzer, &explore_config(opts));
+    let report = audit(analyzer, &explore_config(opts, prune));
     outln!(
         out,
         "explored: {} states ({})",

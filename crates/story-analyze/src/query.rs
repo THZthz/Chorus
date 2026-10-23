@@ -122,6 +122,12 @@ pub struct ReachQuery {
     /// `false` emits no Bind transitions (§5.1): queries over fixed mid-run
     /// binding timelines turn it off.
     pub allow_mid_run_bind: bool,
+    /// Heuristic feasibility pruning (off by default): branches whose goal
+    /// facts cannot be grounded even in the causal graph's delete relaxation
+    /// are not expanded. The relaxation misses decrease-chain routes, so a
+    /// pruned run's "no witness" is weaker than exhaustive unreachability —
+    /// the caller must say so. Witnesses stay replay-verified.
+    pub prune: bool,
 }
 
 impl ReachQuery {
@@ -136,6 +142,7 @@ impl ReachQuery {
             max_time: None,
             max_states: 100_000,
             allow_mid_run_bind: true,
+            prune: false,
         }
     }
 

@@ -132,7 +132,6 @@ pub fn symmetry_classes(state: &State, content: &Content) -> Vec<Vec<EntityId>> 
 /// Both depend only on the content, so the analyzer builds one per boot and
 /// every state's classification reuses it.
 pub(crate) struct SymmetryCache {
-    oracle: MatchOracle,
     surfaces: Vec<BTreeSet<CardId>>,
 }
 
@@ -140,7 +139,7 @@ impl SymmetryCache {
     pub(crate) fn new(content: &Content) -> SymmetryCache {
         let oracle = MatchOracle::new(content);
         let surfaces = candidacy_surfaces(content, &oracle);
-        SymmetryCache { oracle, surfaces }
+        SymmetryCache { surfaces }
     }
 }
 

@@ -395,6 +395,43 @@ fn pareto_reports_the_frontier_and_verified_cuts_on_tiny() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn prune_flag_echoes_and_keeps_witnesses_honest() {
+    let (code, out, _) = run(&[
+        "analyze",
+        EMBER,
+        "--reach",
+        "ending:survived",
+        "--prune",
+        "--max-states",
+        "60000",
+        "--max-time",
+        "430m",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("prune on"), "{out}");
+    // The witness-bearing answer is unaffected by the gate.
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+    assert!(out.contains("(replay-verified)"), "{out}");
+
+    // Host-op-free content prunes; the report states the count when the
+    // gate fired at all. (On this sample the survived line prunes nothing —
+    // the assertion is the flag's honesty, not its fire rate.)
+    let (code, out2, _) = run(&[
+        "analyze",
+        EMBER,
+        "--reach",
+        "ending:survived",
+        "--prune",
+        "--max-states",
+        "60000",
+        "--max-time",
+        "430m",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(out, out2, "prune output is deterministic");
+}
+
+#[test]
 fn audit_reports_the_known_emberwatch_findings() {
     let (code, out, _) = run(&[
         "analyze",

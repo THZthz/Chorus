@@ -34,6 +34,11 @@ pub struct MdpConfig {
     /// alone does not bound the graph without a horizon.
     pub max_depth: usize,
     pub allow_mid_run_bind: bool,
+    /// Heuristic feasibility pruning (off by default): states whose goal
+    /// facts cannot be grounded even in the causal graph's delete relaxation
+    /// score 0 — the same conservative direction as a budget cut, and the
+    /// outcome reports incomplete. Skipped for host-opaque content.
+    pub prune: bool,
 }
 
 impl MdpConfig {
@@ -47,6 +52,7 @@ impl MdpConfig {
             max_nodes: 20_000,
             max_depth: 192,
             allow_mid_run_bind: true,
+            prune: false,
         }
     }
 }
@@ -115,10 +121,13 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
         limit: config.max_nodes,
     };
     let vals = {
+        let goal_facts = crate::causal::goal_facts(&config.goal);
         let mut ctx = Ctx {
             gen: &mut gen,
             content: &content,
             symmetry: analyzer.symmetry(),
+            causal: analyzer.causal(),
+            goal_facts,
             config,
             memo: &mut memo,
             counter: &mut counter,
@@ -144,6 +153,9 @@ struct Ctx<'a> {
     gen: &'a mut TransitionGenerator,
     content: &'a Arc<Content>,
     symmetry: &'a crate::symmetry::SymmetryCache,
+    causal: &'a crate::causal::CausalGraph,
+    /// The goal's relaxed-grounding facts, computed once for the prune gate.
+    goal_facts: std::collections::BTreeSet<crate::causal::Fact>,
     config: &'a MdpConfig,
     memo: &'a mut BTreeMap<(CanonicalStateKey, usize), Option<Vals>>,
     counter: &'a mut NodeCounter,
@@ -161,6 +173,16 @@ fn eval(ctx: &mut Ctx<'_>, state: &State, actions: usize, depth: usize) -> Optio
         || depth > ctx.config.max_depth
     {
         return None;
+    }
+    if ctx.config.prune && !ctx.causal.host_opaque() {
+        ctx.gen.install_state(state);
+        let raw = ctx.causal.h_add(state, ctx.gen.engine(), &ctx.goal_facts);
+        if raw >= u32::MAX / 4 {
+            // A pruned state scores 0, the same conservative direction as a
+            // budget cut, and marks the outcome incomplete.
+            ctx.counter.count += 1;
+            return Some(Vals::default());
+        }
     }
     let key = CanonicalStateKey::of_with(state, ctx.content, ctx.symmetry);
     let memo_key = (key, actions);

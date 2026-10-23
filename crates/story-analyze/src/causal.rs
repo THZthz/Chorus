@@ -1274,10 +1274,14 @@ impl CausalGraph {
             out.insert(Fact::CardLive(card.clone()));
             for eid in ids {
                 let ent = &state.entities[eid];
-                for (key, &val) in &ent.aspects {
-                    if val >= 1 {
-                        out.insert(Fact::CardHasAspect(card.clone(), key.clone()));
-                    }
+                // Key presence grounds the read: the heuristic's landmark
+                // for "this mechanism has been engaged". Gating on the
+                // value makes h_add forget the landmark exactly once a
+                // drain clamps the value back to 0, and the ordering
+                // collapses to near-breadth-first (an 8x expansion
+                // regression). Ordering-only; never affects soundness.
+                for (key, _) in &ent.aspects {
+                    out.insert(Fact::CardHasAspect(card.clone(), key.clone()));
                 }
                 for (key, decl) in &content.aspects {
                     if decl.default >= 1 && !ent.aspects.contains_key(key) {
@@ -1333,20 +1337,14 @@ impl CausalGraph {
     /// The backward cone of the goal facts (§4 output 3): every fact some
     /// chain of producer requirements reaches them through.
     pub fn backward_cone(&self, goals: &BTreeSet<Fact>) -> BTreeSet<Fact> {
+        // No CardHasAspect → AspectCanIncrease bridging here: bridging pulls
+        // every verb that can touch the key into the cone, which erases the
+        // irrelevant-verb demotion and collapses the search ordering. The
+        // cone keeps the strict fact-to-fact closure; relevant_verbs does
+        // its own bridging where verb-level routing is the point.
         let mut cone = goals.clone();
         loop {
             let mut changed = false;
-            for f in cone.clone() {
-                if let Fact::CardHasAspect(card, key) = f {
-                    for unclamped in [false, true] {
-                        changed |= cone.insert(Fact::AspectCanIncrease {
-                            card: Some(card.clone()),
-                            key: key.clone(),
-                            unclamped,
-                        });
-                    }
-                }
-            }
             for edge in &self.edges {
                 if edge.produces.iter().any(|p| cone.contains(p)) {
                     for r in &edge.requires {

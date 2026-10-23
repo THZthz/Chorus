@@ -2,10 +2,12 @@
 //! driver runs, default effect registry) and drives story-analyze's public
 //! engines — reachability with replay-verified witnesses, state-space
 //! classification, the stochastic MDP solver, the design auditor, and the
-//! Pareto/cut analyzer. Reports print to stdout in a fixed section order
-//! (reach, classify, mdp, pareto, audit) with deterministic, sorted
-//! findings; bounds truncation and inconclusive answers are stated, never
-//! silently dropped.
+//! Pareto/cut analyzer. The requested sections run on parallel threads,
+//! each with its own analyzer boot; every section appends to its own
+//! buffer, and the reports print to stdout in the fixed section order
+//! (reach, classify, mdp, pareto, audit) once all of them settle —
+//! deterministic output, sorted findings, and bounds truncation and
+//! inconclusive answers stated, never silently dropped.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -22,6 +24,16 @@ use story_content::ir::{QueryTerm, Scope, SeedSpec};
 use story_content::Content;
 use story_core::{CardId, EndingId, MintPolicy, Time};
 use story_engine::{EffectRegistry, Event};
+
+/// Buffered-report print: section writers append to a string so the
+/// parallel sections can print in their fixed order.
+macro_rules! outln {
+    ($out:expr $(,)?) => { $out.push('\n') };
+    ($out:expr, $($arg:tt)*) => {{
+        $out.push_str(&format!($($arg)*));
+        $out.push('\n');
+    }};
+}
 
 /// How many list entries a section prints before summarizing the rest.
 const LIST_CAP: usize = 8;
@@ -60,6 +72,12 @@ MODIFIERS:
                          the content has no game turn to override, the
                          settings line says the override was not applied
     --seed N             host seed when the content declares `seed host`
+    --profile            accumulate span wall times and print the table to
+                         stderr when the run ends
+    --jobs <n>           section concurrency cap (default 1); a full
+                         exploration can hold gigabytes (one emberwatch
+                         classify peaks near 9 GB), so raise this only for
+                         content whose state space fits memory twice over
     --help               this help (exit 0)
 NOTES:
     --classify and --pareto take their goal from --reach; --pareto requires it.
@@ -101,6 +119,11 @@ struct Options {
     diverse: Option<usize>,
     turn: Option<Time>,
     seed: u64,
+    profile: bool,
+    /// Section concurrency cap. The explorations are allocation-heavy
+    /// (~1 GB per full state space on emberwatch), so more concurrent
+    /// sections trade wall time for memory pressure.
+    jobs: usize,
 }
 
 /// Why `analyze` stopped: a usage problem (stderr, exit 2) or a run
@@ -115,14 +138,22 @@ pub fn run(args: &[String]) -> i32 {
         Ok(opts) => opts,
         Err(msg) => return usage_error(msg),
     };
-    match run_analyses(&opts) {
-        Ok(()) => 0,
-        Err(Failure::Usage(msg)) => usage_error(msg),
-        Err(Failure::Run(msg)) => {
-            println!("{msg}");
-            1
-        }
+    if opts.profile {
+        crate::profile::install();
     }
+    let code = {
+        let _root = tracing::info_span!("analyze").entered();
+        match run_analyses(&opts) {
+            Ok(()) => 0,
+            Err(Failure::Usage(msg)) => usage_error(msg),
+            Err(Failure::Run(msg)) => {
+                println!("{msg}");
+                1
+            }
+        }
+    };
+    crate::profile::report();
+    code
 }
 
 fn usage_error(msg: String) -> i32 {
@@ -145,6 +176,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         diverse: None,
         turn: None,
         seed: 1,
+        profile: false,
+        jobs: 1,
     };
     let mut i = 0usize;
     while i < args.len() {
@@ -236,6 +269,20 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 opts.seed = v
                     .parse()
                     .map_err(|_| format!("--seed needs an unsigned integer; got `{v}`"))?;
+            }
+            "--profile" => {
+                no_inline(inline, "--profile")?;
+                opts.profile = true;
+            }
+            "--jobs" => {
+                let v = take_value(inline, args, &mut i, "--jobs")?;
+                let n: usize = v
+                    .parse()
+                    .map_err(|_| format!("--jobs needs a positive integer; got `{v}`"))?;
+                if n == 0 {
+                    return Err("--jobs must be positive".to_string());
+                }
+                opts.jobs = n;
             }
             other if other.starts_with("--") => return Err(format!("unknown option `{other}`")),
             other => {
@@ -405,7 +452,10 @@ fn parse_time(flag: &str, s: &str) -> Result<Time, String> {
 
 fn run_analyses(opts: &Options) -> Result<(), Failure> {
     // Compile (the same face the play driver runs; diagnostics are traffic).
-    let out = story_lang::compile_file(Path::new(&opts.path));
+    let out = {
+        let _span = tracing::info_span!("compile").entered();
+        story_lang::compile_file(Path::new(&opts.path))
+    };
     let mut errors = 0;
     for d in &out.diagnostics {
         println!("{d}");
@@ -434,8 +484,13 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         Some(SeedSpec::Fixed(n)) => n,
         _ => opts.seed,
     };
-    let (mut analyzer, diags) =
-        Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None);
+    // The sequential boot is the diagnostic face: it reports boot traffic
+    // once and gates the run on error diagnostics. The section threads boot
+    // privately and silently below.
+    let (_, diags) = {
+        let _span = tracing::info_span!("boot").entered();
+        Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None)
+    };
     for d in &diags {
         println!("boot: {d}");
     }
@@ -491,22 +546,117 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         None => None,
     };
 
-    for (desc, goal) in &reach_goals {
-        reach_section(&mut analyzer, desc, goal.clone(), opts);
+    // The sections run on parallel threads — at most `opts.jobs` at a time,
+    // each with a private analyzer boot; the buffers print in the fixed
+    // section order after all of them settle, so the output stays
+    // deterministic.
+    let content = &content;
+    let mut sections: Vec<SectionJob<'_>> = Vec::new();
+    if !reach_goals.is_empty() {
+        let opts = opts;
+        let goals = &reach_goals;
+        sections.push(Box::new(move || {
+            let mut analyzer = boot_quiet(content, seed);
+            let mut out = String::new();
+            for (desc, goal) in goals {
+                reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts);
+            }
+            out
+        }));
     }
     if opts.classify {
-        classify_section(&mut analyzer, shared_goal.as_ref().map(|(_, g)| g), opts);
+        let opts = opts;
+        let goal = shared_goal.clone();
+        sections.push(Box::new(move || {
+            let mut analyzer = boot_quiet(content, seed);
+            let mut out = String::new();
+            classify_section(&mut out, &mut analyzer, goal.as_ref().map(|(_, g)| g), opts);
+            out
+        }));
     }
     if let Some((desc, goal)) = &mdp_goal {
-        mdp_section(&analyzer, desc, goal.clone(), opts);
+        let opts = opts;
+        let desc = desc.clone();
+        let goal = goal.clone();
+        sections.push(Box::new(move || {
+            let analyzer = boot_quiet(content, seed);
+            let mut out = String::new();
+            mdp_section(&mut out, &analyzer, &desc, goal, opts);
+            out
+        }));
     }
     if let (Some((desc, goal)), Some(objectives)) = (&shared_goal, &pareto_objectives) {
-        pareto_section(&analyzer, desc, goal.clone(), objectives, opts);
+        let opts = opts;
+        let desc = desc.clone();
+        let goal = goal.clone();
+        let objectives = objectives.clone();
+        sections.push(Box::new(move || {
+            let analyzer = boot_quiet(content, seed);
+            let mut out = String::new();
+            pareto_section(&mut out, &analyzer, &desc, goal, &objectives, opts);
+            out
+        }));
     }
     if opts.audit {
-        audit_section(&mut analyzer, opts);
+        let opts = opts;
+        sections.push(Box::new(move || {
+            let mut analyzer = boot_quiet(content, seed);
+            let mut out = String::new();
+            audit_section(&mut out, &mut analyzer, opts);
+            out
+        }));
+    }
+    let reports = run_sections(opts.jobs, sections);
+    for report in &reports {
+        print!("{report}");
     }
     Ok(())
+}
+
+/// One buffered section job: runs a section against a private analyzer and
+/// returns its report text.
+type SectionJob<'a> = Box<dyn FnOnce() -> String + Send + 'a>;
+
+/// Run the buffered section jobs, at most `jobs` at a time, submitting in
+/// order and collecting each result under its submission index; the
+/// returned texts keep the fixed section order.
+fn run_sections(jobs: usize, sections: Vec<SectionJob<'_>>) -> Vec<String> {
+    let total = sections.len();
+    if total == 0 {
+        return Vec::new();
+    }
+    let mut results: Vec<Option<String>> = (0..total).map(|_| None).collect();
+    std::thread::scope(|scope| {
+        let (tx, rx) = std::sync::mpsc::channel::<(usize, String)>();
+        let mut queue: Vec<(usize, SectionJob<'_>)> =
+            sections.into_iter().enumerate().collect();
+        let mut inflight = 0usize;
+        let mut done = 0usize;
+        while done < total {
+            while inflight < jobs.max(1) && !queue.is_empty() {
+                let (i, job) = queue.remove(0);
+                let tx = tx.clone();
+                scope.spawn(move || {
+                    let _ = tx.send((i, job()));
+                });
+                inflight += 1;
+            }
+            let (i, text) = rx
+                .recv()
+                .unwrap_or_else(|_| panic!("an analyze section thread panicked"));
+            results[i] = Some(text);
+            inflight -= 1;
+            done += 1;
+        }
+    });
+    results.into_iter().map(|r| r.expect("section result")).collect()
+}
+
+/// A private analyzer for a section thread: the sequential boot above
+/// already reported the diagnostics, so this one is silent.
+fn boot_quiet(content: &Arc<Content>, seed: u64) -> Analyzer {
+    let (analyzer, _) = Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None);
+    analyzer
 }
 
 /// Every `ending:<ID>` goal must name a declared ending: a typo'd id would
@@ -577,9 +727,16 @@ fn truncated_note(truncated: bool, opts: &Options) -> &'static str {
 
 // -- reach ------------------------------------------------------------------
 
-fn reach_section(analyzer: &mut Analyzer, desc: &str, goal: GoalPredicate, opts: &Options) {
-    println!();
-    println!("== reach: {desc} ==");
+fn reach_section(
+    out: &mut String,
+    analyzer: &mut Analyzer,
+    desc: &str,
+    goal: GoalPredicate,
+    opts: &Options,
+) {
+    let _span = tracing::info_span!("reach").entered();
+    outln!(out);
+    outln!(out, "== reach: {desc} ==");
     let mut query = ReachQuery::new(goal);
     query.rng_mode = opts.rng;
     query.max_time = opts.max_time;
@@ -590,10 +747,10 @@ fn reach_section(analyzer: &mut Analyzer, desc: &str, goal: GoalPredicate, opts:
         query.objective = SearchObjective::DiverseWays { max_ways: k };
     }
     let outcome = analyzer.solve(&query);
-    print_solve(&outcome, opts);
+    print_solve(out, &outcome, opts);
 }
 
-fn print_solve(outcome: &SolveOutcome, opts: &Options) {
+fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options) {
     let status = if !outcome.witnesses.is_empty() {
         format!("REACHABLE — {} witness(es)", outcome.witnesses.len())
     } else if outcome.truncated {
@@ -601,8 +758,9 @@ fn print_solve(outcome: &SolveOutcome, opts: &Options) {
     } else {
         "UNREACHABLE — no state within the bounds satisfies the goal".to_string()
     };
-    println!("outcome: {status}");
-    println!(
+    outln!(out, "outcome: {status}");
+    outln!(
+        out,
         "expansions: {}{}",
         outcome.expansions,
         if outcome.truncated {
@@ -615,21 +773,24 @@ fn print_solve(outcome: &SolveOutcome, opts: &Options) {
         }
     );
     if outcome.truncated {
-        println!(
+        outln!(
+            out,
             "bounds: truncated at max_states {}{} — a no-witness answer is bounds-conditional",
             opts.max_states.unwrap_or(DEFAULT_MAX_STATES),
             opts.max_time.map_or_else(String::new, |t| format!(", max-time {t}m"))
         );
     }
     if outcome.witnesses_dropped_by_the_oracle > 0 {
-        println!(
+        outln!(
+            out,
             "witnesses dropped by the replay oracle: {}",
             outcome.witnesses_dropped_by_the_oracle
         );
     }
     let total = outcome.witnesses.len();
     for (i, witness) in outcome.witnesses.iter().enumerate() {
-        println!(
+        outln!(
+            out,
             "witness {} of {} — {} action(s), {} transition(s), final clock {}m, {} (replay-verified)",
             i + 1,
             total,
@@ -638,13 +799,13 @@ fn print_solve(outcome: &SolveOutcome, opts: &Options) {
             witness.final_clock(),
             probability_text(witness.probability),
         );
-        print_witness(witness);
+        print_witness(out, witness);
     }
 }
 
 /// The numbered step list: verb/recipe/clock per step and the decisive
 /// narration line of each step's event stream.
-fn print_witness(witness: &WitnessPath) {
+fn print_witness(out: &mut String, witness: &WitnessPath) {
     let mut state = witness.start.clone();
     for (i, record) in witness.records.iter().enumerate() {
         let step = match &record.step {
@@ -677,7 +838,8 @@ fn print_witness(witness: &WitnessPath) {
             }
             PlayerStep::Advance { dt } => format!("advance {dt}m"),
         };
-        println!(
+        outln!(
+            out,
             "  {}. [{}m -> {}m] {}",
             i + 1,
             record.time_before,
@@ -688,20 +850,26 @@ fn print_witness(witness: &WitnessPath) {
             Event::Narration { text } => Some(text.as_str()),
             _ => None,
         }) {
-            println!("       \"{text}\"");
+            outln!(out, "       \"{text}\"");
         }
         state = record.state_after.clone();
     }
     if let Some(ended) = &witness.final_state().ended {
-        println!("  final: the story ends \"{ended}\"");
+        outln!(out, "  final: the story ends \"{ended}\"");
     }
 }
 
 // -- classify ---------------------------------------------------------------
 
-fn classify_section(analyzer: &mut Analyzer, goal: Option<&GoalPredicate>, opts: &Options) {
-    println!();
-    println!("== classify ==");
+fn classify_section(
+    out: &mut String,
+    analyzer: &mut Analyzer,
+    goal: Option<&GoalPredicate>,
+    opts: &Options,
+) {
+    let _span = tracing::info_span!("classify").entered();
+    outln!(out);
+    outln!(out, "== classify ==");
     let config = ClassifyConfig {
         explore: explore_config(opts),
         winning_endings: goal.and_then(|g| match g {
@@ -722,15 +890,17 @@ fn classify_section(analyzer: &mut Analyzer, goal: Option<&GoalPredicate>, opts:
             .collect::<Vec<String>>()
             .join(", ")
     };
-    println!("winning endings: {note}");
+    outln!(out, "winning endings: {note}");
     let c = classify(analyzer, &config);
-    println!(
+    outln!(
+        out,
         "explored: {} states, {} edges ({})",
         c.graph.nodes.len(),
         c.graph.edges.len(),
         truncated_note(c.graph.truncated, opts),
     );
-    println!(
+    outln!(
+        out,
         "winnable states: {}{}",
         c.winnable.len(),
         if c.winnable.contains(&c.graph.start) {
@@ -741,15 +911,15 @@ fn classify_section(analyzer: &mut Analyzer, goal: Option<&GoalPredicate>, opts:
     );
     let mut ponr = c.point_of_no_return_edges.clone();
     ponr.sort_unstable();
-    println!("points of no return: {} crossing edge(s)", ponr.len());
-    print_capped(ponr.iter().map(|(u, v)| {
+    outln!(out, "points of no return: {} crossing edge(s)", ponr.len());
+    print_capped(out, ponr.iter().map(|(u, v)| {
         format!(
             "node {u} -> node {v} (the state leaves winnable play at clock {}m)",
             c.graph.nodes[*v].state.now
         )
     }));
-    println!("softlocked live states: {}", c.softlock.len());
-    print_capped(c.softlock.iter().map(|v| {
+    outln!(out, "softlocked live states: {}", c.softlock.len());
+    print_capped(out, c.softlock.iter().map(|v| {
         format!(
             "node {v} (clock {}m, no ending reachable)",
             c.graph.nodes[*v].state.now
@@ -760,8 +930,8 @@ fn classify_section(analyzer: &mut Analyzer, goal: Option<&GoalPredicate>, opts:
         l.sort_unstable();
     }
     loops.sort();
-    println!("infinite loops: {}", loops.len());
-    print_capped(loops.iter().map(|l| {
+    outln!(out, "infinite loops: {}", loops.len());
+    print_capped(out, loops.iter().map(|l| {
         let nodes: Vec<String> = l.iter().map(|v| v.to_string()).collect();
         format!("loop over {} state(s): nodes {}", l.len(), nodes.join(", "))
     }));
@@ -769,9 +939,16 @@ fn classify_section(analyzer: &mut Analyzer, goal: Option<&GoalPredicate>, opts:
 
 // -- mdp --------------------------------------------------------------------
 
-fn mdp_section(analyzer: &Analyzer, desc: &str, goal: GoalPredicate, opts: &Options) {
-    println!();
-    println!("== mdp: {desc} ==");
+fn mdp_section(
+    out: &mut String,
+    analyzer: &Analyzer,
+    desc: &str,
+    goal: GoalPredicate,
+    opts: &Options,
+) {
+    let _span = tracing::info_span!("mdp").entered();
+    outln!(out);
+    outln!(out, "== mdp: {desc} ==");
     let mut config = MdpConfig::new(goal);
     config.rng_mode = opts.rng;
     config.max_time = opts.max_time;
@@ -779,27 +956,32 @@ fn mdp_section(analyzer: &Analyzer, desc: &str, goal: GoalPredicate, opts: &Opti
     // budget here. max_actions/max_depth keep the crate defaults.
     config.max_nodes = opts.max_states.unwrap_or(DEFAULT_MAX_STATES);
     let outcome = story_analyze::mdp::solve(analyzer, &config);
-    print_mdp(&outcome);
+    print_mdp(out, &outcome);
 }
 
-fn print_mdp(outcome: &MdpOutcome) {
-    println!(
+fn print_mdp(out: &mut String, outcome: &MdpOutcome) {
+    outln!(
+        out,
         "V_max     = {}  (maximum goal probability under optimal play)",
         fraction_or_decimal(outcome.start.v_max)
     );
-    println!(
+    outln!(
+        out,
         "V_minimax = {}  (worst-case guarantee over positive-probability branches)",
         fraction_or_decimal(outcome.start.v_minimax)
     );
-    println!(
+    outln!(
+        out,
         "V_unif    = {}  (uniform-play baseline)",
         fraction_or_decimal(outcome.start.v_unif)
     );
-    println!(
+    outln!(
+        out,
         "expected actions under the optimal policy: {}",
         fraction_or_decimal(outcome.start.expected_actions)
     );
-    println!(
+    outln!(
+        out,
         "game graph: {} nodes{}",
         outcome.nodes,
         if outcome.complete {
@@ -813,16 +995,19 @@ fn print_mdp(outcome: &MdpOutcome) {
 // -- pareto -----------------------------------------------------------------
 
 fn pareto_section(
+    out: &mut String,
     analyzer: &Analyzer,
     goal_desc: &str,
     goal: GoalPredicate,
     objectives: &[(String, Objective)],
     opts: &Options,
 ) {
+    let _span = tracing::info_span!("pareto").entered();
     let obj_desc: Vec<&str> = objectives.iter().map(|(text, _)| text.as_str()).collect();
     let only: Vec<Objective> = objectives.iter().map(|(_, o)| o.clone()).collect();
-    println!();
-    println!(
+    outln!(out);
+    outln!(
+        out,
         "== pareto: goal {goal_desc}, objectives {} ==",
         obj_desc.join(", ")
     );
@@ -830,12 +1015,13 @@ fn pareto_section(
     config.explore = explore_config(opts);
     let report = pareto_analyze(analyzer, &config);
     if report.frontier.is_empty() {
-        println!("frontier: empty — no explored state satisfies the goal within the bounds");
+        outln!(out, "frontier: empty — no explored state satisfies the goal within the bounds");
     } else {
-        println!("frontier: {} point(s)", report.frontier.len());
+        outln!(out, "frontier: {} point(s)", report.frontier.len());
         for (i, point) in report.frontier.iter().enumerate() {
             let values: Vec<String> = point.values.iter().map(|v| fraction_or_decimal(*v)).collect();
-            println!(
+            outln!(
+                out,
                 "  point {} of {}: [{}] — {} action(s), final clock {}m, {}",
                 i + 1,
                 report.frontier.len(),
@@ -844,17 +1030,19 @@ fn pareto_section(
                 point.witness.final_clock(),
                 probability_text(point.witness.probability),
             );
-            print_witness(&point.witness);
+            print_witness(out, &point.witness);
         }
     }
-    println!("mandatory recipes: {}", joined_or_dash(report.mandatory_recipes.iter()));
-    println!("mandatory cards: {}", joined_or_dash(report.mandatory_cards.iter()));
-    println!(
+    outln!(out, "mandatory recipes: {}", joined_or_dash(report.mandatory_recipes.iter()));
+    outln!(out, "mandatory cards: {}", joined_or_dash(report.mandatory_cards.iter()));
+    outln!(
+        out,
         "minimal cuts: {}",
         cuts_text(&report.minimal_recipe_cuts, &report.verified_cuts)
     );
     if report.truncated {
-        println!(
+        outln!(
+            out,
             "bounds: parts of the analysis truncated — the frontier stands, cut results may be \
              incomplete"
         );
@@ -891,11 +1079,13 @@ fn joined_or_dash<T: std::fmt::Display>(items: impl Iterator<Item = T>) -> Strin
 
 // -- audit ------------------------------------------------------------------
 
-fn audit_section(analyzer: &mut Analyzer, opts: &Options) {
-    println!();
-    println!("== audit ==");
+fn audit_section(out: &mut String, analyzer: &mut Analyzer, opts: &Options) {
+    let _span = tracing::info_span!("audit").entered();
+    outln!(out);
+    outln!(out, "== audit ==");
     let report = audit(analyzer, &explore_config(opts));
-    println!(
+    outln!(
+        out,
         "explored: {} states ({})",
         report.explored_nodes,
         truncated_note(report.truncated, opts)
@@ -904,10 +1094,11 @@ fn audit_section(analyzer: &mut Analyzer, opts: &Options) {
     shadowing.sort_by(|a, b| {
         (&a.verb, &a.shadower, &a.shadowed).cmp(&(&b.verb, &b.shadower, &b.shadowed))
     });
-    println!("shadowing: {} finding(s)", shadowing.len());
+    outln!(out, "shadowing: {} finding(s)", shadowing.len());
     for s in &shadowing {
         let verb = s.verb.as_ref().map_or_else(String::new, |v| format!("verb {v}: "));
-        println!(
+        outln!(
+            out,
             "  {verb}\"{}\" shadows \"{}\"{}",
             s.shadower,
             s.shadowed,
@@ -920,34 +1111,35 @@ fn audit_section(analyzer: &mut Analyzer, opts: &Options) {
     }
     let mut unreachable = report.unreachable.clone();
     unreachable.sort_by(|a, b| (a.kind, &a.id).cmp(&(b.kind, &b.id)));
-    println!("unreachable content: {} finding(s)", unreachable.len());
+    outln!(out, "unreachable content: {} finding(s)", unreachable.len());
     for u in &unreachable {
         let evidence = match u.evidence {
             Evidence::StaticallyProved => "statically proved",
             Evidence::NotWithinBounds => "not within the exploration bounds (bounds-conditional)",
         };
-        println!("  {} {} — {evidence}", u.kind, u.id);
+        outln!(out, "  {} {} — {evidence}", u.kind, u.id);
     }
     let mut faults: Vec<&FaultWitness> = report.faults.iter().collect();
     faults.sort_by_key(|f| fault_key(f));
-    println!("reachable faults: {} finding(s)", faults.len());
+    outln!(out, "reachable faults: {} finding(s)", faults.len());
     for (i, f) in faults.iter().enumerate() {
         if i >= LIST_CAP {
-            println!("  ... and {} more", faults.len() - LIST_CAP);
+            outln!(out, "  ... and {} more", faults.len() - LIST_CAP);
             break;
         }
         let event = match &f.event {
             FaultEvent::ResolutionFailed { reason } => format!("resolution failed ({reason})"),
             FaultEvent::StartSkipped { reason } => format!("start skipped ({reason})"),
         };
-        println!(
+        outln!(
+            out,
             "  fault {} of {}: {event} — witness {} step(s), final clock {}m",
             i + 1,
             faults.len(),
             f.witness.records.len(),
             f.witness.final_clock()
         );
-        print_witness(&f.witness);
+        print_witness(out, &f.witness);
     }
 }
 
@@ -964,13 +1156,13 @@ fn fault_key(f: &FaultWitness) -> (u8, String, usize, Time) {
     )
 }
 
-fn print_capped(lines: impl Iterator<Item = String>) {
+fn print_capped(out: &mut String, lines: impl Iterator<Item = String>) {
     let all: Vec<String> = lines.collect();
     for line in all.iter().take(LIST_CAP) {
-        println!("  {line}");
+        outln!(out, "  {line}");
     }
     if all.len() > LIST_CAP {
-        println!("  ... and {} more", all.len() - LIST_CAP);
+        outln!(out, "  ... and {} more", all.len() - LIST_CAP);
     }
 }
 

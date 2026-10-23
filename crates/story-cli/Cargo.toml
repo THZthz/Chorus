@@ -10,6 +10,8 @@ story-engine = { workspace = true }
 story-lang = { workspace = true }
 story-analyze = { workspace = true, features = ["lang"] }
 serde_json = { workspace = true }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
 
 [[bin]]
 name = "story-cli"

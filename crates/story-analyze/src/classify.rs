@@ -48,6 +48,7 @@ pub fn classify(analyzer: &mut Analyzer, config: &ClassifyConfig) -> Classificat
 
 /// Classify an already-explored graph.
 pub fn classify_graph(graph: &ExploredGraph, winning: &BTreeSet<EndingId>) -> Classification {
+    let _span = tracing::info_span!("classify_closure").entered();
     let n = graph.nodes.len();
     // Adjacency (forward) and reverse adjacency over node ids.
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];

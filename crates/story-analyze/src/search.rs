@@ -158,6 +158,7 @@ impl Analyzer {
     /// has passed the replay oracle (§5.6). Existential under every RNG
     /// mode — guarantee queries go through the AND-OR solver (`mdp`).
     pub fn solve(&mut self, query: &ReachQuery) -> SolveOutcome {
+        let _span = tracing::info_span!("solve").entered();
         let mut gen = self.generator(query);
         let goal_facts = causal::goal_facts(&query.goal);
         let cone = self.causal.backward_cone(&goal_facts);
@@ -463,6 +464,7 @@ impl Analyzer {
     /// states (classification keeps it `None`); `invariant` gates every
     /// successor.
     pub fn explore(&mut self, config: &ExploreConfig) -> ExploredGraph {
+        let _span = tracing::info_span!("explore").entered();
         let query = ReachQuery {
             goal: GoalPredicate::Ending(None), // never satisfied at a live state; unused
             invariant: config.invariant.clone(),

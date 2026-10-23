@@ -130,18 +130,25 @@ pub fn analyze(analyzer: &Analyzer, config: &ParetoConfig) -> ParetoReport {
     }
 
     // Witnesses: the BFS-tree path to each frontier node, replay-verified.
-    let replayer = analyzer.replayer();
-    for (i, values) in kept {
-        // witness_to carries the graph's mode-appropriate cumulative
-        // probability (None under `Adversarial`, §6).
-        let Some(witness) = graph.witness_to(i, analyzer.start()) else {
-            continue;
-        };
-        match replayer.replay(&witness, Some(&config.goal), config.explore.invariant.as_ref()) {
-            Ok(_) => report.frontier.push(ParetoPoint { values, witness }),
-            Err(_) => report.truncated = true,
+    let witness_replays: Vec<ParetoPoint> = {
+        let _span = tracing::info_span!("pareto_witnesses").entered();
+        let replayer = analyzer.replayer();
+        let mut points = Vec::new();
+        for (i, values) in kept {
+            // witness_to carries the graph's mode-appropriate cumulative
+            // probability (None under `Adversarial`, §6).
+            let Some(witness) = graph.witness_to(i, analyzer.start()) else {
+                continue;
+            };
+            match replayer.replay(&witness, Some(&config.goal), config.explore.invariant.as_ref())
+            {
+                Ok(_) => points.push(ParetoPoint { values, witness }),
+                Err(_) => report.truncated = true,
+            }
         }
-    }
+        points
+    };
+    report.frontier = witness_replays;
 
     // The mandatory sets: intersections over the frontier witnesses.
     let sets: Vec<BTreeSet<RecipeId>> = report
@@ -167,11 +174,14 @@ pub fn analyze(analyzer: &Analyzer, config: &ParetoConfig) -> ParetoReport {
         report.truncated = true;
         return report;
     }
-    report.minimal_recipe_cuts = hitting_sets(&sets, &universe);
-    for cut in &report.minimal_recipe_cuts {
-        match verify_cut(analyzer, config, cut) {
-            Some(true) => report.verified_cuts.push(cut.clone()),
-            _ => report.truncated = true,
+    {
+        let _span = tracing::info_span!("pareto_cuts").entered();
+        report.minimal_recipe_cuts = hitting_sets(&sets, &universe);
+        for cut in &report.minimal_recipe_cuts {
+            match verify_cut(analyzer, config, cut) {
+                Some(true) => report.verified_cuts.push(cut.clone()),
+                _ => report.truncated = true,
+            }
         }
     }
     report

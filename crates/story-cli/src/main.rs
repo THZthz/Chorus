@@ -5,6 +5,7 @@
 //! story-analyze's design-time analyses, printing reports to stdout.
 
 mod analyze;
+mod profile;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

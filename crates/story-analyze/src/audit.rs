@@ -90,8 +90,14 @@ pub struct AuditReport {
 pub fn audit(analyzer: &mut Analyzer, explore: &ExploreConfig) -> AuditReport {
     let shadowing = shadowing_findings(analyzer.content());
     let graph = analyzer.explore(explore);
-    let unreachable = unreachable_findings(analyzer, &graph);
-    let faults = fault_findings(analyzer, &graph);
+    let unreachable = {
+        let _span = tracing::info_span!("audit_unreachable").entered();
+        unreachable_findings(analyzer, &graph)
+    };
+    let faults = {
+        let _span = tracing::info_span!("audit_faults").entered();
+        fault_findings(analyzer, &graph)
+    };
     AuditReport {
         shadowing,
         unreachable,

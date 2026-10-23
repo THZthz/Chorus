@@ -86,6 +86,7 @@ struct Vals {
 
 /// Solve the game from the analyzer's start state.
 pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
+    let _span = tracing::info_span!("mdp_solve").entered();
     let content: Arc<Content> = analyzer.content().clone();
     let gen_config = GeneratorConfig {
         seed: analyzer.seed(),

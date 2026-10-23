@@ -179,7 +179,7 @@ impl TransitionGenerator {
     }
 
     fn install(&mut self, state: &State) {
-        *self.engine.state_mut() = state.clone();
+        self.engine.state_mut().clone_from(state);
     }
 
     /// The scratch engine with the last installed state (the evaluation
@@ -316,13 +316,13 @@ impl TransitionGenerator {
     /// candidate set of a commit is wider than the greedy pull's public
     /// pool: any bindable zone qualifies.
     fn slot_pool(&mut self, sd: &SlotDecl) -> Vec<EntityId> {
-        let state = self.engine.state().clone();
+        let state = self.engine.state();
         let mut out = Vec::new();
         for (&eid, ent) in &state.entities {
             let Some(z) = state.zones.get(&ent.zone) else {
                 continue;
             };
-            if !z.bindable || symmetry::is_bound(&state, eid) {
+            if !z.bindable || symmetry::is_bound(state, eid) {
                 continue;
             }
             if self.engine.matches(eid, &sd.query) {
@@ -375,7 +375,7 @@ impl TransitionGenerator {
     /// (§5.1.2, §5.2).
     fn bind_steps(&mut self) -> Vec<PlayerStep> {
         let mut steps = Vec::new();
-        let state = self.engine.state().clone();
+        let state = self.engine.state();
         let content = self.content.clone();
         let sits: Vec<story_core::SituationId> = state.situations.keys().copied().collect();
         for sit in sits {

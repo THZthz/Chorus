@@ -66,7 +66,8 @@ MODIFIERS:
     --max-states <n>     expansion bound (default 100000): caps the explored
                          state space of --reach/--classify/--pareto and the
                          game-graph node budget of --mdp
-    --max-time <time>    clock horizon in minutes; <n>m / <n>h accepted
+    --max-time <time>    clock horizon in minutes; <n>m / <n>h / <n>h<m>m
+                         accepted; overrides the content's `meta horizon`
     --diverse <k>        report up to k structurally distinct reach witnesses
     --turn <duration>    override the game's turn length; <n>m / <n>h; when
                          the content has no game turn to override, the
@@ -439,23 +440,35 @@ fn split_objectives(s: &str) -> Result<Vec<ObjArg>, String> {
     Ok(objs)
 }
 
-fn parse_time(flag: &str, s: &str) -> Result<Time, String> {
+/// Parse a duration spelling in the content language's own grammar:
+/// `<n>m`, `<n>h`, `<n>h<m>m`, or bare minutes. Positive; minutes.
+fn parse_duration(s: &str) -> Option<i64> {
     let t = s.trim();
-    let (num, mult) = match t.strip_suffix('m') {
-        Some(n) => (n, 1i64),
-        None => match t.strip_suffix('h') {
-            Some(n) => (n, 60i64),
-            None => (t, 1i64),
-        },
+    let (h_str, rest, had_h) = match t.split_once('h') {
+        Some((h, rest)) => (h, rest, true),
+        None => ("0", t, false),
     };
-    let n: i64 = num.parse().map_err(|_| format!("{flag} needs minutes, <n>m, or <n>h; got `{s}`"))?;
-    let v = n
-        .checked_mul(mult)
-        .ok_or_else(|| format!("{flag} overflows"))?;
-    if v <= 0 {
-        return Err(format!("{flag} must be positive; got `{s}`"));
+    // Bare minutes: no h part, no m suffix.
+    if !had_h && !rest.ends_with('m') {
+        let v: i64 = t.parse().ok()?;
+        return (v > 0).then_some(v);
     }
-    Ok(v)
+    let h: i64 = h_str.parse().ok()?;
+    if h < 0 {
+        return None;
+    }
+    let m: i64 = if rest.is_empty() { 0 } else { rest.strip_suffix('m')?.parse().ok()? };
+    if m < 0 {
+        return None;
+    }
+    let v = h.checked_mul(60)?.checked_add(m)?;
+    (v > 0).then_some(v)
+}
+
+fn parse_time(flag: &str, s: &str) -> Result<Time, String> {
+    parse_duration(s).ok_or_else(|| {
+        format!("{flag} needs minutes, <n>m, <n>h, or <n>h<m>m; got `{s}`")
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -511,6 +524,20 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         return Err(Failure::Run("boot failed with error diagnostic(s)".to_string()));
     }
     let prune = opts.prune && !boot_analyzer.host_opaque();
+    // The content may declare the analysis horizon itself (`meta horizon
+    // "36h"` on the game header); the flag overrides it.
+    let content_horizon = content
+        .game
+        .as_ref()
+        .and_then(|g| g.meta.get("horizon"))
+        .and_then(|v| {
+            let h = parse_duration(v);
+            if h.is_none() && !v.trim().is_empty() {
+                println!("story-cli analyze: ignoring game meta `horizon` — {v:?} is not a duration spelling (<n>m, <n>h, <n>h<m>m)");
+            }
+            h
+        });
+    let max_time = opts.max_time.or(content_horizon);
     if let Some(game) = content.game.as_ref() {
         println!("{} — seed {}, turn {}m", game.title, seed, game.turn);
     }
@@ -523,6 +550,8 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
     ];
     if let Some(t) = opts.max_time {
         settings.push(format!("max-time {t}m"));
+    } else if let Some(h) = content_horizon {
+        settings.push(format!("horizon {h}m (content)"));
     }
     if let Some(k) = opts.diverse {
         settings.push(format!("diverse {k}"));
@@ -575,12 +604,13 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
     let mut sections: Vec<SectionJob<'_>> = Vec::new();
     if !reach_goals.is_empty() {
         let opts = opts;
+        let max_time = max_time;
         let goals = &reach_goals;
         sections.push(Box::new(move || {
             let mut analyzer = boot_quiet(content, seed);
             let mut out = String::new();
             for (desc, goal) in goals {
-                reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts, prune);
+                reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts, prune, max_time);
             }
             out
         }));
@@ -591,7 +621,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         sections.push(Box::new(move || {
             let mut analyzer = boot_quiet(content, seed);
             let mut out = String::new();
-            classify_section(&mut out, &mut analyzer, goal.as_ref().map(|(_, g)| g), opts, prune);
+            classify_section(&mut out, &mut analyzer, goal.as_ref().map(|(_, g)| g), opts, prune, max_time);
             out
         }));
     }
@@ -602,7 +632,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         sections.push(Box::new(move || {
             let analyzer = boot_quiet(content, seed);
             let mut out = String::new();
-            mdp_section(&mut out, &analyzer, &desc, goal, opts, prune);
+            mdp_section(&mut out, &analyzer, &desc, goal, opts, prune, max_time);
             out
         }));
     }
@@ -614,7 +644,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         sections.push(Box::new(move || {
             let analyzer = boot_quiet(content, seed);
             let mut out = String::new();
-            pareto_section(&mut out, &analyzer, &desc, goal, &objectives, opts, prune);
+            pareto_section(&mut out, &analyzer, &desc, goal, &objectives, opts, prune, max_time);
             out
         }));
     }
@@ -623,7 +653,7 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         sections.push(Box::new(move || {
             let mut analyzer = boot_quiet(content, seed);
             let mut out = String::new();
-            audit_section(&mut out, &mut analyzer, opts, prune);
+            audit_section(&mut out, &mut analyzer, opts, prune, max_time);
             out
         }));
     }
@@ -727,20 +757,20 @@ fn turn_setting(turn: Time, applied: bool) -> String {
 
 const DEFAULT_MAX_STATES: usize = 100_000;
 
-fn explore_config(opts: &Options, prune: bool) -> ExploreConfig {
+fn explore_config(opts: &Options, prune: bool, max_time: Option<Time>) -> ExploreConfig {
     ExploreConfig {
         rng_mode: opts.rng,
         max_states: opts.max_states.unwrap_or(DEFAULT_MAX_STATES),
-        max_time: opts.max_time,
+        max_time,
         prune,
         ..Default::default()
     }
 }
 
-fn truncated_note(truncated: bool, opts: &Options) -> &'static str {
+fn truncated_note(truncated: bool, bounded: bool) -> &'static str {
     if truncated {
         "TRUNCATED — findings are bounds-conditional"
-    } else if opts.max_time.is_some() {
+    } else if bounded {
         "within bounds"
     } else {
         "space exhausted within bounds"
@@ -756,13 +786,14 @@ fn reach_section(
     goal: GoalPredicate,
     opts: &Options,
     prune: bool,
+    max_time: Option<Time>,
 ) {
     let _span = tracing::info_span!("reach").entered();
     outln!(out);
     outln!(out, "== reach: {desc} ==");
     let mut query = ReachQuery::new(goal);
     query.rng_mode = opts.rng;
-    query.max_time = opts.max_time;
+    query.max_time = max_time;
     query.prune = prune;
     if let Some(n) = opts.max_states {
         query.max_states = n;
@@ -771,10 +802,10 @@ fn reach_section(
         query.objective = SearchObjective::DiverseWays { max_ways: k };
     }
     let outcome = analyzer.solve(&query);
-    print_solve(out, &outcome, opts);
+    print_solve(out, &outcome, opts, max_time);
 }
 
-fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options) {
+fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options, max_time: Option<Time>) {
     let status = if !outcome.witnesses.is_empty() {
         format!("REACHABLE — {} witness(es)", outcome.witnesses.len())
     } else if outcome.pruned > 0 {
@@ -807,7 +838,7 @@ fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options) {
             out,
             "bounds: truncated at max_states {}{} — a no-witness answer is bounds-conditional",
             opts.max_states.unwrap_or(DEFAULT_MAX_STATES),
-            opts.max_time.map_or_else(String::new, |t| format!(", max-time {t}m"))
+            max_time.map_or_else(String::new, |t| format!(", horizon {t}m"))
         );
     }
     if outcome.pruned > 0 {
@@ -904,12 +935,13 @@ fn classify_section(
     goal: Option<&GoalPredicate>,
     opts: &Options,
     prune: bool,
+    max_time: Option<Time>,
 ) {
     let _span = tracing::info_span!("classify").entered();
     outln!(out);
     outln!(out, "== classify ==");
     let mut config = ClassifyConfig {
-        explore: explore_config(opts, prune),
+        explore: explore_config(opts, prune, max_time),
         winning_endings: goal.and_then(|g| match g {
             GoalPredicate::Ending(id) => Some(ending_set(id.as_ref())),
             _ => None,
@@ -940,7 +972,7 @@ fn classify_section(
         "explored: {} states, {} edges ({})",
         c.graph.nodes.len(),
         c.graph.edges.len(),
-        truncated_note(c.graph.truncated, opts),
+        truncated_note(c.graph.truncated, max_time.is_some()),
     );
     if prune && goal.is_some() {
         outln!(
@@ -996,13 +1028,14 @@ fn mdp_section(
     goal: GoalPredicate,
     opts: &Options,
     prune: bool,
+    max_time: Option<Time>,
 ) {
     let _span = tracing::info_span!("mdp").entered();
     outln!(out);
     outln!(out, "== mdp: {desc} ==");
     let mut config = MdpConfig::new(goal);
     config.rng_mode = opts.rng;
-    config.max_time = opts.max_time;
+    config.max_time = max_time;
     config.prune = prune;
     // --max-states is the expansion bound everywhere: the game graph's node
     // budget here. max_actions/max_depth keep the crate defaults.
@@ -1054,6 +1087,7 @@ fn pareto_section(
     objectives: &[(String, Objective)],
     opts: &Options,
     prune: bool,
+    max_time: Option<Time>,
 ) {
     let _span = tracing::info_span!("pareto").entered();
     let obj_desc: Vec<&str> = objectives.iter().map(|(text, _)| text.as_str()).collect();
@@ -1065,7 +1099,7 @@ fn pareto_section(
         obj_desc.join(", ")
     );
     let mut config = ParetoConfig::new(goal, only);
-    config.explore = explore_config(opts, prune);
+    config.explore = explore_config(opts, prune, max_time);
     let report = pareto_analyze(analyzer, &config);
     if report.frontier.is_empty() {
         outln!(out, "frontier: empty — no explored state satisfies the goal within the bounds");
@@ -1132,16 +1166,22 @@ fn joined_or_dash<T: std::fmt::Display>(items: impl Iterator<Item = T>) -> Strin
 
 // -- audit ------------------------------------------------------------------
 
-fn audit_section(out: &mut String, analyzer: &mut Analyzer, opts: &Options, prune: bool) {
+fn audit_section(
+    out: &mut String,
+    analyzer: &mut Analyzer,
+    opts: &Options,
+    prune: bool,
+    max_time: Option<Time>,
+) {
     let _span = tracing::info_span!("audit").entered();
     outln!(out);
     outln!(out, "== audit ==");
-    let report = audit(analyzer, &explore_config(opts, prune));
+    let report = audit(analyzer, &explore_config(opts, prune, max_time));
     outln!(
         out,
         "explored: {} states ({})",
         report.explored_nodes,
-        truncated_note(report.truncated, opts)
+        truncated_note(report.truncated, max_time.is_some())
     );
     let mut shadowing = report.shadowing.clone();
     shadowing.sort_by(|a, b| {

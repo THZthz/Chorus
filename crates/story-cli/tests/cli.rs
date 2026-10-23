@@ -10,6 +10,8 @@ use std::process::{Command, Stdio};
 const BIN: &str = env!("CARGO_BIN_EXE_story-cli");
 const TINY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/tiny.sw");
 const EMBER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/emberwatch.sw");
+const HORIZON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/story-cli/tests/fixtures/horizon.sw");
+const HORIZON_BAD: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/story-cli/tests/fixtures/horizon-bad.sw");
 
 fn run(args: &[&str]) -> (i32, String, String) {
     let out = Command::new(BIN).args(args).output().expect("run story-cli");
@@ -429,6 +431,47 @@ fn prune_flag_echoes_and_keeps_witnesses_honest() {
     ]);
     assert_eq!(code, 0);
     assert_eq!(out, out2, "prune output is deterministic");
+}
+
+#[test]
+fn the_content_horizon_bounds_the_default_query() {
+    // No --max-time: the game meta's horizon is the query envelope, and the
+    // authored deadline recipe fires within it.
+    let (code, out, _) = run(&["analyze", HORIZON, "--reach", "ending:dawn"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("horizon 360m (content)"), "{out}");
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+    assert!(out.contains("final: the story ends \"dawn\""), "{out}");
+}
+
+#[test]
+fn max_time_overrides_the_content_horizon() {
+    let (code, out, _) = run(&[
+        "analyze",
+        HORIZON,
+        "--reach",
+        "ending:dawn",
+        "--max-time",
+        "30m",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("max-time 30m"), "{out}");
+    assert!(!out.contains("horizon 360m"), "{out}");
+}
+
+#[test]
+fn an_ill_spelled_horizon_warns_and_runs_bounded() {
+    let (code, out, _) = run(&[
+        "analyze",
+        HORIZON_BAD,
+        "--reach",
+        "ending:dawn",
+        "--max-states",
+        "200",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("ignoring game meta `horizon`"), "{out}");
+    assert!(out.contains("outcome: INCONCLUSIVE"), "{out}");
 }
 
 #[test]

@@ -304,4 +304,6 @@ Four analyses build on this machinery:
 - **Design audit** — dead content, proved recipe shadowing, and reachable `ResolutionFailed` / `StartSkipped` faults, each finding labeled with its evidence class (statically proved, or within bounds).
 - **Pareto frontiers and cuts** — the undominated trade-off set for multi-objective goals, with mandatory recipes and cards and minimal cut sets, every cut verified by re-exploration with the mechanism neutralized.
 
+The analysis horizon is contractable from content: `meta horizon "6h"` on the `game` header (language.md §2.8) bounds every query by default — the flag `--max-time` overrides it, and the runtime pairing is an authored deadline recipe (`when clock >= 6h` → an epilogue ending, emberwatch's dawn). An analysis horizon in the game meta is the CS-scale enabler: without a natural ending, exhaustive analysis has no envelope.
+
 An optional `story-lang` feature lets queries be written in the `.sw` condition grammar itself. The working design reference is `.artifacts/story-analyze-spec.md`.

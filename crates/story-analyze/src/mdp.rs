@@ -122,12 +122,19 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
     };
     let vals = {
         let goal_facts = crate::causal::goal_facts(&config.goal);
+        let scarcity = if config.prune && !analyzer.host_opaque() {
+            let mintable = analyzer.causal().recipe_mintable_cards();
+            crate::scarcity::Scarcity::build(&config.goal, &content, &mintable)
+        } else {
+            crate::scarcity::Scarcity::empty()
+        };
         let mut ctx = Ctx {
             gen: &mut gen,
             content: &content,
             symmetry: analyzer.symmetry(),
             causal: analyzer.causal(),
             goal_facts,
+            scarcity,
             config,
             memo: &mut memo,
             counter: &mut counter,
@@ -156,6 +163,7 @@ struct Ctx<'a> {
     causal: &'a crate::causal::CausalGraph,
     /// The goal's relaxed-grounding facts, computed once for the prune gate.
     goal_facts: std::collections::BTreeSet<crate::causal::Fact>,
+    scarcity: crate::scarcity::Scarcity,
     config: &'a MdpConfig,
     memo: &'a mut BTreeMap<(CanonicalStateKey, usize), Option<Vals>>,
     counter: &'a mut NodeCounter,
@@ -180,6 +188,10 @@ fn eval(ctx: &mut Ctx<'_>, state: &State, actions: usize, depth: usize) -> Optio
         if raw >= u32::MAX / 4 {
             // A pruned state scores 0, the same conservative direction as a
             // budget cut, and marks the outcome incomplete.
+            ctx.counter.count += 1;
+            return Some(Vals::default());
+        }
+        if !ctx.scarcity.is_empty() && ctx.scarcity.dead(state, ctx.content) {
             ctx.counter.count += 1;
             return Some(Vals::default());
         }

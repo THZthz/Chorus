@@ -229,10 +229,15 @@ impl Analyzer {
                 _ => None,
             })
             .collect();
-        let recipe_mintable = if query.prune && !goal_cards.is_empty() {
+        let recipe_mintable = if query.prune {
             self.causal.recipe_mintable_cards()
         } else {
             BTreeSet::new()
+        };
+        let scarcity = if query.prune && !self.causal.host_opaque() {
+            crate::scarcity::Scarcity::build(&query.goal, &self.content, &recipe_mintable)
+        } else {
+            crate::scarcity::Scarcity::empty()
         };
         let mut witnesses: Vec<WitnessPath> = Vec::new();
         let mut witnessed_sigs: BTreeSet<Vec<Option<RecipeId>>> = BTreeSet::new();
@@ -392,6 +397,16 @@ impl Analyzer {
                                 && !recipe_mintable.contains(c)
                         })
                     {
+                        if std::env::var("STORY_DEBUG_PRUNE").is_ok() {
+                            eprintln!("DBG prune: extinction at expansions {expansions}");
+                        }
+                        pruned += 1;
+                        continue;
+                    }
+                    if !scarcity.is_empty() && scarcity.dead(&state_after, &self.content) {
+                        if std::env::var("STORY_DEBUG_PRUNE").is_ok() {
+                            eprintln!("DBG prune: scarcity at expansions {expansions}");
+                        }
                         pruned += 1;
                         continue;
                     }
@@ -405,6 +420,9 @@ impl Analyzer {
                         *self.engine.state_mut() = state_after.clone();
                         let raw = self.causal.h_add(&state_after, &self.engine, &goal_facts);
                         if query.prune && !self.causal.host_opaque() && raw >= u32::MAX / 4 {
+                            if std::env::var("STORY_DEBUG_PRUNE").is_ok() {
+                                eprintln!("DBG prune: relaxation at expansions {expansions}");
+                            }
                             pruned += 1;
                             continue;
                         }
@@ -547,6 +565,15 @@ impl Analyzer {
         } else {
             None
         };
+        let scarcity = if config.prune && !self.causal.host_opaque() {
+            let mintable = self.causal.recipe_mintable_cards();
+            config
+                .stop_at
+                .as_ref()
+                .map(|g| crate::scarcity::Scarcity::build(g, &self.content, &mintable))
+        } else {
+            None
+        };
         let mut gen = self.generator(&query);
         let start_key = CanonicalStateKey::of_with(&self.start, &self.content, &self.symmetry);
         let mut nodes: Vec<GraphNode> = Vec::new();
@@ -613,6 +640,11 @@ impl Analyzer {
                         *self.engine.state_mut() = record.state_after.clone();
                         let raw = self.causal.h_add(&record.state_after, &self.engine, facts);
                         if raw >= u32::MAX / 4 {
+                            continue;
+                        }
+                    }
+                    if let Some(s) = &scarcity {
+                        if !s.is_empty() && s.dead(&record.state_after, &self.content) {
                             continue;
                         }
                     }

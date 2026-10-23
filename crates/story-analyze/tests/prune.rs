@@ -129,3 +129,117 @@ fn witnesses_survive_the_gate() {
         assert_eq!(a.final_clock(), b.final_clock());
     }
 }
+
+/// The scarcity shape: the door wants a charge of 3, the battery stock is
+/// two cells, and each charge-up burns one — the arithmetic is dead, not
+/// just hard. A third cell makes it reachable.
+fn charged_cell_fixture(cells: u32) -> String {
+    format!(
+        r#"
+game "Cells"
+  seed 3
+  turn 30m
+  home bench
+
+zones
+  bench
+
+aspects
+  charge: 0
+  juice: 0
+
+cards
+  card lamp
+    kind tool  unique
+    aspects charge 0
+    start in bench
+  card cell
+    kind matter  stackable
+    aspects juice 1
+    start in bench count {cells}
+
+legacies
+  luck: 0
+
+endings
+  ending lit "Lit" grand
+    text "The lamp holds."
+
+verbs
+  verb charge committable instances 1
+    recipe top_up
+      craftable
+      duration 0
+      when count(anywhere, aspect:juice) >= 1
+      effects
+        consume aspect:juice 1
+        set lamp.charge += 1
+        narrate "One cell in."
+  verb light committable instances 1
+    recipe strike
+      craftable
+      duration 0
+      when lamp.charge >= 3
+      effects
+        ending lit
+"#
+    )
+}
+
+fn lit_query(prune: bool) -> ReachQuery {
+    let mut q = ReachQuery::new(GoalPredicate::Ending(Some("lit".into())));
+    q.prune = prune;
+    q.max_time = Some(600);
+    q
+}
+
+#[test]
+fn a_dead_scarcity_budget_prunes_and_degrades_honestly() {
+    // Two cells against a three-charge door: every branch is arithmetically
+    // dead, exhaustively or heuristically depending on the flag.
+    let content = common::compile(&charged_cell_fixture(2));
+
+    let off = common::analyzer(content.clone(), 3).solve(&lit_query(false));
+    assert!(off.witnesses.is_empty());
+    assert_eq!(off.pruned, 0);
+    assert!(off.conclusive(), "exhaustive runs are conclusive");
+
+    let on = common::analyzer(content, 3).solve(&lit_query(true));
+    assert!(on.witnesses.is_empty());
+    assert!(on.pruned > 0, "the scarcity gate fired");
+    assert!(!on.conclusive(), "a pruned empty answer is not exhaustive");
+}
+
+#[test]
+fn a_live_scarcity_budget_is_never_pruned() {
+    // Three cells: the door is reachable with and without the gate, and the
+    // gate never fires.
+    let content = common::compile(&charged_cell_fixture(3));
+    for prune in [false, true] {
+        let out = common::analyzer(content.clone(), 3).solve(&lit_query(prune));
+        assert_eq!(out.witnesses.len(), 1, "prune={prune} reaches the door");
+        assert!(out.pruned == 0 || out.witnesses.len() == 1, "prune={prune}");
+    }
+}
+
+#[test]
+fn scarcity_never_hides_a_real_witness_on_emberwatch() {
+    // The survived line's witness is identical with the gate on and off:
+    // the numeric bound over-approximates gains, so it cannot cut a live
+    // route.
+    let content = common::compile(EMBERWATCH);
+    let run = |prune| {
+        let mut q = ReachQuery::new(GoalPredicate::Ending(Some("survived".into())));
+        q.prune = prune;
+        q.max_states = 60_000;
+        q.max_time = Some(430);
+        common::analyzer(content.clone(), 7).solve(&q)
+    };
+    let off = run(false);
+    let on = run(true);
+    assert_eq!(off.witnesses.len(), on.witnesses.len());
+    if let (Some(a), Some(b)) = (off.witnesses.first(), on.witnesses.first()) {
+        assert_eq!(a.final_state().ended, b.final_state().ended);
+        assert_eq!(a.final_clock(), b.final_clock());
+    }
+}

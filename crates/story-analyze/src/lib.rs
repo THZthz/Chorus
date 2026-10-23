@@ -31,6 +31,7 @@ pub mod mdp;
 pub mod pareto;
 pub mod query;
 pub mod replay;
+mod scarcity;
 pub mod search;
 pub mod stochastic;
 pub mod symmetry;

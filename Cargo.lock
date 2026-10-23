@@ -76,6 +76,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "story-analyze"
+version = "0.1.0"
+dependencies = [
+ "story-content",
+ "story-core",
+ "story-engine",
+ "story-lang",
+]
+
+[[package]]
 name = "story-cli"
 version = "0.1.0"
 dependencies = [

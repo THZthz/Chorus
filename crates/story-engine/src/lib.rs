@@ -24,6 +24,40 @@ use story_core::{
 pub use effects::{Effect, EffectCtx, EffectRegistry, RegistryEntry};
 pub use story_core::Snapshot;
 
+/// One stochastic settlement node (story-analyze spec §2.2): a `roll` or a
+/// `draw` whose operands the fork hook may replace. A chance point fires for
+/// rolls with `count >= 1, sides >= 1` and draws served from the deck
+/// permutation; count 0 applies the bonus only and is not a chance point
+/// (T11), and a draw beyond the remaining permutation runs the kernel's
+/// fallback/wrap path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChancePoint {
+    Roll {
+        count: u32,
+        sides: u32,
+        bonus: i64,
+        bind: String,
+    },
+    Draw {
+        deck: DeckId,
+        count: u32,
+        into: Option<story_content::ir::Into>,
+    },
+}
+
+/// The outcome a fork hook supplies for one chance point. `Roll` is the full
+/// bound value, bonus included; `Draw` mints the supplied cards in order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChanceOutcome {
+    Roll(i64),
+    Draw(Vec<CardId>),
+}
+
+/// The fork hook the forking settlement face consults at every chance point
+/// (story-analyze spec §2.2): it answers with the outcome the branch takes,
+/// or `None` to run the kernel's deterministic path.
+pub type ForkHook<'a> = &'a mut dyn FnMut(&ChancePoint) -> Option<ChanceOutcome>;
+
 /// Resolutions allowed in one `advance` (or one `commit`) call; exceeding it
 /// rolls the whole call back (kernel-api.md §6).
 pub const MAX_RESOLUTIONS_PER_ADVANCE: u64 = 4096;
@@ -109,6 +143,7 @@ pub struct CommitAction {
 // The engine facade (kernel-api.md §1)
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct Engine {
     pub(crate) content: Arc<Content>,
     pub(crate) registry: EffectRegistry,
@@ -154,6 +189,23 @@ impl Engine {
     /// The minimum advance unit in minutes.
     pub fn turn(&self) -> Time {
         self.turn
+    }
+
+    /// Install a state in place (story-analyze spec §2.2): every field beyond
+    /// `state` is boot-derived from content + seed, read-only after boot, and
+    /// copied by `Clone`, so the returned engine is this engine with only the
+    /// `State` swapped. This avoids snapshot serialization in the analyzer's
+    /// search inner loop.
+    pub fn with_state(&self, state: State) -> Engine {
+        let mut engine = self.clone();
+        engine.state = state;
+        engine
+    }
+
+    /// Mutating access to the state value; the engine's boot-derived fields
+    /// never read it ahead of an action, so the analyzer may write freely.
+    pub fn state_mut(&mut self) -> &mut State {
+        &mut self.state
     }
 
     /// Run the commit selection pipeline — eligibility, minimum-fill,
@@ -228,6 +280,25 @@ impl Engine {
     /// Open a new instance of a verb. All-or-nothing: a refusal or an effect
     /// failure leaves the state bit-identical and spends zero time (T3).
     pub fn commit(&mut self, action: CommitAction) -> Result<Vec<Event>, RuntimeDiagnostic> {
+        self.commit_inner(action, None)
+    }
+
+    /// The forking twin of `commit` (story-analyze spec §2.2): the same
+    /// settlement, with the hook consulted at every chance point; a `None`
+    /// answer runs the kernel's deterministic path.
+    pub fn commit_forked(
+        &mut self,
+        action: CommitAction,
+        fork: ForkHook<'_>,
+    ) -> Result<Vec<Event>, RuntimeDiagnostic> {
+        self.commit_inner(action, Some(fork))
+    }
+
+    fn commit_inner(
+        &mut self,
+        action: CommitAction,
+        fork: Option<ForkHook<'_>>,
+    ) -> Result<Vec<Event>, RuntimeDiagnostic> {
         if self.state.ended.is_some() {
             return Err(DiagKind::StoryEnded.refused("the story has ended"));
         }
@@ -255,7 +326,7 @@ impl Engine {
                 ));
             }
         };
-        let mut run = Run::new(self.state.clone());
+        let mut run = Run::with_fork(self.state.clone(), fork);
         let mut ev = Vec::new();
         // Candidacy checked every slot minimum against the submitted
         // bindings, so a shortfall here is unreachable; it returns a
@@ -341,6 +412,26 @@ impl Engine {
     /// content's `turn`): completions, expiries, and autonomous checkpoints
     /// under the total-order key `(moment, phase, id)` (kernel-api.md §6).
     pub fn advance(&mut self, dt: Time) -> Result<Vec<Event>, RuntimeDiagnostic> {
+        self.advance_inner(dt, None)
+    }
+
+    /// The forking twin of `advance` (story-analyze spec §2.2): the same
+    /// settlement loop — every completion unit, expiry, and checkpoint — with
+    /// the hook consulted at every chance point; a `None` answer runs the
+    /// kernel's deterministic path.
+    pub fn advance_forked(
+        &mut self,
+        dt: Time,
+        fork: ForkHook<'_>,
+    ) -> Result<Vec<Event>, RuntimeDiagnostic> {
+        self.advance_inner(dt, Some(fork))
+    }
+
+    fn advance_inner(
+        &mut self,
+        dt: Time,
+        fork: Option<ForkHook<'_>>,
+    ) -> Result<Vec<Event>, RuntimeDiagnostic> {
         if self.state.ended.is_some() {
             return Err(DiagKind::StoryEnded.refused("the story has ended"));
         }
@@ -350,7 +441,7 @@ impl Engine {
                 self.turn
             )));
         }
-        settle::advance(self, dt)
+        settle::advance(self, dt, fork)
     }
 
     // -- persistence face ---------------------------------------------------
@@ -547,7 +638,7 @@ impl Engine {
 
     /// Charge one resolution unit against the per-advance budget; exceeding
     /// the budget restores the entry state and fails the whole call (T5).
-    pub(crate) fn charge(&mut self, run: &mut Run) -> Result<(), crate::mint::Fail> {
+    pub(crate) fn charge(&mut self, run: &mut Run<'_>) -> Result<(), crate::mint::Fail> {
         run.units += 1;
         if run.units > MAX_RESOLUTIONS_PER_ADVANCE {
             self.state = run.entry.clone();

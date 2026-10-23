@@ -59,7 +59,7 @@ impl Engine {
     }
 
     /// Total expression evaluation; booleans are 0/1 (T1).
-    pub(crate) fn eval_expr(&self, e: &Expr, ctx: &Ctx) -> i64 {
+    pub(crate) fn eval_expr_ctx(&self, e: &Expr, ctx: &Ctx) -> i64 {
         match e {
             Expr::Lit(n) => *n,
             Expr::Bool(b) => i64::from(*b),
@@ -72,25 +72,25 @@ impl Engine {
                 None => self.aspect_default(key),
             },
             Expr::Aspect { scope, query, key } => self
-                .scope_entities(scope, ctx)
+                .scope_entities_ctx(scope, ctx)
                 .into_iter()
-                .filter(|e| self.matches(e, query, ctx))
+                .filter(|e| self.matches_ctx(e, query, ctx))
                 .map(|e| self.read(e, key))
                 .sum(),
             Expr::Count { scope, query } => self
-                .scope_entities(scope, ctx)
+                .scope_entities_ctx(scope, ctx)
                 .into_iter()
-                .filter(|e| self.matches(e, query, ctx))
+                .filter(|e| self.matches_ctx(e, query, ctx))
                 .count() as i64,
             Expr::Exists { scope, query } => i64::from(
-                self.scope_entities(scope, ctx)
+                self.scope_entities_ctx(scope, ctx)
                     .into_iter()
-                    .any(|e| self.matches(&e, query, ctx)),
+                    .any(|e| self.matches_ctx(&e, query, ctx)),
             ),
             Expr::Attr { scope, query, key } => self
-                .scope_entities(scope, ctx)
+                .scope_entities_ctx(scope, ctx)
                 .into_iter()
-                .filter(|e| self.matches(e, query, ctx))
+                .filter(|e| self.matches_ctx(e, query, ctx))
                 .map(|e| self.read_attr(e, key))
                 .sum(),
             Expr::Legacy(key) => self.state.legacy.get(key).copied().unwrap_or(0),
@@ -105,8 +105,8 @@ impl Engine {
             Expr::Alive(card) => i64::from(self.named_entity(card.as_str()).is_some()),
             Expr::Rel { kind, from, to } => i64::from(self.eval_rel(kind, from, to, ctx)),
             Expr::Arith { op, left, right } => {
-                let a = self.eval_expr(left, ctx);
-                let b = self.eval_expr(right, ctx);
+                let a = self.eval_expr_ctx(left, ctx);
+                let b = self.eval_expr_ctx(right, ctx);
                 match op {
                     story_content::ir::ArithOp::Add => a.saturating_add(b),
                     story_content::ir::ArithOp::Sub => a.saturating_sub(b),
@@ -121,8 +121,8 @@ impl Engine {
                 }
             }
             Expr::Cmp { op, left, right } => {
-                let a = self.eval_expr(left, ctx);
-                let b = self.eval_expr(right, ctx);
+                let a = self.eval_expr_ctx(left, ctx);
+                let b = self.eval_expr_ctx(right, ctx);
                 let holds = match op {
                     CmpOp::Ge => a >= b,
                     CmpOp::Le => a <= b,
@@ -134,20 +134,49 @@ impl Engine {
                 i64::from(holds)
             }
             Expr::Logic { op, left, right } => {
-                let a = self.eval_expr(left, ctx) != 0;
+                let a = self.eval_expr_ctx(left, ctx) != 0;
                 let holds = match op {
-                    story_content::ir::LogicOp::And => a && self.eval_expr(right, ctx) != 0,
-                    story_content::ir::LogicOp::Or => a || self.eval_expr(right, ctx) != 0,
+                    story_content::ir::LogicOp::And => a && self.eval_expr_ctx(right, ctx) != 0,
+                    story_content::ir::LogicOp::Or => a || self.eval_expr_ctx(right, ctx) != 0,
                 };
                 i64::from(holds)
             }
-            Expr::Not(inner) => i64::from(self.eval_expr(inner, ctx) == 0),
+            Expr::Not(inner) => i64::from(self.eval_expr_ctx(inner, ctx) == 0),
         }
     }
 
     /// A condition holds when its evaluation is nonzero.
-    pub(crate) fn eval_cond(&self, e: &Expr, ctx: &Ctx) -> bool {
-        self.eval_expr(e, ctx) != 0
+    pub(crate) fn eval_cond_ctx(&self, e: &Expr, ctx: &Ctx) -> bool {
+        self.eval_expr_ctx(e, ctx) != 0
+    }
+
+    // -- context-free evaluation face (story-analyze spec §2.2) ---------------
+    //
+    // Read-only wrappers for analysis tooling: they fix the context-free
+    // context (`sit = None`, no subject, no roll binding, no submitted
+    // bindings, no recipe context — `counter` reads 0). Totality (T1) and
+    // the context-free scope semantics (T9) stay kernel-side.
+
+    /// Evaluate one expression context-free (T1 totality).
+    pub fn eval_expr(&self, e: &Expr) -> i64 {
+        self.eval_expr_ctx(e, &Ctx::default())
+    }
+
+    /// Evaluate one condition context-free; a condition holds when its
+    /// evaluation is nonzero.
+    pub fn eval_cond(&self, e: &Expr) -> bool {
+        self.eval_cond_ctx(e, &Ctx::default())
+    }
+
+    /// Query-term match over one entity, context-free (T9 scope semantics).
+    pub fn matches(&self, e: EntityId, terms: &[QueryTerm]) -> bool {
+        self.matches_ctx(&e, terms, &Ctx::default())
+    }
+
+    /// Entities of one scope in the scope's deterministic order, context-free:
+    /// `Interior`, `Slot`, and `Bindings` read empty (T9).
+    pub fn scope_entities(&self, scope: &Scope) -> Vec<EntityId> {
+        self.scope_entities_ctx(scope, &Ctx::default())
     }
 
     // -- relations (kernel-api.md §5, spec.md §4.9) ---------------------------
@@ -160,9 +189,9 @@ impl Engine {
             CardRef::Name(card) => self.named_entity(card.as_str()),
             CardRef::Subject => ctx.subject,
             CardRef::Query { scope, terms } => self
-                .scope_entities(scope, ctx)
+                .scope_entities_ctx(scope, ctx)
                 .into_iter()
-                .find(|e| self.matches(e, terms, ctx)),
+                .find(|e| self.matches_ctx(e, terms, ctx)),
         }
     }
 
@@ -225,7 +254,7 @@ impl Engine {
     /// Entities of one scope, in the scope's deterministic order. `Interior`,
     /// `Slot`, and `Bindings` read empty outside a running situation (T9);
     /// commit selection substitutes the submitted bindings for slot scopes.
-    pub(crate) fn scope_entities(&self, scope: &Scope, ctx: &Ctx) -> Vec<EntityId> {
+    pub(crate) fn scope_entities_ctx(&self, scope: &Scope, ctx: &Ctx) -> Vec<EntityId> {
         match scope {
             Scope::Interior => match ctx.sit.and_then(|s| self.state.situations.get(&s)) {
                 Some(sit) => self.zone_entities(sit.interior),
@@ -370,7 +399,7 @@ impl Engine {
     // -- queries --------------------------------------------------------------
 
     /// Space-conjoined query terms over one candidate.
-    pub(crate) fn matches(&self, e: &EntityId, terms: &[QueryTerm], ctx: &Ctx) -> bool {
+    pub(crate) fn matches_ctx(&self, e: &EntityId, terms: &[QueryTerm], ctx: &Ctx) -> bool {
         terms.iter().all(|t| self.matches_term(e, t, ctx))
     }
 
@@ -392,7 +421,7 @@ impl Engine {
             QueryTerm::Pred(body) => {
                 let mut sub = ctx.clone();
                 sub.subject = Some(*e);
-                self.eval_cond(body, &sub)
+                self.eval_cond_ctx(body, &sub)
             }
         }
     }
@@ -421,7 +450,7 @@ impl Engine {
         terms: &story_content::ir::SlotDecl,
         ctx: &Ctx,
     ) -> bool {
-        self.matches(e, &terms.query, ctx)
+        self.matches_ctx(e, &terms.query, ctx)
     }
 
     // -- targets (kernel-api.md §8) --------------------------------------------
@@ -440,17 +469,17 @@ impl Engine {
             Target::Name { card, .. } => self.named_entity(card.as_str()).into_iter().collect(),
             Target::Slot(s) => self.slot_bindings(ctx.sit, ctx.sel_bindings.as_deref(), s),
             Target::Query { scope, terms } => self
-                .scope_entities(scope, ctx)
+                .scope_entities_ctx(scope, ctx)
                 .into_iter()
-                .filter(|e| self.matches(e, terms, ctx))
+                .filter(|e| self.matches_ctx(e, terms, ctx))
                 .collect(),
             Target::BareQuery(terms) => {
-                let interior = self.scope_entities(&Scope::Interior, ctx);
-                let world = self.scope_entities(&Scope::World, ctx);
+                let interior = self.scope_entities_ctx(&Scope::Interior, ctx);
+                let world = self.scope_entities_ctx(&Scope::World, ctx);
                 interior
                     .into_iter()
                     .chain(world)
-                    .filter(|e| self.matches(e, terms, ctx))
+                    .filter(|e| self.matches_ctx(e, terms, ctx))
                     .collect()
             }
             Target::Handle(h) => handles.get(h).cloned().unwrap_or_default(),

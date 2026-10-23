@@ -1,0 +1,18 @@
+[package]
+name = "story-analyze"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+story-core = { workspace = true }
+story-content = { workspace = true }
+story-engine = { workspace = true }
+story-lang = { workspace = true, optional = true }
+
+[features]
+# Parse query goals directly in `.sw` condition syntax and inline declared
+# predicates (story-analyze spec §1.1).
+lang = ["dep:story-lang"]
+
+[dev-dependencies]
+story-lang = { workspace = true }

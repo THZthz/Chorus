@@ -6,6 +6,7 @@ members = [
     "crates/story-lang",
     "crates/story-engine",
     "crates/story-cli",
+    "crates/story-analyze",
 ]
 
 [workspace.package]
@@ -19,3 +20,4 @@ story-core = { path = "crates/story-core" }
 story-content = { path = "crates/story-content" }
 story-engine = { path = "crates/story-engine" }
 story-lang = { path = "crates/story-lang" }
+story-analyze = { path = "crates/story-analyze" }

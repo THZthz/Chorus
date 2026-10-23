@@ -61,14 +61,16 @@ impl EffectCtx {
 }
 
 /// One registry entry: precompiled nodes or a host closure, addressed by op
-/// name through `EffectNode::Op`.
+/// name through `EffectNode::Op`. The host closure rides an `Arc`, so a
+/// clone shares it (story-analyze spec §2.2).
+#[derive(Clone)]
 pub enum RegistryEntry {
     Compiled(Vec<EffectNode>),
     Host(Arc<dyn Effect>),
 }
 
 /// The op-name registry; `boot` verifies every referenced op is registered.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct EffectRegistry {
     pub(crate) ops: BTreeMap<String, RegistryEntry>,
 }
@@ -101,7 +103,7 @@ impl Engine {
     /// negative takes the effect-failure path (a constant negative is
     /// refused at compile time as [E246]).
     pub(crate) fn eval_count(&self, e: &Expr, ctx: &Ctx) -> Result<i64, Fail> {
-        let n = self.eval_expr(e, ctx);
+        let n = self.eval_expr_ctx(e, ctx);
         if n < 0 {
             return Err(Fail::new(
                 DiagKind::EffectFailure,
@@ -123,7 +125,7 @@ impl Engine {
         fctx: &mut EffectCtx,
         recipe: Option<story_core::RecipeId>,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
         clear_handles: bool,
     ) -> Result<(), Fail> {
         if run.depth >= crate::MAX_RESOLUTION_DEPTH {
@@ -148,7 +150,7 @@ impl Engine {
         fctx: &mut EffectCtx,
         recipe: Option<story_core::RecipeId>,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
         clear_handles: bool,
     ) -> Result<(), Fail> {
         for node in nodes {
@@ -166,7 +168,7 @@ impl Engine {
         fctx: &mut EffectCtx,
         recipe: Option<story_core::RecipeId>,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
     ) -> Result<(), Fail> {
         match node {
             EffectNode::Spawn {
@@ -232,7 +234,7 @@ impl Engine {
             } => {
                 let ids =
                     self.resolve_target(target, &fctx.eval_ctx(recipe.as_ref()), &fctx.handles);
-                let v = self.eval_expr(expr, &fctx.eval_ctx(recipe.as_ref()));
+                let v = self.eval_expr_ctx(expr, &fctx.eval_ctx(recipe.as_ref()));
                 for id in ids {
                     let cur = self.read(id, key);
                     let mut nv = match op {
@@ -259,7 +261,7 @@ impl Engine {
                 }
             }
             EffectNode::Legacy { key, op, expr } => {
-                let v = self.eval_expr(expr, &fctx.eval_ctx(recipe.as_ref()));
+                let v = self.eval_expr_ctx(expr, &fctx.eval_ctx(recipe.as_ref()));
                 let cur = self.state.legacy.get(key).copied().unwrap_or(0);
                 let mut nv = match op {
                     story_content::ir::SetOp::Assign => v,
@@ -279,12 +281,12 @@ impl Engine {
                 count,
                 sides,
                 bonus,
-                bind: _,
+                bind,
             } => {
                 let ctx = fctx.eval_ctx(recipe.as_ref());
-                let count = self.eval_expr(count, &ctx);
-                let sides = self.eval_expr(sides, &ctx);
-                let mut total = self.eval_expr(bonus, &ctx);
+                let count = self.eval_expr_ctx(count, &ctx);
+                let sides = self.eval_expr_ctx(sides, &ctx);
+                let mut total = self.eval_expr_ctx(bonus, &ctx);
                 // Operands are validated at effect time; a violation is an
                 // effect failure rolling the unit back (T11).
                 if count < 0 || sides < 1 {
@@ -293,21 +295,93 @@ impl Engine {
                         format!("invalid roll operands: {count}d{sides}"),
                     ));
                 }
-                for _ in 0..count {
-                    let die = (story_core::rng::splitmix64(self.seed ^ self.state.rng_counter)
-                        % sides as u64) as i64
-                        + 1;
-                    self.state.rng_counter = self.state.rng_counter.wrapping_add(1);
-                    total = total.saturating_add(die);
+                // The fork hook drives the node when it answers (story-analyze
+                // spec §2.2): a chance point fires for count >= 1, sides >= 1;
+                // count 0 applies the bonus only. The supplied value is the
+                // full bound result, bonus included, and `rng_counter`
+                // advances by `count` uniformly — exactly the deterministic
+                // path's charge — so a recorded outcome reproduces the
+                // unforked state bit-for-bit.
+                let mut chosen = None;
+                if count >= 1 {
+                    if let Some(hook) = run.fork.as_mut() {
+                        let point = crate::ChancePoint::Roll {
+                            count: u32::try_from(count).unwrap_or(u32::MAX),
+                            sides: u32::try_from(sides).unwrap_or(u32::MAX),
+                            bonus: total,
+                            bind: bind.clone(),
+                        };
+                        chosen = hook(&point);
+                    }
                 }
-                fctx.roll = Some(total);
+                match chosen {
+                    Some(crate::ChanceOutcome::Roll(v)) => {
+                        self.state.rng_counter = self.state.rng_counter.wrapping_add(count as u64);
+                        fctx.roll = Some(v);
+                    }
+                    _ => {
+                        for _ in 0..count {
+                            let die = (story_core::rng::splitmix64(
+                                self.seed ^ self.state.rng_counter,
+                            ) % sides as u64) as i64
+                                + 1;
+                            self.state.rng_counter = self.state.rng_counter.wrapping_add(1);
+                            total = total.saturating_add(die);
+                        }
+                        fctx.roll = Some(total);
+                    }
+                }
             }
-            EffectNode::Draw { deck, count, into } => {
+            EffectNode::Draw {
+                    deck,
+                    count,
+                    into: into_opt,
+                } => {
                 let n = self.eval_count(count, &fctx.eval_ctx(recipe.as_ref()))?;
-                let into = into.clone().unwrap_or(IntoZone::Interior);
-                for _ in 0..n {
-                    let card = self.draw_card(deck)?;
-                    self.mint(&card, &into, fctx, ev)?;
+                let into = into_opt.clone().unwrap_or(IntoZone::Interior);
+                // A chance point fires when the requested count is served
+                // entirely from the permutation; a draw beyond the remaining
+                // permutation falls through to the kernel's fallback/wrap
+                // path unchanged (story-analyze spec §2.2). The supplied cards
+                // mint in order and the cursor still advances by the
+                // requested count uniformly across branches, so `decks` stays
+                // canonical-key material.
+                let mut chosen = None;
+                if n >= 1 {
+                    let known = self.content.decks.contains_key(deck.as_str());
+                    let cursor = self.state.decks.get(deck).copied().unwrap_or(0);
+                    let remaining = self
+                        .deck_orders
+                        .get(deck)
+                        .map(|p| p.len() as u64)
+                        .unwrap_or(0);
+                    if known && cursor.wrapping_add(n as u64) <= remaining {
+                        if let Some(hook) = run.fork.as_mut() {
+                            let point = crate::ChancePoint::Draw {
+                                deck: deck.clone(),
+                                count: u32::try_from(n).unwrap_or(u32::MAX),
+                                into: into_opt.clone(),
+                            };
+                            chosen = hook(&point);
+                        }
+                    }
+                }
+                match chosen {
+                    Some(crate::ChanceOutcome::Draw(cards)) => {
+                        for card in &cards {
+                            self.mint(card, &into, fctx, ev)?;
+                        }
+                        let cursor = self.state.decks.get(deck).copied().unwrap_or(0);
+                        self.state
+                            .decks
+                            .insert(deck.clone(), cursor.wrapping_add(n as u64));
+                    }
+                    _ => {
+                        for _ in 0..n {
+                            let card = self.draw_card(deck)?;
+                            self.mint(&card, &into, fctx, ev)?;
+                        }
+                    }
                 }
             }
             EffectNode::Start { verb, via, count } => {
@@ -362,7 +436,7 @@ impl Engine {
                 }
             }
             EffectNode::Branch { cond, then, els } => {
-                let taken = if self.eval_cond(cond, &fctx.eval_ctx(recipe.as_ref())) {
+                let taken = if self.eval_cond_ctx(cond, &fctx.eval_ctx(recipe.as_ref())) {
                     then
                 } else {
                     els
@@ -507,7 +581,7 @@ impl Engine {
         n: i64,
         fctx: &mut EffectCtx,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
     ) -> Result<(), Fail> {
         let Some(verb_decl) = self.content.verbs.get(verb.as_str()).cloned() else {
             return Err(Fail::new(
@@ -663,7 +737,7 @@ impl Engine {
         fctx: &mut EffectCtx,
         recipe: Option<&story_core::RecipeId>,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
     ) -> Result<(), Fail> {
         let mut rules: Vec<&story_content::ir::Rule> = book
             .rules
@@ -673,7 +747,7 @@ impl Engine {
         rules.sort_by_key(|r| (r.priority, r.decl_index));
         for r in rules {
             if let Some(w) = &r.when {
-                if !self.eval_cond(w, &fctx.eval_ctx(recipe)) {
+                if !self.eval_cond_ctx(w, &fctx.eval_ctx(recipe)) {
                     continue;
                 }
             }

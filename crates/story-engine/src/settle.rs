@@ -19,19 +19,33 @@ use story_core::{
 /// The budget guard of one engine call: the entry checkpoint for the only
 /// whole-call rollback (Livelock), the resolution counter, and the native
 /// recursion depth of inline resolution (instant start chains, signal
-/// cycles), capped well below the stack limit.
-pub(crate) struct Run {
+/// cycles), capped well below the stack limit. The optional fork hook
+/// (story-analyze spec §2.2) rides along so every settlement path — effect
+/// lists, books, `start`/`continue` adoption, checkpoints — sees it without
+/// duplicating the machinery.
+pub(crate) struct Run<'fork> {
     pub(crate) entry: State,
     pub(crate) units: u64,
     pub(crate) depth: u32,
+    pub(crate) fork: Option<crate::ForkHook<'fork>>,
 }
 
-impl Run {
+impl<'fork> Run<'fork> {
     pub(crate) fn new(entry: State) -> Self {
         Run {
             entry,
             units: 0,
             depth: 0,
+            fork: None,
+        }
+    }
+
+    pub(crate) fn with_fork(entry: State, fork: Option<crate::ForkHook<'fork>>) -> Self {
+        Run {
+            entry,
+            units: 0,
+            depth: 0,
+            fork,
         }
     }
 }
@@ -361,14 +375,18 @@ fn collect_ops(content: &Content, ops: &mut BTreeSet<String>) {
 // The settlement loop (kernel-api.md §6)
 // ---------------------------------------------------------------------------
 
-pub(crate) fn advance(engine: &mut Engine, dt: Time) -> Result<Vec<Event>, RuntimeDiagnostic> {
+pub(crate) fn advance(
+    engine: &mut Engine,
+    dt: Time,
+    fork: Option<crate::ForkHook<'_>>,
+) -> Result<Vec<Event>, RuntimeDiagnostic> {
     let Some(target) = engine.state.now.checked_add(dt) else {
         return Err(DiagKind::BadDuration.refused(format!(
             "advance to now {} + {dt} overflows the clock",
             engine.state.now
         )));
     };
-    let mut run = Run::new(engine.state.clone());
+    let mut run = Run::with_fork(engine.state.clone(), fork);
     let mut ev: Vec<Event> = Vec::new();
     // Each distinct settled moment polls once, after its 0/1 phases finish;
     // the end of the advance polls once (deduplicated against it).
@@ -515,7 +533,7 @@ impl Engine {
         &mut self,
         sit: SituationId,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
     ) -> Result<(), Fail> {
         let checkpoint = self.state.clone();
         match self.completion_steps(sit, ev, run) {
@@ -539,7 +557,7 @@ impl Engine {
         &mut self,
         sit: SituationId,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
     ) -> Result<(), Fail> {
         let Some(s) = self.state.situations.get(&sit) else {
             return Ok(());
@@ -645,7 +663,7 @@ impl Engine {
         sit: SituationId,
         rec: &story_content::ir::RecipeDecl,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
     ) -> Result<(), Fail> {
         let interior = match self.state.situations.get(&sit) {
             Some(s) => s.interior,
@@ -728,7 +746,7 @@ impl Engine {
         current: story_core::RecipeId,
         arms: Vec<story_core::RecipeId>,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
     ) -> Result<(), Fail> {
         self.charge(run)?;
         if run.depth >= crate::MAX_RESOLUTION_DEPTH {
@@ -753,7 +771,7 @@ impl Engine {
         current: story_core::RecipeId,
         arms: Vec<story_core::RecipeId>,
         ev: &mut Vec<Event>,
-        run: &mut Run,
+        run: &mut Run<'_>,
     ) -> Result<(), Fail> {
         let interior = self.state.situations[&sit].interior;
         // (1) The executing recipe's consuming slots burned at settlement.
@@ -782,7 +800,7 @@ impl Engine {
                         roll: None,
                         recipe: Some(rec.id.clone()),
                     };
-                    self.eval_cond(w, &ctx)
+                    self.eval_cond_ctx(w, &ctx)
                 }
             };
             if when_holds && self.max_left(&rec) {
@@ -879,7 +897,7 @@ impl Engine {
     /// completion book alone (card books belong to completion, not abortion),
     /// then the release path. The book is best-effort: a failing abort book
     /// rolls back and the release continues. Nothing authored invokes this.
-    fn abort_situation(&mut self, sit: SituationId, f: &Fail, ev: &mut Vec<Event>, run: &mut Run) {
+    fn abort_situation(&mut self, sit: SituationId, f: &Fail, ev: &mut Vec<Event>, run: &mut Run<'_>) {
         ev.push(Event::ResolutionFailed {
             sit,
             reason: f.display_reason(),
@@ -920,7 +938,7 @@ fn settle_expiry(
     engine: &mut Engine,
     e: EntityId,
     ev: &mut Vec<Event>,
-    run: &mut Run,
+    run: &mut Run<'_>,
 ) -> Result<(), Fail> {
     let Some(ent) = engine.state.entities.get(&e) else {
         return Ok(());
@@ -969,7 +987,7 @@ fn settle_expiry(
 pub(crate) fn checkpoint(
     engine: &mut Engine,
     ev: &mut Vec<Event>,
-    run: &mut Run,
+    run: &mut Run<'_>,
 ) -> Result<(), RuntimeDiagnostic> {
     engine.charge(run).map_err(Fail::into_diagnostic)?;
     let verbs: Vec<VerbId> = {

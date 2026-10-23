@@ -84,12 +84,12 @@ impl Engine {
             return Selection::Nothing;
         }
         if let Some(w) = &rec.when {
-            if !self.eval_cond(w, ctx) {
+            if !self.eval_cond_ctx(w, ctx) {
                 return Selection::Nothing;
             }
         }
         for g in &rec.guards {
-            if self.eval_cond(&g.when, ctx) {
+            if self.eval_cond_ctx(&g.when, ctx) {
                 return Selection::GuardRefused(g.prose.clone());
             }
         }

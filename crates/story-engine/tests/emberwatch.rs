@@ -8,6 +8,9 @@ use common::{
 };
 use story_engine::{Engine, Event, Snapshot};
 
+/// One replayable host operation (the undo stack's redo face).
+type EngineOp = Box<dyn Fn(&mut Engine)>;
+
 const EMBERWATCH: &str = include_str!("../../../docs/emberwatch.sw");
 
 fn game() -> Engine {
@@ -142,7 +145,7 @@ fn snapshot_undo_loop_has_zero_drift() {
     // The host-held undo stack: a snapshot pushed before every
     // player-visible action (L2).
     let mut undo: Vec<Snapshot> = Vec::new();
-    let mut ops: Vec<Box<dyn Fn(&mut Engine)>> = Vec::new();
+    let mut ops: Vec<EngineOp> = Vec::new();
     macro_rules! step {
         ($op:expr) => {{
             undo.push(e.snapshot());

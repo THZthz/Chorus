@@ -123,18 +123,35 @@ pub fn is_bound(state: &State, e: EntityId) -> bool {
 /// contiguous ids, so full batch symmetry is preserved. Classes come back
 /// signature-sorted, members ascending by id — the canonical entity order.
 pub fn symmetry_classes(state: &State, content: &Content) -> Vec<Vec<EntityId>> {
-    let oracle = MatchOracle::new(content);
-    symmetry_classes_with(state, content, &oracle)
+    let cache = SymmetryCache::new(content);
+    symmetry_classes_with(state, content, &cache)
 }
 
-/// The hot path: the same classification with a caller-held oracle, so the
-/// content-wide effect walk runs once per analysis, not once per state.
+/// The content-derived cache behind the symmetry classifier: the match
+/// oracle plus the candidacy surfaces its contiguity refinement splits on.
+/// Both depend only on the content, so the analyzer builds one per boot and
+/// every state's classification reuses it.
+pub(crate) struct SymmetryCache {
+    oracle: MatchOracle,
+    surfaces: Vec<BTreeSet<CardId>>,
+}
+
+impl SymmetryCache {
+    pub(crate) fn new(content: &Content) -> SymmetryCache {
+        let oracle = MatchOracle::new(content);
+        let surfaces = candidacy_surfaces(content, &oracle);
+        SymmetryCache { oracle, surfaces }
+    }
+}
+
+/// The hot path: the same classification with a caller-held cache, so the
+/// content-wide walks run once per analysis, not once per state.
 pub(crate) fn symmetry_classes_with(
     state: &State,
     content: &Content,
-    oracle: &MatchOracle,
+    cache: &SymmetryCache,
 ) -> Vec<Vec<EntityId>> {
-    let surfaces = candidacy_surfaces(content, oracle);
+    let surfaces = &cache.surfaces;
 
     // Ascending id = mint order. Signatures are built once and compared in
     // place — the grouping never clones one.
@@ -180,7 +197,7 @@ pub(crate) fn symmetry_classes_with(
                     && sigs[kidx(k)] != *sig
                     && shares_candidacy(
                         content,
-                        &surfaces,
+                        surfaces,
                         &sigs[kidx(k)].prototype,
                         &sig.prototype,
                     )

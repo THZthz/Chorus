@@ -193,13 +193,28 @@ impl Engine {
 
     /// Install a state in place (story-analyze spec §2.2): every field beyond
     /// `state` is boot-derived from content + seed, read-only after boot, and
-    /// copied by `Clone`, so the returned engine is this engine with only the
-    /// `State` swapped. This avoids snapshot serialization in the analyzer's
-    /// search inner loop.
+    /// copied cheaply (the registry and deck permutations hang off shared
+    /// structures), so the returned engine is this engine with only the
+    /// `State` moved in — the template's own state is not copied. This avoids
+    /// snapshot serialization in the analyzer's search inner loop.
     pub fn with_state(&self, state: State) -> Engine {
-        let mut engine = self.clone();
-        engine.state = state;
-        engine
+        Engine {
+            content: Arc::clone(&self.content),
+            registry: self.registry.clone(),
+            state,
+            seed: self.seed,
+            zone_ids: self.zone_ids.clone(),
+            zone_order: self.zone_order.clone(),
+            zone_parent: self.zone_parent.clone(),
+            home: self.home,
+            turn: self.turn,
+            deck_orders: self.deck_orders.clone(),
+        }
+    }
+
+    /// Consume the engine, returning its final state.
+    pub fn into_state(self) -> State {
+        self.state
     }
 
     /// Mutating access to the state value; the engine's boot-derived fields

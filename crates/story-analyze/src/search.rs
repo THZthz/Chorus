@@ -15,8 +15,9 @@ use story_core::{RecipeId, State, Time};
 use story_content::runtime::RuntimeDiagnostic;
 use story_engine::{ChanceOutcome, ChancePoint, EffectRegistry, Engine, Event};
 
-use crate::causal::{self, CausalGraph, MatchOracle};
+use crate::causal::{self, CausalGraph};
 use crate::canonical::CanonicalStateKey;
+use crate::symmetry::SymmetryCache;
 use crate::query::{GoalCtx, GoalPredicate, ReachQuery, RngMode, SearchObjective};
 use crate::replay::{Replayer, ReplayError};
 use crate::transitions::{
@@ -37,10 +38,11 @@ pub struct Analyzer {
     seed: u64,
     legacy_in: Option<BTreeMap<String, i64>>,
     causal: CausalGraph,
-    /// The content-wide mutation oracle, built once at boot: canonical keys
-    /// and the symmetry classifier read it per state, and rebuilding it per
-    /// state would walk every effect in the content each time.
-    oracle: MatchOracle,
+    /// The content-derived symmetry cache (match oracle plus candidacy
+    /// surfaces), built once at boot: canonical keys and the symmetry
+    /// classifier read it per state, and rebuilding it per state would walk
+    /// every effect in the content each time.
+    symmetry: SymmetryCache,
     /// The scratch engine: the search's evaluation face and the generator's
     /// template. Its state is the state under evaluation.
     engine: Engine,
@@ -64,7 +66,7 @@ impl Analyzer {
         let (engine, warnings) =
             Engine::boot(content.clone(), registry.clone(), seed, legacy_in.clone());
         let causal = CausalGraph::build(&content);
-        let oracle = MatchOracle::new(&content);
+        let symmetry = SymmetryCache::new(&content);
         let start = engine.state().clone();
         (
             Analyzer {
@@ -73,7 +75,7 @@ impl Analyzer {
                 seed,
                 legacy_in,
                 causal,
-                oracle,
+                symmetry,
                 engine,
                 start,
                 heuristic: true,
@@ -100,10 +102,10 @@ impl Analyzer {
         &self.content
     }
 
-    /// The content-wide mutation oracle, held for the canonical-key and
+    /// The content-derived symmetry cache, held for the canonical-key and
     /// symmetry fast paths.
-    pub(crate) fn oracle(&self) -> &MatchOracle {
-        &self.oracle
+    pub(crate) fn symmetry(&self) -> &SymmetryCache {
+        &self.symmetry
     }
 
     pub fn causal(&self) -> &CausalGraph {
@@ -301,7 +303,7 @@ impl Analyzer {
                             continue;
                         }
                     }
-                    let key = CanonicalStateKey::of_with(&state_after, &self.content, &self.oracle);
+                    let key = CanonicalStateKey::of_with(&state_after, &self.content, &self.symmetry);
                     let now = state_after.now;
                     let actions = arena[idx].actions + record.actions();
                     let depth = arena[idx].depth + record.depth();
@@ -437,8 +439,8 @@ impl Analyzer {
             let merged_ok = match run {
                 Err(_) => false,
                 Ok(events) => {
-                    let key = CanonicalStateKey::of_with(engine.state(), &self.content, &self.oracle);
-                    let want = CanonicalStateKey::of_with(&b.state_after, &self.content, &self.oracle);
+                    let key = CanonicalStateKey::of_with(engine.state(), &self.content, &self.symmetry);
+                    let want = CanonicalStateKey::of_with(&b.state_after, &self.content, &self.symmetry);
                     events == b.events && key == want
                 }
             };
@@ -487,7 +489,7 @@ impl Analyzer {
             allow_mid_run_bind: config.allow_mid_run_bind,
         };
         let mut gen = self.generator(&query);
-        let start_key = CanonicalStateKey::of_with(&self.start, &self.content, &self.oracle);
+        let start_key = CanonicalStateKey::of_with(&self.start, &self.content, &self.symmetry);
         let mut nodes: Vec<GraphNode> = Vec::new();
         let mut edges: Vec<GraphEdge> = Vec::new();
         let mut index: BTreeMap<CanonicalStateKey, usize> = BTreeMap::new();
@@ -551,7 +553,7 @@ impl Analyzer {
                     let key = CanonicalStateKey::of_with(
                         &record.state_after,
                         &self.content,
-                        &self.oracle,
+                        &self.symmetry,
                     );
                     let to = match index.get(&key) {
                         Some(&t) => t,

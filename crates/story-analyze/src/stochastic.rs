@@ -532,7 +532,7 @@ fn run_once(
     Settlement {
         outcomes: Vec::new(),
         probability: 1.0,
-        result: result.map(|ev| (ev, engine.state().clone())),
+        result: result.map(|ev| (ev, engine.into_state())),
     }
 }
 

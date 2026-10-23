@@ -35,6 +35,7 @@ impl Engine {
     // `Engine` and `EffectRegistry` are `Clone`; every `Engine` field beyond
     // `state` is boot-derived and read-only after boot.
     pub fn with_state(&self, state: State) -> Engine;
+    pub fn into_state(self) -> State;
     pub fn state_mut(&mut self) -> &mut State;
     // context-free evaluation face (`sit = None`; §5, T9):
     pub fn eval_expr(&self, expr: &Expr) -> i64;
@@ -67,7 +68,7 @@ pub enum ChancePoint {
 pub enum ChanceOutcome { Roll(i64), Draw(Vec<CardId>) }
 ```
 
-- **Tool faces** (spec.md §4.10): `with_state` / `state_mut` install and mutate the `State` of a cloned engine, so a driver moves between states in memory without re-booting or snapshot serialization.
+- **Tool faces** (spec.md §4.10): `with_state` / `into_state` / `state_mut` move the `State` of an engine in and out without re-booting or snapshot serialization — `with_state` clones only the boot-derived fields and takes the state by value.
 - The **context-free evaluation face** evaluates expressions, conditions, query terms, and scopes with `sit = None` through the kernel's own machinery (§5, T9) — goal and invariant checking stay in the kernel, never duplicated in tools.
 - The **forkable settlement face** pauses at each chance point: one fires only for `count ≥ 1` and `sides ≥ 1` — count 0 applies the bonus only and never pauses (T11). `ChanceOutcome::Roll` carries the full bound value, bonus included; a forked `Draw` mints the supplied cards in order and advances the deck cursor by the requested count, falling through to the kernel's fallback/wrap path past the permutation's end. Per-unit rollback is unchanged (T4).
 

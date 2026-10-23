@@ -22,8 +22,7 @@ use story_core::{
     Binding, EntityId, MintPolicy, SituationId, State, Time, ZoneId, ZoneKind,
 };
 
-use crate::causal::MatchOracle;
-use crate::symmetry::symmetry_classes_with;
+use crate::symmetry::{symmetry_classes_with, SymmetryCache};
 
 /// The canonical key of a state (§5.3). Two states key equal exactly when
 /// they are the same logical state up to entity interchange within symmetry
@@ -36,18 +35,17 @@ impl CanonicalStateKey {
     /// symmetric flags (for the relation re-canonicalization) and the
     /// candidacy surfaces behind the symmetry classes.
     pub fn of(state: &State, content: &Content) -> CanonicalStateKey {
-        Self::of_with(state, content, &MatchOracle::new(content))
+        Self::of_with(state, content, &SymmetryCache::new(content))
     }
 
-    /// The hot path: the same canonicalization with a caller-held oracle,
-    /// so the content-wide effect walk runs once per analysis, not once per
-    /// state.
+    /// The hot path: the same canonicalization with a caller-held cache, so
+    /// the content-wide walks run once per analysis, not once per state.
     pub(crate) fn of_with(
         state: &State,
         content: &Content,
-        oracle: &MatchOracle,
+        cache: &SymmetryCache,
     ) -> CanonicalStateKey {
-        let classes = symmetry_classes_with(state, content, oracle);
+        let classes = symmetry_classes_with(state, content, cache);
 
         // Canonical entity order: symmetry classes occupy contiguous index
         // ranges, members ascending within a class; the class walk covers

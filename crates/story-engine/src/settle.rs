@@ -945,7 +945,9 @@ fn settle_expiry(
     };
     let prototype = ent.prototype.clone();
     let book = engine.template(&prototype).on_expire.clone();
-    let checkpoint = engine.state.clone();
+    // Only a book's effects can fail; the book-less default destruction is
+    // total, so the checkpoint exists only when there is a book to fire.
+    let checkpoint = book.is_some().then(|| engine.state.clone());
     if let Some(ent) = engine.state.entities.get_mut(&e) {
         ent.expires_at = None;
     }
@@ -964,7 +966,7 @@ fn settle_expiry(
             // Per-unit policy: roll back to the checkpoint. The timer is
             // spent regardless — expiry is one-shot — so the loop progresses.
             Err(_) => {
-                engine.state = checkpoint;
+                engine.state = checkpoint.expect("a book fired, so a checkpoint exists");
                 if let Some(ent) = engine.state.entities.get_mut(&e) {
                     ent.expires_at = None;
                 }

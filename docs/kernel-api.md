@@ -31,6 +31,25 @@ impl Engine {
     pub fn legacy_out(&self) -> &BTreeMap<String, i64>;
     pub fn snapshot(&self) -> Snapshot;
     pub fn restore(&mut self, snap: &Snapshot) -> Result<(), Diagnostic>;
+    // tool faces (design-time drivers; spec.md §4.10):
+    // `Engine` and `EffectRegistry` are `Clone`; every `Engine` field beyond
+    // `state` is boot-derived and read-only after boot.
+    pub fn with_state(&self, state: State) -> Engine;
+    pub fn state_mut(&mut self) -> &mut State;
+    // context-free evaluation face (`sit = None`; §5, T9):
+    pub fn eval_expr(&self, expr: &Expr) -> i64;
+    pub fn eval_cond(&self, cond: &Expr) -> bool;
+    pub fn matches(&self, e: EntityId, terms: &[QueryTerm]) -> bool;
+    pub fn scope_entities(&self, scope: &Scope) -> Vec<EntityId>;
+    // forkable settlement face — the ordinary settlement of commit/advance;
+    // at each chance point the callback supplies the outcome, or `None`
+    // runs the kernel's deterministic path:
+    pub fn commit_forked(&mut self, action: CommitAction,
+        fork: &mut dyn FnMut(&ChancePoint) -> Option<ChanceOutcome>)
+        -> Result<Vec<Event>, Diagnostic>;
+    pub fn advance_forked(&mut self, dt: Time,
+        fork: &mut dyn FnMut(&ChancePoint) -> Option<ChanceOutcome>)
+        -> Result<Vec<Event>, Diagnostic>;
 }
 pub struct CommitAction { pub verb: VerbId, pub bindings: Vec<(SlotName, EntityId)> }
 ```
@@ -39,6 +58,18 @@ pub struct CommitAction { pub verb: VerbId, pub bindings: Vec<(SlotName, EntityI
 - `can_bind` addresses open slots of a live situation; `slot_candidates` addresses a recipe, not a verb, because two recipes of one verb may reuse a slot name under different filters.
 - `preview_commit` runs the selection pipeline — eligibility, minimum-fill, when-scan, guard — and reports the would-be selection including the guard outcome, without mutating state or spending time.
 - Invariants: every entry point returns `Result<_, Diagnostic>`; content-driven failure is always a value, never a panic. `commit` is all-or-nothing. `advance` is atomic per resolution unit (§9).
+
+```rust
+pub enum ChancePoint {
+    Roll { count: u32, sides: u32, bonus: i64, bind: String },
+    Draw { deck: DeckId, count: u32, into: Option<Into> },
+}
+pub enum ChanceOutcome { Roll(i64), Draw(Vec<CardId>) }
+```
+
+- **Tool faces** (spec.md §4.10): `with_state` / `state_mut` install and mutate the `State` of a cloned engine, so a driver moves between states in memory without re-booting or snapshot serialization.
+- The **context-free evaluation face** evaluates expressions, conditions, query terms, and scopes with `sit = None` through the kernel's own machinery (§5, T9) — goal and invariant checking stay in the kernel, never duplicated in tools.
+- The **forkable settlement face** pauses at each chance point: one fires only for `count ≥ 1` and `sides ≥ 1` — count 0 applies the bonus only and never pauses (T11). `ChanceOutcome::Roll` carries the full bound value, bonus included; a forked `Draw` mints the supplied cards in order and advances the deck cursor by the requested count, falling through to the kernel's fallback/wrap path past the permutation's end. Per-unit rollback is unchanged (T4).
 
 ## 2. State and Value Types
 

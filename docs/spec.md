@@ -25,9 +25,10 @@ The first release ships conditional expressions, multi-instance situations, cros
 | `story-content` | compiled content DB and IR types (recipes / slots / effect trees / expressions / registry name tables) + diagnostics | compile IR into a validated content database with diagnostics; read-only queries |
 | `story-lang` | the text DSL (`.sw`) → IR → `story-content` | compile source text into a content database, diagnostics on failure |
 | `story-engine` | the kernel: selection law, settlement, slots, mint pipeline, effect registry, snapshots | boot from content, registry, seed, legacy; commit / bind / advance / state / snapshot / restore |
+| `story-analyze` | design-time analysis of compiled content: reachability, state-space classification, design audit, Pareto frontiers (§8) | queries over the public kernel faces (§4.10); tool-layer consumer only |
 | `story-cli` | thin dev driver (load one root file and follow includes, dumb terminal loop) | optional, not a product |
 
-Dependency law: `core ← content ← engine`; `lang → {core, content}`; **engine never depends on lang**; the compiler and the runtime are separate programs. Diagnostic types live in `story-content` and are shared by every crate.
+Dependency law: `core ← content ← engine`; `lang → {core, content}`; `analyze → {core, content, engine}` with `lang` optional behind a feature; **the engine never depends on lang or analyze** — the compiler, the runtime, and the analysis tools are separate programs. Diagnostic types live in `story-content` and are shared by every crate.
 
 ## 4. Kernel Semantics
 
@@ -224,6 +225,18 @@ The two carry-like tools compose deliberately: `move torch into alice` (physical
 | Multi-instance situations | Edges between cards of different interiors, or a binding and a world card, are ordinary edges; materialization and release never reset them |
 | Ending | The flag freezes the run; edges persist in the final snapshot like every other fact |
 
+### 4.10 Faces for External Drivers
+
+Three generic faces let external tools observe and steer the engine — the design-time analyzer (§8) above all. None adds semantics: each rides machinery the play loop already runs.
+
+**State installation.** Every engine field beyond the state is boot-derived from content + seed and read-only after boot, so `Engine` and the effect registry are `Clone`; `with_state` swaps in a new `State`, `state_mut` lends mutable access. A driver boots once and moves between states in memory — no re-boot, no snapshot serialization in the inner loop.
+
+**Context-free evaluation.** `eval_expr`, `eval_cond`, `matches`, and `scope_entities` evaluate expressions, conditions, query terms, and scopes through the kernel's own machinery with no situation context (§4.7's context-free semantics). Goals and invariants keep one semantics — the kernel's — and no tool re-implements evaluation.
+
+**Forkable settlement.** `commit_forked` and `advance_forked` run the ordinary settlement of `commit` and `advance`; at each chance point — a `roll` with count ≥ 1 and sides ≥ 1, or a `draw` — settlement pauses and offers the driver a `ChancePoint`. A supplied outcome drives that node; declining runs the kernel's deterministic path. An external driver can therefore observe and steer chance outcomes through the same settlement path — branching analysis without a second settlement implementation. Count 0 applies the bonus only and is never a chance point (§4.5); a forked draw advances the deck cursor like any draw, falling through to the fallback/wrap path past the permutation's end; per-unit rollback is untouched (§4.6).
+
+Signatures and the `ChancePoint` / `ChanceOutcome` shapes: kernel-api.md §1.
+
 ## 5. The Content Language: Conceptual Model
 
 The authoring surface is one text format, extension `.sw`; concrete syntax, grammar, and diagnostics live in language.md. This section fixes the concepts the kernel depends on.
@@ -260,7 +273,7 @@ Scope decisions, each with its reason:
 - **No marker-card access gates.** Reachability is expressed with ordinary conditions — `when` clauses and guards.
 - **No twin or shadow card copies.** `swap` and re-minting cover replacement (§4.5); every live card is exactly one entity.
 - **No persistent register of past manifestations.** Uniqueness is a mint-instant check (§4.5); the state records only live cards.
-- **No reach/fuzz/lint tooling and no standalone lint binary.** Compile diagnostics plus the boot warning stream are the authoring feedback loop (§4.8).
+- **No fuzzing and no lint in the authoring feedback loop.** Compile diagnostics plus the boot warning stream remain the authoring feedback loop (§4.8); the kernel pipeline gains no authored-content linting and no standalone lint binary. Design-time reachability and design analysis is a separate tool-layer crate (`story-analyze`, §8), outside authoring and play.
 - **No authored op blocks.** Host-registered effects are the only registry extension, so the kernel's effect vocabulary stays closed and auditable (§4.5).
 - **No relation algebra beyond flat edges.** Relations are flat, one-hop, directed edges with declared kinds (§4.9); edge payloads/weights, transitive closure, and pathfinding stay out — ranked ties are the documented edge-plus-aspect idiom (§4.9), spatial reasoning beyond adjacency is content's business, and pairwise placement is now a mechanism, not a matched-aspect-token workaround.
 
@@ -275,3 +288,18 @@ Every seam below is either designed in this spec or permanently excluded; none b
 5. **Localization — designed.** Every prose string flows through the token-interpolation layer and is addressable by a template id: its declaration site plus field, with an occurrence index disambiguating repeats within one recipe. An override table keyed by template id substitutes alternate text at load, before interpolation; no engine change (language.md §7).
 6. **Real-time hosting — already expressible.** A host may advance on any cadence it likes — once per wall-second, once per frame: L1 gives the engine no wall clock, so cadence is the host's law alone.
 7. **Hidden information — seam designed; one permanent exclusion.** Hidden zones plus the `anywhere` scope already model information the rendering layer withholds (narrative fog is host policy, L6). Per-character knowledge hands are permanently out: the engine models a single viewpoint per state.
+
+## 8. Design-Time Analysis (`story-analyze`)
+
+`story-analyze` is a tool-layer crate that answers reachability and design-quality questions about compiled content: which player sequences reach a state, card, or ending; from where a run can still win and where it crosses the point of no return; what optimal play guarantees against dice and decks; which recipes can never run or silently shadow one another; which runtime faults are reachable and how. It is a consumer of the public kernel faces (§4.10) — the kernel never depends on it (§3).
+
+The pipeline is two-tier. **Tier 1** is a static producer/consumer causal hypergraph over the compiled content — signed polarity facts and abort hyperedges included — providing backward provenance, structural unreachability proofs, plausibility pre-checks, dead-mechanism pruning, and search heuristics. **Tier 2** is an explicit-state explorer driving real kernel transitions through the play and forkable faces (§4.10): entity-symmetry equivalence classes and a canonical state key merge the distinct action paths that reach the same logical state, time jumps advance straight to the next due moment — with the moments each jump settles marked, so invariant gates never skip a window — and branching modes enumerate chance outcomes with exact probabilities. Every witness is replay-verified: deterministic witnesses re-execute through the public API, branching witnesses through the forkable face with their recorded outcomes. All claims are conditional on the query's bounds — exhaustive statements hold over the explored space only — and output is deterministic for fixed content, seed, and bounds.
+
+Four analyses build on this machinery:
+
+- **State-space classification** — winnable states, the exact transitions crossing the point of no return, and softlocked states.
+- **Stochastic solving** — exact probability classes at chance points; per state, the maximum goal probability under optimal play, whether a 100% RNG-proof strategy exists, and the random-play baseline.
+- **Design audit** — dead content, proved recipe shadowing, and reachable `ResolutionFailed` / `StartSkipped` faults, each finding labeled with its evidence class (statically proved, or within bounds).
+- **Pareto frontiers and cuts** — the undominated trade-off set for multi-objective goals, with mandatory recipes and cards and minimal cut sets, every cut verified by re-exploration with the mechanism neutralized.
+
+An optional `story-lang` feature lets queries be written in the `.sw` condition grammar itself. The working design reference is `.artifacts/story-analyze-spec.md`.

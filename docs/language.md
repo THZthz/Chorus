@@ -247,6 +247,8 @@ In contexts without a running situation — `on expire` rules, `on event` rules,
 
 **Query terms:** space-conjoined `aspect:<k>`, `aspect:<k><op><n>` (e.g. `aspect:heat>=2`), `name:<x>`, `kind:<k>`, `-<term>` (negation), and unary predicate calls; an empty query matches everything in scope. The set of known kinds is collected from card `kind` lines; a `kind:` term naming an undeclared kind is [E203], as for aspect keys.
 
+The grammar is deliberately closed and machine-checkable — the property that lets `story-analyze` parse its query goals in this same condition grammar (spec.md §8).
+
 ## 4. Effects
 
 ### 4.1 The Closed Vocabulary

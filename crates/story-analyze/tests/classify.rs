@@ -7,7 +7,7 @@ mod common;
 use std::collections::BTreeSet;
 
 use story_analyze::classify::{classify, classify_graph, ClassifyConfig};
-use story_analyze::{ExploreConfig, GraphEdge, GraphNode, PlayerStep, TransitionRecord};
+use story_analyze::{ExploreConfig, GraphEdge, GraphNode, PlayerStep};
 use story_content::ir::Expr;
 use story_core::EndingId;
 
@@ -148,7 +148,7 @@ fn post_burn_states_softlock() {
         .graph
         .edges
         .iter()
-        .filter(|e| e.record.recipe.as_ref() == Some(&story_core::RecipeId::from("burn.spend")))
+        .filter(|e| e.recipe.as_ref() == Some(&story_core::RecipeId::from("burn.spend")))
         .map(|e| e.to)
         .collect();
     assert!(!burn_targets.is_empty());
@@ -209,17 +209,14 @@ fn edge(
     GraphEdge {
         from,
         to,
-        record: TransitionRecord {
-            step: PlayerStep::Advance { dt: 10 },
-            outcomes: Vec::new(),
-            probability: 1.0,
-            due_moments: Vec::new(),
-            events: Vec::new(),
-            time_before: state.now,
-            time_after: state.now + 10,
-            state_after: state.clone(),
-            recipe: None,
-        },
+        step: PlayerStep::Advance { dt: 10 },
+        outcomes: Vec::new(),
+        probability: 1.0,
+        due_moments: Vec::new(),
+        events: Vec::new(),
+        time_before: state.now,
+        time_after: state.now + 10,
+        recipe: None,
     }
 }
 

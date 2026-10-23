@@ -75,8 +75,8 @@ MODIFIERS:
     --profile            accumulate span wall times and print the table to
                          stderr when the run ends
     --jobs <n>           section concurrency cap (default 1); a full
-                         exploration can hold gigabytes (one emberwatch
-                         classify peaks near 9 GB), so raise this only for
+                         exploration still holds gigabytes (one emberwatch
+                         classify peaks near 6 GB), so raise this only for
                          content whose state space fits memory twice over
     --help               this help (exit 0)
 NOTES:

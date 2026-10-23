@@ -585,7 +585,7 @@ fn unreachable_findings(analyzer: &Analyzer, graph: &ExploredGraph) -> Vec<Unrea
         }
     }
     for e in &graph.edges {
-        if let Some(r) = &e.record.recipe {
+        if let Some(r) = &e.recipe {
             opened_recipes.insert(r.clone());
         }
     }
@@ -704,7 +704,7 @@ fn unreachable_findings(analyzer: &Analyzer, graph: &ExploredGraph) -> Vec<Unrea
 fn fault_findings(analyzer: &Analyzer, graph: &ExploredGraph) -> Vec<FaultWitness> {
     let mut out = Vec::new();
     for (i, e) in graph.edges.iter().enumerate() {
-        for ev in &e.record.events {
+        for ev in &e.events {
             let fault = match ev {
                 Event::ResolutionFailed { reason, .. } => FaultEvent::ResolutionFailed {
                     reason: reason.clone(),
@@ -736,7 +736,11 @@ fn witness_through(
     edge: usize,
 ) -> Option<WitnessPath> {
     let mut witness = graph.witness_to(from, analyzer.start())?;
-    let record = graph.edges[edge].record.clone();
+    // The faulting edge's end state is canonical-equal to its destination
+    // node's; the replay oracle compares canonical keys, so the node state
+    // stands in for the record's own.
+    let to = graph.edges[edge].to;
+    let record = graph.edges[edge].as_record(graph.nodes[to].state.clone());
     witness.records.push(record);
     witness.actions = witness.records.iter().map(|r| r.actions()).sum();
     witness.depth = witness.records.len();

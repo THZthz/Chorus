@@ -13,7 +13,7 @@ use std::sync::Arc;
 use story_content::Content;
 use story_core::{RecipeId, State, Time};
 use story_content::runtime::RuntimeDiagnostic;
-use story_engine::{ChanceOutcome, ChancePoint, EffectRegistry, Engine, };
+use story_engine::{ChanceOutcome, ChancePoint, EffectRegistry, Engine, Event};
 
 use crate::causal::{self, CausalGraph, MatchOracle};
 use crate::canonical::CanonicalStateKey;
@@ -557,9 +557,9 @@ impl Analyzer {
                         Some(&t) => t,
                         None => {
                             let t = nodes.len();
-                            // The edge record keeps its own state_after (the
-                            // witness rebuild walks it), so the node holds a
-                            // clone.
+                            // The edge record keeps no state: the discovering
+                            // edge's end state IS the node's, and the witness
+                            // rebuild reads it from the node (§7.1).
                             nodes.push(GraphNode {
                                 state: record.state_after.clone(),
                             });
@@ -579,7 +579,14 @@ impl Analyzer {
                     edges.push(GraphEdge {
                         from: idx,
                         to,
-                        record,
+                        step: record.step,
+                        outcomes: record.outcomes,
+                        probability: record.probability,
+                        due_moments: record.due_moments,
+                        events: record.events,
+                        time_before: record.time_before,
+                        time_after: record.time_after,
+                        recipe: record.recipe,
                     });
                     if parent_edge[to].is_none() && to != start {
                         parent_edge[to] = Some(edge);
@@ -636,12 +643,41 @@ pub struct GraphNode {
 
 /// One explored edge: a transition record from `from` to `to` (branching
 /// modes yield one edge per outcome branch; the record carries its exact
-/// probability).
+/// probability). The record's end state is not stored — for the discovering
+/// edge it is exactly `nodes[to]`'s state, and every other edge's end state
+/// is canonical-equal to its destination node's; `as_record` reassembles a
+/// full record against a node state.
 #[derive(Clone, Debug)]
 pub struct GraphEdge {
     pub from: usize,
     pub to: usize,
-    pub record: TransitionRecord,
+    pub step: PlayerStep,
+    pub outcomes: Vec<story_engine::ChanceOutcome>,
+    pub probability: f64,
+    pub due_moments: Vec<Time>,
+    pub events: Vec<Event>,
+    pub time_before: Time,
+    pub time_after: Time,
+    pub recipe: Option<RecipeId>,
+}
+
+impl GraphEdge {
+    /// The full transition record against the edge's end state — the
+    /// destination node's state for the discovering edge, a canonical-equal
+    /// state for any other edge.
+    pub fn as_record(&self, state_after: State) -> TransitionRecord {
+        TransitionRecord {
+            step: self.step.clone(),
+            outcomes: self.outcomes.clone(),
+            probability: self.probability,
+            due_moments: self.due_moments.clone(),
+            events: self.events.clone(),
+            time_before: self.time_before,
+            time_after: self.time_after,
+            state_after,
+            recipe: self.recipe.clone(),
+        }
+    }
 }
 
 /// The full explored graph (§7.1): the classifier's, auditor's, and Pareto
@@ -673,6 +709,8 @@ impl ExploredGraph {
     }
 
     /// The witness path to a node: the BFS-tree records from the start.
+    /// Each record's end state is the node it arrived at, so the rebuild
+    /// reads the states off the node chain.
     pub fn witness_to(&self, node: usize, start_state: &State) -> Option<WitnessPath> {
         if node >= self.nodes.len() {
             return None;
@@ -682,7 +720,7 @@ impl ExploredGraph {
         while let Some(i) = cur {
             match (self.parents[i], self.parent_edge[i]) {
                 (Some(p), Some(e)) => {
-                    records.push(self.edges[e].record.clone());
+                    records.push(self.edges[e].as_record(self.nodes[i].state.clone()));
                     cur = Some(p);
                 }
                 _ => {

@@ -15,7 +15,7 @@ use story_core::{RecipeId, State, Time};
 use story_content::runtime::RuntimeDiagnostic;
 use story_engine::{ChanceOutcome, ChancePoint, EffectRegistry, Engine, };
 
-use crate::causal::{self, CausalGraph};
+use crate::causal::{self, CausalGraph, MatchOracle};
 use crate::canonical::CanonicalStateKey;
 use crate::query::{GoalCtx, GoalPredicate, ReachQuery, RngMode, SearchObjective};
 use crate::replay::{Replayer, ReplayError};
@@ -37,6 +37,10 @@ pub struct Analyzer {
     seed: u64,
     legacy_in: Option<BTreeMap<String, i64>>,
     causal: CausalGraph,
+    /// The content-wide mutation oracle, built once at boot: canonical keys
+    /// and the symmetry classifier read it per state, and rebuilding it per
+    /// state would walk every effect in the content each time.
+    oracle: MatchOracle,
     /// The scratch engine: the search's evaluation face and the generator's
     /// template. Its state is the state under evaluation.
     engine: Engine,
@@ -60,6 +64,7 @@ impl Analyzer {
         let (engine, warnings) =
             Engine::boot(content.clone(), registry.clone(), seed, legacy_in.clone());
         let causal = CausalGraph::build(&content);
+        let oracle = MatchOracle::new(&content);
         let start = engine.state().clone();
         (
             Analyzer {
@@ -68,6 +73,7 @@ impl Analyzer {
                 seed,
                 legacy_in,
                 causal,
+                oracle,
                 engine,
                 start,
                 heuristic: true,
@@ -92,6 +98,12 @@ impl Analyzer {
 
     pub fn content(&self) -> &Arc<Content> {
         &self.content
+    }
+
+    /// The content-wide mutation oracle, held for the canonical-key and
+    /// symmetry fast paths.
+    pub(crate) fn oracle(&self) -> &MatchOracle {
+        &self.oracle
     }
 
     pub fn causal(&self) -> &CausalGraph {
@@ -289,7 +301,7 @@ impl Analyzer {
                             continue;
                         }
                     }
-                    let key = CanonicalStateKey::of(&state_after, &self.content);
+                    let key = CanonicalStateKey::of_with(&state_after, &self.content, &self.oracle);
                     let now = state_after.now;
                     let actions = arena[idx].actions + record.actions();
                     let depth = arena[idx].depth + record.depth();
@@ -425,8 +437,8 @@ impl Analyzer {
             let merged_ok = match run {
                 Err(_) => false,
                 Ok(events) => {
-                    let key = CanonicalStateKey::of(engine.state(), &self.content);
-                    let want = CanonicalStateKey::of(&b.state_after, &self.content);
+                    let key = CanonicalStateKey::of_with(engine.state(), &self.content, &self.oracle);
+                    let want = CanonicalStateKey::of_with(&b.state_after, &self.content, &self.oracle);
                     events == b.events && key == want
                 }
             };
@@ -475,7 +487,7 @@ impl Analyzer {
             allow_mid_run_bind: config.allow_mid_run_bind,
         };
         let mut gen = self.generator(&query);
-        let start_key = CanonicalStateKey::of(&self.start, &self.content);
+        let start_key = CanonicalStateKey::of_with(&self.start, &self.content, &self.oracle);
         let mut nodes: Vec<GraphNode> = Vec::new();
         let mut edges: Vec<GraphEdge> = Vec::new();
         let mut index: BTreeMap<CanonicalStateKey, usize> = BTreeMap::new();
@@ -485,7 +497,6 @@ impl Analyzer {
         let start = nodes.len();
         nodes.push(GraphNode {
             state: self.start.clone(),
-            key: start_key.clone(),
         });
         parents.push(None);
         parent_edge.push(None);
@@ -516,17 +527,19 @@ impl Analyzer {
             if node_state.ended.is_some() {
                 continue;
             }
-            for step in gen.steps(&node_state) {
+            // The step list is collected first so the borrow of `nodes`
+            // ends before successors push into it.
+            let steps = gen.steps(&node_state);
+            for step in steps {
                 let records = gen.execute(&node_state, &step);
                 for record in records {
-                    let state_after = record.state_after.clone();
                     if let Some(horizon) = config.max_time {
-                        if state_after.now > horizon {
+                        if record.state_after.now > horizon {
                             continue;
                         }
                     }
                     if let Some(inv) = &config.invariant {
-                        *self.engine.state_mut() = state_after.clone();
+                        *self.engine.state_mut() = record.state_after.clone();
                         let ctx = GoalCtx {
                             engine: &self.engine,
                             events: &record.events,
@@ -535,14 +548,20 @@ impl Analyzer {
                             continue;
                         }
                     }
-                    let key = CanonicalStateKey::of(&state_after, &self.content);
+                    let key = CanonicalStateKey::of_with(
+                        &record.state_after,
+                        &self.content,
+                        &self.oracle,
+                    );
                     let to = match index.get(&key) {
                         Some(&t) => t,
                         None => {
                             let t = nodes.len();
+                            // The edge record keeps its own state_after (the
+                            // witness rebuild walks it), so the node holds a
+                            // clone.
                             nodes.push(GraphNode {
-                                state: state_after,
-                                key: key.clone(),
+                                state: record.state_after.clone(),
                             });
                             parents.push(None);
                             parent_edge.push(None);
@@ -613,7 +632,6 @@ impl Default for ExploreConfig {
 #[derive(Clone, Debug)]
 pub struct GraphNode {
     pub state: State,
-    pub key: CanonicalStateKey,
 }
 
 /// One explored edge: a transition record from `from` to `to` (branching

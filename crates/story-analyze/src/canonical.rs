@@ -6,278 +6,267 @@
 //! rewrites to the canonical numbering. Allocator watermarks (`next_entity`,
 //! `next_situation`, `next_zone`) are stripped; the kernel never reads a
 //! situation's `source` tag after materialization, so it is dropped.
+//!
+//! The key carries a 128-bit fingerprint of the canonical form instead of
+//! the form itself: the form serializes to a length-prefixed byte stream
+//! (fixed field order, BTreeMap order, symmetry order), and two
+//! domain-separated SipHash streams digest it. Logically equal states
+//! serialize identically and always key equal; distinct states collide only
+//! on a 128-bit collision, far past practical reach.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, HashMap};
+use std::hash::{Hash, Hasher};
 
 use story_content::Content;
 use story_core::{
-    Binding, CardId, DeckId, EndingId, EntityId, MintPolicy, RecipeId, SituationId, SlotName,
-    State, Time, TriggerRuleId, VerbId, Zone, ZoneId, ZoneKind,
+    Binding, EntityId, MintPolicy, SituationId, State, Time, ZoneId, ZoneKind,
 };
 
-use crate::symmetry::symmetry_classes;
+use crate::causal::MatchOracle;
+use crate::symmetry::symmetry_classes_with;
 
-/// A zone address under the canonical numbering. Declared zones keep their
-/// content-fixed ids; only kernel-minted zone addresses — situation interiors
-/// and carriers — re-index. The policy bits ride along.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ZoneAddr {
-    /// Declared (and host-created) zones: content-fixed id.
-    Fixed(ZoneId),
-    /// A situation interior, addressed by the canonical situation index.
-    Interior(u64),
-    /// A card carrier, addressed by the canonical entity index.
-    Carrier(u64),
-    /// Kernel-minted zone whose owner is absent (a host hand-built the
-    /// state); keyed by the raw owner id to stay total.
-    OrphanInterior(SituationId),
-    OrphanCarrier(EntityId),
-}
-
-/// One zone of the key: address plus the `public`/`bindable` policy bits.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ZoneRef {
-    pub addr: ZoneAddr,
-    pub public: bool,
-    pub bindable: bool,
-}
-
-/// The mint policy as an orderable mirror of `story_core::MintPolicy`.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum MintKey {
-    SingleCopy,
-    Stackable,
-    Unique,
-    Group(String),
-}
-
-impl From<&MintPolicy> for MintKey {
-    fn from(m: &MintPolicy) -> MintKey {
-        match m {
-            MintPolicy::SingleCopy => MintKey::SingleCopy,
-            MintPolicy::Stackable => MintKey::Stackable,
-            MintPolicy::Unique => MintKey::Unique,
-            MintPolicy::Group(g) => MintKey::Group(g.clone()),
-        }
-    }
-}
-
-/// A canonical entity: every `Entity` field except the re-indexed id, with
-/// the zone rewritten to its zone reference.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CanonicalEntity {
-    pub name: String,
-    pub prototype: CardId,
-    pub kind: Option<String>,
-    pub aspects: BTreeMap<String, i64>,
-    pub attrs: BTreeMap<String, i64>,
-    pub zone: ZoneRef,
-    pub mint: MintKey,
-    pub expires_at: Option<Time>,
-}
-
-/// One binding of the key: the bound entity's canonical index, the zone it
-/// was bound from, and the bind order (`Binding.seq` is observable in
-/// card-book walks and `table` scope, so it is preserved).
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CanonicalBinding {
-    pub entity: u64,
-    pub bound_from: ZoneRef,
-    pub seq: u64,
-}
-
-/// A canonical situation: every `Situation` field except the re-indexed id
-/// and the dropped `source` tag; the interior rides the zone list.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CanonicalSituation {
-    pub verb: VerbId,
-    pub recipe: RecipeId,
-    pub bindings: BTreeMap<SlotName, Vec<CanonicalBinding>>,
-    pub started_at: Time,
-    pub ends_at: Time,
-}
-
-/// One logical relation edge under the canonical numbering. A symmetric
-/// kind's canonical subject is the smaller endpoint under the NEW numbering,
-/// so a row stored under the mint-order subject re-canonicalizes when the
-/// symmetry order flips the endpoints.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RelationRow {
-    pub subject: u64,
-    pub kind: String,
-    pub object: u64,
-}
-
-/// The canonical key of a state (story-analyze spec §5.3). Two states key
-/// equal exactly when they are the same logical state up to entity
-/// interchange within symmetry classes and situation mint order.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CanonicalStateKey {
-    pub now: Time,
-    pub rng_counter: u64,
-    pub ended: Option<EndingId>,
-    pub decks: BTreeMap<DeckId, u64>,
-    pub recipe_runs: BTreeMap<RecipeId, u32>,
-    pub fired_once: BTreeSet<TriggerRuleId>,
-    pub legacy: BTreeMap<String, i64>,
-    pub zones: BTreeSet<ZoneRef>,
-    pub entities: BTreeMap<u64, CanonicalEntity>,
-    pub situations: BTreeMap<u64, CanonicalSituation>,
-    pub relations: BTreeSet<RelationRow>,
-}
+/// The canonical key of a state (§5.3). Two states key equal exactly when
+/// they are the same logical state up to entity interchange within symmetry
+/// classes and situation mint order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CanonicalStateKey(u128);
 
 impl CanonicalStateKey {
     /// Canonicalize one state. `content` supplies the relation kinds'
     /// symmetric flags (for the relation re-canonicalization) and the
     /// candidacy surfaces behind the symmetry classes.
     pub fn of(state: &State, content: &Content) -> CanonicalStateKey {
-        // Canonical entity order: symmetry classes, signature-sorted,
-        // ascending within a class.
-        let classes = symmetry_classes(state, content);
-        let mut entity_index: BTreeMap<EntityId, u64> = BTreeMap::new();
-        for (idx, class) in classes.iter().enumerate() {
+        Self::of_with(state, content, &MatchOracle::new(content))
+    }
+
+    /// The hot path: the same canonicalization with a caller-held oracle,
+    /// so the content-wide effect walk runs once per analysis, not once per
+    /// state.
+    pub(crate) fn of_with(
+        state: &State,
+        content: &Content,
+        oracle: &MatchOracle,
+    ) -> CanonicalStateKey {
+        let classes = symmetry_classes_with(state, content, oracle);
+
+        // Canonical entity order: symmetry classes occupy contiguous index
+        // ranges, members ascending within a class; the class walk covers
+        // every live entity exactly once.
+        let mut entity_index: HashMap<EntityId, u64> = HashMap::with_capacity(classes.len());
+        let mut next = 0u64;
+        for class in &classes {
             for (offset, &e) in class.iter().enumerate() {
-                let inserted = entity_index.insert(e, (idx + offset) as u64);
-                debug_assert!(inserted.is_none(), "an entity sits in one class");
+                entity_index.insert(e, next + offset as u64);
             }
+            next += class.len() as u64;
         }
 
-        // Canonical situation order: relative mint order (ascending id),
-        // which is the observable `(moment, phase, id)` tie-break order.
-        let mut situation_index: BTreeMap<SituationId, u64> = BTreeMap::new();
+        // Canonical situation order: relative mint order (ascending id).
+        let mut situation_index: HashMap<SituationId, u64> =
+            HashMap::with_capacity(state.situations.len());
         for (idx, (&sid, _)) in state.situations.iter().enumerate() {
             situation_index.insert(sid, idx as u64);
         }
 
-        let zone_ref = |z: ZoneId, state: &State| -> ZoneRef {
-            let (public, bindable) = state
-                .zones
-                .get(&z)
-                .map(|z: &Zone| (z.public, z.bindable))
-                .unwrap_or((false, false));
-            let addr = match state.zones.get(&z).map(|z| &z.kind) {
-                Some(ZoneKind::SituationInterior(s)) => match situation_index.get(s) {
-                    Some(&idx) => ZoneAddr::Interior(idx),
-                    None => ZoneAddr::OrphanInterior(*s),
-                },
-                Some(ZoneKind::Of(e)) => match entity_index.get(e) {
-                    Some(&idx) => ZoneAddr::Carrier(idx),
-                    None => ZoneAddr::OrphanCarrier(*e),
-                },
-                _ => ZoneAddr::Fixed(z),
-            };
-            ZoneRef {
-                addr,
-                public,
-                bindable,
+        let mut buf = Vec::with_capacity(512);
+        put_i64(&mut buf, state.now);
+        put_u64(&mut buf, state.rng_counter);
+        match &state.ended {
+            None => buf.push(0),
+            Some(e) => {
+                buf.push(1);
+                put_str(&mut buf, e.as_str());
             }
-        };
-
-        // Every zone with its policy bits.
-        let mut zones = BTreeSet::new();
-        for &zid in state.zones.keys() {
-            zones.insert(zone_ref(zid, state));
+        }
+        put_u64(&mut buf, state.decks.len() as u64);
+        for (deck, cursor) in &state.decks {
+            put_str(&mut buf, deck.as_str());
+            put_u64(&mut buf, *cursor);
+        }
+        put_u64(&mut buf, state.recipe_runs.len() as u64);
+        for (recipe, runs) in &state.recipe_runs {
+            put_str(&mut buf, recipe.as_str());
+            put_u64(&mut buf, *runs as u64);
+        }
+        put_u64(&mut buf, state.fired_once.len() as u64);
+        for rule in &state.fired_once {
+            put_str(&mut buf, rule.as_str());
+        }
+        put_u64(&mut buf, state.legacy.len() as u64);
+        for (key, value) in &state.legacy {
+            put_str(&mut buf, key);
+            put_i64(&mut buf, *value);
         }
 
-        let mut entities = BTreeMap::new();
-        for (&eid, ent) in &state.entities {
-            let zone = zone_ref(ent.zone, state);
-            let idx = entity_index.get(&eid).copied().unwrap_or(u64::MAX);
-            entities.insert(
-                idx,
-                CanonicalEntity {
-                    name: ent.name.clone(),
-                    prototype: ent.prototype.clone(),
-                    kind: ent.kind.clone(),
-                    aspects: ent.aspects.clone(),
-                    attrs: ent.attrs.clone(),
-                    zone,
-                    mint: MintKey::from(&ent.mint),
-                    expires_at: ent.expires_at,
+        // Zones in the canonical ZoneRef order: address kind, address,
+        // policy bits.
+        let mut zone_refs: Vec<(u8, u64, u8, u8)> = Vec::with_capacity(state.zones.len());
+        for (&zid, zone) in &state.zones {
+            let (kind, addr) = match &zone.kind {
+                ZoneKind::SituationInterior(s) => match situation_index.get(s) {
+                    Some(&idx) => (1u8, idx),
+                    None => (3u8, s.0),
                 },
-            );
+                ZoneKind::Of(e) => match entity_index.get(e) {
+                    Some(&idx) => (2u8, idx),
+                    None => (4u8, e.0),
+                },
+                _ => (0u8, zid.0),
+            };
+            zone_refs.push((kind, addr, zone.public as u8, zone.bindable as u8));
+        }
+        zone_refs.sort_unstable();
+        for (kind, addr, public, bindable) in zone_refs {
+            buf.push(kind);
+            put_u64(&mut buf, addr);
+            buf.push(public);
+            buf.push(bindable);
         }
 
-        let bind = |b: &Binding, state: &State| CanonicalBinding {
-            entity: entity_index.get(&b.entity).copied().unwrap_or(u64::MAX),
-            bound_from: zone_ref(b.bound_from, state),
-            seq: b.seq,
-        };
-        let mut situations = BTreeMap::new();
-        for (&sid, sit) in &state.situations {
-            let mut bindings: BTreeMap<SlotName, Vec<CanonicalBinding>> = BTreeMap::new();
+        // Entities in symmetry order.
+        for class in &classes {
+            for &e in class {
+                let ent = &state.entities[&e];
+                put_str(&mut buf, &ent.name);
+                put_str(&mut buf, ent.prototype.as_str());
+                match &ent.kind {
+                    None => buf.push(0),
+                    Some(k) => {
+                        buf.push(1);
+                        put_str(&mut buf, k);
+                    }
+                }
+                put_map(&mut buf, &ent.aspects);
+                put_map(&mut buf, &ent.attrs);
+                put_zone(&mut buf, ent.zone, state, &entity_index, &situation_index);
+                match &ent.mint {
+                    MintPolicy::SingleCopy => buf.push(0),
+                    MintPolicy::Stackable => buf.push(1),
+                    MintPolicy::Unique => buf.push(2),
+                    MintPolicy::Group(g) => {
+                        buf.push(3);
+                        put_str(&mut buf, g);
+                    }
+                }
+                put_opt_time(&mut buf, ent.expires_at);
+            }
+        }
+
+        // Situations in relative mint order; bindings in bind order.
+        put_u64(&mut buf, state.situations.len() as u64);
+        for sit in state.situations.values() {
+            put_str(&mut buf, sit.verb.as_str());
+            put_str(&mut buf, sit.recipe.as_str());
+            put_u64(&mut buf, sit.bindings.len() as u64);
             for (slot, binds) in &sit.bindings {
+                put_str(&mut buf, slot.as_str());
                 let mut ordered: Vec<&Binding> = binds.iter().collect();
                 ordered.sort_by_key(|b| b.seq);
-                bindings.insert(
-                    slot.clone(),
-                    ordered.into_iter().map(|b| bind(b, state)).collect(),
-                );
+                put_u64(&mut buf, ordered.len() as u64);
+                for b in ordered {
+                    put_u64(&mut buf, entity_index.get(&b.entity).copied().unwrap_or(u64::MAX));
+                    put_zone(&mut buf, b.bound_from, state, &entity_index, &situation_index);
+                    put_u64(&mut buf, b.seq);
+                }
             }
-            let idx = situation_index.get(&sid).copied().unwrap_or(u64::MAX);
-            situations.insert(
-                idx,
-                CanonicalSituation {
-                    verb: sit.verb.clone(),
-                    recipe: sit.recipe.clone(),
-                    bindings,
-                    started_at: sit.started_at,
-                    ends_at: sit.ends_at,
-                },
-            );
+            put_i64(&mut buf, sit.started_at);
+            put_i64(&mut buf, sit.ends_at);
         }
 
-        // Relations: one row per logical edge, re-indexed under the canonical
-        // numbering; a symmetric kind's row lands under the smaller endpoint
-        // of the new numbering.
-        let symmetric = |kind: &str| {
-            content
-                .relation_kind(kind)
-                .is_some_and(|k| k.symmetric)
-        };
-        let mut relations = BTreeSet::new();
+        // Relations: one row per logical edge, re-indexed under the
+        // canonical numbering; a symmetric kind's row lands under the
+        // smaller endpoint of the new numbering. Rows sort as
+        // (subject, kind, object), the key's own order.
+        let symmetric = |kind: &str| content.relation_kind(kind).is_some_and(|k| k.symmetric);
+        let mut rows: Vec<(u64, &str, u64)> = Vec::new();
         for (&subject, kinds) in &state.relations {
             for (kind, objects) in kinds {
                 for object in objects {
-                    let (s_idx, o_idx) = match (
-                        entity_index.get(&subject),
-                        entity_index.get(object),
-                    ) {
-                        (Some(&s), Some(&o)) => (s, o),
+                    let (Some(&s), Some(&o)) =
+                        (entity_index.get(&subject), entity_index.get(object))
+                    else {
                         // An edge over an unindexed endpoint cannot exist in
                         // a kernel-maintained state; skip rather than miskey.
-                        _ => continue,
+                        continue;
                     };
-                    let row = if symmetric(kind) {
-                        RelationRow {
-                            subject: s_idx.min(o_idx),
-                            kind: kind.clone(),
-                            object: s_idx.max(o_idx),
-                        }
+                    if symmetric(kind) {
+                        rows.push((s.min(o), kind, s.max(o)));
                     } else {
-                        RelationRow {
-                            subject: s_idx,
-                            kind: kind.clone(),
-                            object: o_idx,
-                        }
-                    };
-                    relations.insert(row);
+                        rows.push((s, kind, o));
+                    }
                 }
             }
         }
+        rows.sort_unstable();
+        for (subject, kind, object) in rows {
+            put_u64(&mut buf, subject);
+            put_str(&mut buf, kind);
+            put_u64(&mut buf, object);
+        }
 
-        CanonicalStateKey {
-            now: state.now,
-            rng_counter: state.rng_counter,
-            ended: state.ended.clone(),
-            decks: state.decks.clone(),
-            recipe_runs: state.recipe_runs.clone(),
-            fired_once: state.fired_once.clone(),
-            legacy: state.legacy.clone(),
-            zones,
-            entities,
-            situations,
-            relations,
+        let mut a = std::collections::hash_map::DefaultHasher::new();
+        a.write_u8(1);
+        a.write(&buf);
+        let mut b = std::collections::hash_map::DefaultHasher::new();
+        b.write_u8(2);
+        b.write(&buf);
+        CanonicalStateKey(((a.finish() as u128) << 64) | b.finish() as u128)
+    }
+}
+
+/// One zone reference: address kind, address, and the policy bits. The kind
+/// tags follow the `ZoneAddr` variant order (fixed, interior, carrier,
+/// orphan interior, orphan carrier), so the entity-sort order of the old
+/// full-form key is preserved where it still applies.
+fn put_zone(
+    buf: &mut Vec<u8>,
+    z: ZoneId,
+    state: &State,
+    entity_index: &HashMap<EntityId, u64>,
+    situation_index: &HashMap<SituationId, u64>,
+) {
+    let (kind, addr) = match state.zones.get(&z).map(|zone| &zone.kind) {
+        Some(ZoneKind::SituationInterior(s)) => match situation_index.get(s) {
+            Some(&idx) => (1u8, idx),
+            None => (3u8, s.0),
+        },
+        Some(ZoneKind::Of(e)) => match entity_index.get(e) {
+            Some(&idx) => (2u8, idx),
+            None => (4u8, e.0),
+        },
+        _ => (0u8, z.0),
+    };
+    buf.push(kind);
+    put_u64(buf, addr);
+}
+
+fn put_map(buf: &mut Vec<u8>, map: &BTreeMap<String, i64>) {
+    put_u64(buf, map.len() as u64);
+    for (k, v) in map {
+        put_str(buf, k);
+        put_i64(buf, *v);
+    }
+}
+
+fn put_opt_time(buf: &mut Vec<u8>, t: Option<Time>) {
+    match t {
+        None => buf.push(0),
+        Some(t) => {
+            buf.push(1);
+            put_i64(buf, t);
         }
     }
+}
+
+fn put_u64(buf: &mut Vec<u8>, v: u64) {
+    buf.extend_from_slice(&v.to_le_bytes());
+}
+
+fn put_i64(buf: &mut Vec<u8>, v: i64) {
+    put_u64(buf, v as u64);
+}
+
+fn put_str(buf: &mut Vec<u8>, s: &str) {
+    put_u64(buf, s.len() as u64);
+    buf.extend_from_slice(s.as_bytes());
 }

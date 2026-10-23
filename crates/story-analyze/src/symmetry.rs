@@ -124,53 +124,78 @@ pub fn is_bound(state: &State, e: EntityId) -> bool {
 /// signature-sorted, members ascending by id — the canonical entity order.
 pub fn symmetry_classes(state: &State, content: &Content) -> Vec<Vec<EntityId>> {
     let oracle = MatchOracle::new(content);
-    let surfaces = candidacy_surfaces(content, &oracle);
+    symmetry_classes_with(state, content, &oracle)
+}
 
-    // Ascending id = mint order.
+/// The hot path: the same classification with a caller-held oracle, so the
+/// content-wide effect walk runs once per analysis, not once per state.
+pub(crate) fn symmetry_classes_with(
+    state: &State,
+    content: &Content,
+    oracle: &MatchOracle,
+) -> Vec<Vec<EntityId>> {
+    let surfaces = candidacy_surfaces(content, oracle);
+
+    // Ascending id = mint order. Signatures are built once and compared in
+    // place — the grouping never clones one.
     let ids: Vec<EntityId> = state.entities.keys().copied().collect();
-    let sigs: BTreeMap<EntityId, EntityEquivSig> = ids
-        .iter()
-        .map(|&e| (e, signature(state, e)))
-        .collect();
+    let sigs: Vec<EntityEquivSig> = ids.iter().map(|&e| signature(state, e)).collect();
     let unbound: BTreeSet<EntityId> = ids
         .iter()
         .copied()
         .filter(|&e| !is_bound(state, e))
         .collect();
 
-    // Group by signature, members ascending by id (the ids vector is
-    // sorted; same-signature entities need not be adjacent in it).
-    let mut groups: BTreeMap<EntityEquivSig, Vec<EntityId>> = BTreeMap::new();
-    for &e in &ids {
-        groups.entry(sigs[&e].clone()).or_default().push(e);
-    }
+    // Signature-sorted order, members ascending by id (a stable sort keeps
+    // the ascending ids in order within equal signatures).
+    let mut order: Vec<usize> = (0..ids.len()).collect();
+    order.sort_by(|&a, &b| sigs[a].cmp(&sigs[b]));
 
-    // Contiguity: inside a same-signature group, an interleaved unbound
-    // foreign card that shares candidacy space splits the group.
-    let mut classes: Vec<(EntityEquivSig, Vec<EntityId>)> = Vec::new();
-    for (sig, group) in groups {
-        let mut current: Vec<EntityId> = Vec::new();
-        for e in group {
-            if let Some(&prev) = current.last() {
-                let blocked = unbound.iter().any(|&k| {
-                    k > prev
-                        && k < e
-                        && sigs[&k] != sig
-                        && shares_candidacy(content, &surfaces, &sigs[&k].prototype, &sig.prototype)
-                });
-                if blocked {
-                    classes.push((sig.clone(), std::mem::take(&mut current)));
-                }
+    // Walk the sorted order: a signature change closes the class and starts
+    // a new group; inside a group, an interleaved unbound foreign card that
+    // shares candidacy space splits the class (the group's signature
+    // reference carries over the split).
+    let mut classes: Vec<Vec<EntityId>> = Vec::new();
+    let mut current: Vec<EntityId> = Vec::new();
+    let mut group_head: Option<usize> = None;
+    for &i in &order {
+        if let Some(h) = group_head {
+            if sigs[i] != sigs[h] {
+                classes.push(std::mem::take(&mut current));
+                group_head = None;
             }
-            current.push(e);
         }
-        if !current.is_empty() {
-            classes.push((sig, current));
+        if group_head.is_none() {
+            group_head = Some(i);
         }
+        if let Some(&prev) = current.last() {
+            let sig = &sigs[group_head.unwrap()];
+            let e = ids[i];
+            let kidx = |k: EntityId| {
+                ids.binary_search(&k).expect("an unbound live entity")
+            };
+            let blocked = unbound.iter().any(|&k| {
+                k > prev
+                    && k < e
+                    && sigs[kidx(k)] != *sig
+                    && shares_candidacy(
+                        content,
+                        &surfaces,
+                        &sigs[kidx(k)].prototype,
+                        &sig.prototype,
+                    )
+            });
+            if blocked {
+                classes.push(std::mem::take(&mut current));
+            }
+        }
+        current.push(ids[i]);
+    }
+    if !current.is_empty() {
+        classes.push(current);
     }
 
-    classes.sort_by(|a, b| a.0.cmp(&b.0));
-    classes.into_iter().map(|(_, members)| members).collect()
+    classes
 }
 
 /// Whether two card names can both match some targeting surface (slot

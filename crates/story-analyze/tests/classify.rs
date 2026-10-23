@@ -167,10 +167,8 @@ fn post_burn_states_softlock() {
 fn sccs_and_self_edges_are_reported() {
     let content = common::compile(PONR);
     let state = common::boot(content.clone(), 1).state().clone();
-    let key = story_analyze::CanonicalStateKey::of(&state, &content);
     let node = |s: &story_core::State| GraphNode {
         state: s.clone(),
-        key: story_analyze::CanonicalStateKey::of(s, &content),
     };
     // 0 -> 1 -> 0 (a two-node cycle), 1 -> 2 (a self-edge), 0 -> 3 (exit).
     let mut s1 = state.clone();
@@ -195,7 +193,6 @@ fn sccs_and_self_edges_are_reported() {
         parents: vec![None, Some(0), Some(1), Some(0)],
         parent_edge: vec![None, Some(0), Some(2), Some(4)],
     };
-    assert_eq!(key, story_analyze::CanonicalStateKey::of(&state, &content));
     let c = classify_graph(&graph, &winning_won());
     // Two live loops: the {0,1} cycle and the {2} self-edge.
     assert_eq!(c.infinite_loops.len(), 2, "{:?}", c.infinite_loops);

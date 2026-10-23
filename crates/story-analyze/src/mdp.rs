@@ -118,6 +118,7 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
         let mut ctx = Ctx {
             gen: &mut gen,
             content: &content,
+            oracle: analyzer.oracle(),
             config,
             memo: &mut memo,
             counter: &mut counter,
@@ -142,6 +143,7 @@ struct NodeCounter {
 struct Ctx<'a> {
     gen: &'a mut TransitionGenerator,
     content: &'a Arc<Content>,
+    oracle: &'a crate::causal::MatchOracle,
     config: &'a MdpConfig,
     memo: &'a mut BTreeMap<(CanonicalStateKey, usize), Option<Vals>>,
     counter: &'a mut NodeCounter,
@@ -160,7 +162,7 @@ fn eval(ctx: &mut Ctx<'_>, state: &State, actions: usize, depth: usize) -> Optio
     {
         return None;
     }
-    let key = CanonicalStateKey::of(state, ctx.content);
+    let key = CanonicalStateKey::of_with(state, ctx.content, ctx.oracle);
     let memo_key = (key, actions);
     if let Some(cached) = ctx.memo.get(&memo_key) {
         return cached.clone();

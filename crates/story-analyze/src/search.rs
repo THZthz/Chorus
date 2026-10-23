@@ -10,16 +10,16 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use story_content::runtime::RuntimeDiagnostic;
 use story_content::Content;
 use story_core::{CardId, RecipeId, State, Time};
-use story_content::runtime::RuntimeDiagnostic;
 use story_engine::{ChanceOutcome, ChancePoint, EffectRegistry, Engine, Event};
 
-use crate::causal::{self, CausalGraph};
 use crate::canonical::CanonicalStateKey;
-use crate::symmetry::SymmetryCache;
+use crate::causal::{self, CausalGraph};
 use crate::query::{GoalCtx, GoalPredicate, ReachQuery, RngMode, SearchObjective};
-use crate::replay::{Replayer, ReplayError};
+use crate::replay::{ReplayError, Replayer};
+use crate::symmetry::SymmetryCache;
 use crate::transitions::{
     GeneratorConfig, PlayerStep, TransitionGenerator, TransitionRecord, WitnessPath,
 };
@@ -222,13 +222,19 @@ impl Analyzer {
         let mut pruned = 0usize;
         // The extinction half of the feasibility gate: goal cards that are
         // gone for good once they leave the table.
-        let goal_cards: Vec<CardId> = goal_facts
-            .iter()
-            .filter_map(|f| match f {
-                causal::Fact::CardLive(c) => Some(c.clone()),
-                _ => None,
-            })
-            .collect();
+        let goal_cards: Vec<CardId> = if query.prune && !self.causal.host_opaque() {
+            goal_facts
+                .iter()
+                .filter_map(|f| match f {
+                    causal::Fact::CardLive(c)
+                    | causal::Fact::CardInZone(c, _)
+                    | causal::Fact::CardHasAspect(c, _) => Some(c.clone()),
+                    _ => None,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let recipe_mintable = if query.prune {
             self.causal.recipe_mintable_cards()
         } else {
@@ -257,7 +263,11 @@ impl Analyzer {
             // witness for the objective's cost vector (§5.5).
             {
                 *self.engine.state_mut() = node_state.clone();
-                let events = node.record.as_ref().map(|r| r.events.clone()).unwrap_or_default();
+                let events = node
+                    .record
+                    .as_ref()
+                    .map(|r| r.events.clone())
+                    .unwrap_or_default();
                 let ctx = GoalCtx {
                     engine: &self.engine,
                     events: &events,
@@ -316,7 +326,7 @@ impl Analyzer {
                 for record in records {
                     let state_after = record.state_after.clone();
                     if let Some(horizon) = query.max_time {
-                        if state_after.now > horizon {
+                        if state_after.now > horizon as i64 {
                             continue; // advance steps beyond the horizon are discarded (§5.5)
                         }
                     }
@@ -331,102 +341,80 @@ impl Analyzer {
                             continue;
                         }
                     }
-                    let key = CanonicalStateKey::of_with(&state_after, &self.content, &self.symmetry);
-                    let now = state_after.now;
+                    let key =
+                        CanonicalStateKey::of_with(&state_after, &self.content, &self.symmetry);
                     let actions = arena[idx].actions + record.actions();
                     let depth = arena[idx].depth + record.depth();
                     // Visited rules (§5.5): the objective's cost vector is
                     // the dominance test; DiverseWays augments the key with
                     // the recipe-trace signature instead.
-                    if diverse {
-                        let mut sig = arena[idx].sig.clone();
+                    let sig = if diverse {
+                        let mut s = arena[idx].sig.clone();
                         if let Some(r) = &record.recipe {
-                            sig.push(Some(r.clone()));
+                            s.push(Some(r.clone()));
                         }
-                        if !sig_visited.insert((key.clone(), sig.clone())) {
+                        if !sig_visited.insert((key.clone(), s.clone())) {
                             continue;
                         }
-                        let child = arena.len();
-                        arena.push(ArenaNode {
-                            state: state_after,
-                            parent: Some(idx),
-                            record: Some(record),
-                            actions,
-                            depth,
-                            sig,
-                        });
-                        queue.push(Reverse(Key {
-                            parts: priority(&query.objective, actions, depth, now, 0),
-                            seq: child,
-                        }));
-                        continue;
-                    }
-                    let cost = match &query.objective {
-                        SearchObjective::FewestActions => {
-                            vec![actions as i64, state_after.now]
+                        s
+                    } else {
+                        let cost = match &query.objective {
+                            SearchObjective::FewestActions => {
+                                vec![actions as i64, state_after.now]
+                            }
+                            SearchObjective::EarliestTime => {
+                                vec![state_after.now, actions as i64]
+                            }
+                            SearchObjective::ShortestDepth
+                            | SearchObjective::DiverseWays { .. } => {
+                                vec![depth as i64]
+                            }
+                        };
+                        let dominated = visited
+                            .get(&key)
+                            .is_some_and(|best| best.iter().zip(&cost).all(|(b, c)| b <= c));
+                        if dominated {
+                            continue;
                         }
-                        SearchObjective::EarliestTime => {
-                            vec![state_after.now, actions as i64]
+                        let best = visited.entry(key.clone()).or_default();
+                        for (b, c) in best.iter_mut().zip(&cost) {
+                            *b = (*b).min(*c);
                         }
-                        SearchObjective::ShortestDepth | SearchObjective::DiverseWays { .. } => {
-                            vec![depth as i64]
-                        }
+                        Vec::new()
                     };
-                    let dominated = visited.get(&key).is_some_and(|best| {
-                        best.iter().zip(&cost).all(|(b, c)| b <= c)
-                    });
-                    if dominated {
-                        continue;
-                    }
-                    let best = visited.entry(key.clone()).or_default();
-                    for (b, c) in best.iter_mut().zip(&cost) {
-                        *b = (*b).min(*c);
-                    }
-                    // Feasibility pruning, extinction half (opt-in): a goal
-                    // card that is neither live nor recipe-mintable is gone
-                    // for the run, so the branch is dead. Sound for
-                    // authored content; host-opaque content keeps the gate
-                    // off (the graph is incomplete).
-                    if query.prune
+                    let mut gate_fired = query.prune
                         && !goal_cards.is_empty()
                         && goal_cards.iter().any(|c| {
-                            !state_after
-                                .entities
-                                .values()
-                                .any(|e| &e.prototype == c)
+                            !state_after.entities.values().any(|e| &e.prototype == c)
                                 && !recipe_mintable.contains(c)
-                        })
+                        });
+                    if !gate_fired
+                        && !scarcity.is_empty()
+                        && scarcity.dead(&state_after, &self.content, query.max_time)
                     {
-                        if std::env::var("STORY_DEBUG_PRUNE").is_ok() {
-                            eprintln!("DBG prune: extinction at expansions {expansions}");
-                        }
-                        pruned += 1;
-                        continue;
+                        gate_fired = true;
                     }
-                    if !scarcity.is_empty() && scarcity.dead(&state_after, &self.content) {
-                        if std::env::var("STORY_DEBUG_PRUNE").is_ok() {
-                            eprintln!("DBG prune: scarcity at expansions {expansions}");
-                        }
-                        pruned += 1;
-                        continue;
-                    }
-                    // Heuristic feasibility pruning (opt-in): a state whose
-                    // goal facts cannot be grounded even in the delete
-                    // relaxation is not expanded. The relaxation misses
-                    // decrease-chain routes, so a pruned run's empty answer
-                    // is weaker than exhaustive unreachability; host-opaque
-                    // content keeps the gate off (the graph is incomplete).
-                    let h = if self.heuristic || query.prune {
+                    let mut raw_h = 0u32;
+                    if !gate_fired && (self.heuristic || query.prune) {
                         *self.engine.state_mut() = state_after.clone();
-                        let raw = self.causal.h_add(&state_after, &self.engine, &goal_facts);
-                        if query.prune && !self.causal.host_opaque() && raw >= u32::MAX / 4 {
-                            if std::env::var("STORY_DEBUG_PRUNE").is_ok() {
-                                eprintln!("DBG prune: relaxation at expansions {expansions}");
-                            }
+                        raw_h = self.causal.h_add(&state_after, &self.engine, &goal_facts);
+                        if query.prune && !self.causal.host_opaque() && raw_h >= u32::MAX / 4 {
+                            gate_fired = true;
+                        }
+                    }
+                    if gate_fired {
+                        *self.engine.state_mut() = state_after.clone();
+                        let ctx = GoalCtx {
+                            engine: &self.engine,
+                            events: &record.events,
+                        };
+                        if !query.goal.holds(&ctx) {
                             pruned += 1;
                             continue;
                         }
-                        i64::from(raw.min(4096))
+                    }
+                    let h = if self.heuristic || query.prune {
+                        i64::from(raw_h.min(4096))
                     } else {
                         0
                     };
@@ -437,7 +425,7 @@ impl Analyzer {
                         record: Some(record),
                         actions,
                         depth,
-                        sig: Vec::new(),
+                        sig,
                     });
                     queue.push(Reverse(Key {
                         parts: priority(
@@ -506,8 +494,10 @@ impl Analyzer {
             let merged_ok = match run {
                 Err(_) => false,
                 Ok(events) => {
-                    let key = CanonicalStateKey::of_with(engine.state(), &self.content, &self.symmetry);
-                    let want = CanonicalStateKey::of_with(&b.state_after, &self.content, &self.symmetry);
+                    let key =
+                        CanonicalStateKey::of_with(engine.state(), &self.content, &self.symmetry);
+                    let want =
+                        CanonicalStateKey::of_with(&b.state_after, &self.content, &self.symmetry);
                     events == b.events && key == want
                 }
             };
@@ -565,12 +555,30 @@ impl Analyzer {
         } else {
             None
         };
+        let recipe_mintable = if config.prune && !self.causal.host_opaque() {
+            self.causal.recipe_mintable_cards()
+        } else {
+            BTreeSet::new()
+        };
+        let goal_cards: Vec<CardId> = prune_facts
+            .as_ref()
+            .map(|facts| {
+                facts
+                    .iter()
+                    .filter_map(|f| match f {
+                        causal::Fact::CardLive(c)
+                        | causal::Fact::CardInZone(c, _)
+                        | causal::Fact::CardHasAspect(c, _) => Some(c.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let scarcity = if config.prune && !self.causal.host_opaque() {
-            let mintable = self.causal.recipe_mintable_cards();
             config
                 .stop_at
                 .as_ref()
-                .map(|g| crate::scarcity::Scarcity::build(g, &self.content, &mintable))
+                .map(|g| crate::scarcity::Scarcity::build(g, &self.content, &recipe_mintable))
         } else {
             None
         };
@@ -636,16 +644,44 @@ impl Analyzer {
                             continue;
                         }
                     }
-                    if let Some(facts) = &prune_facts {
-                        *self.engine.state_mut() = record.state_after.clone();
-                        let raw = self.causal.h_add(&record.state_after, &self.engine, facts);
-                        if raw >= u32::MAX / 4 {
-                            continue;
+                    if let Some(g) = &config.stop_at {
+                        let mut gate_fired = !goal_cards.is_empty()
+                            && goal_cards.iter().any(|c| {
+                                !record
+                                    .state_after
+                                    .entities
+                                    .values()
+                                    .any(|e| &e.prototype == c)
+                                    && !recipe_mintable.contains(c)
+                            });
+                        if !gate_fired {
+                            if let Some(s) = &scarcity {
+                                if !s.is_empty()
+                                    && s.dead(&record.state_after, &self.content, config.max_time)
+                                {
+                                    gate_fired = true;
+                                }
+                            }
                         }
-                    }
-                    if let Some(s) = &scarcity {
-                        if !s.is_empty() && s.dead(&record.state_after, &self.content) {
-                            continue;
+                        if !gate_fired {
+                            if let Some(facts) = &prune_facts {
+                                *self.engine.state_mut() = record.state_after.clone();
+                                let raw =
+                                    self.causal.h_add(&record.state_after, &self.engine, facts);
+                                if raw >= u32::MAX / 4 {
+                                    gate_fired = true;
+                                }
+                            }
+                        }
+                        if gate_fired {
+                            *self.engine.state_mut() = record.state_after.clone();
+                            let ctx = GoalCtx {
+                                engine: &self.engine,
+                                events: &record.events,
+                            };
+                            if !g.holds(&ctx) {
+                                continue;
+                            }
                         }
                     }
                     let key = CanonicalStateKey::of_with(

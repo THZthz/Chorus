@@ -134,6 +134,7 @@ pub struct Provenance {
 pub struct CausalGraph {
     edges: Vec<Hyperedge>,
     producers: BTreeMap<Fact, Vec<usize>>,
+    zone_facts: Vec<(CardId, ZoneName)>,
     host_opaque: bool,
 }
 
@@ -168,14 +169,14 @@ impl CausalGraph {
         self.host_opaque
     }
 
-    /// The cards some recipe's effect list can bring back live. The
-    /// feasibility gate ignores boot and deck instantiations here: those
-    /// happen once, so an extinct card with no recipe producer is gone for
-    /// the run.
+    /// The cards some runtime transition site (recipe, completion book,
+    /// expiry book, or event book) can bring back live. Boot and bare deck
+    /// sites are excluded: boot happens once at t=0, and deck draws already
+    /// ride the drawing site's edge.
     pub fn recipe_mintable_cards(&self) -> BTreeSet<CardId> {
         let mut out = BTreeSet::new();
         for edge in &self.edges {
-            if matches!(edge.site, Site::Recipe(_)) {
+            if !matches!(edge.site, Site::Boot(_) | Site::BootState | Site::Deck(_)) {
                 for f in &edge.produces {
                     if let Fact::CardLive(card) = f {
                         out.insert(card.clone());
@@ -249,10 +250,8 @@ impl CausalGraph {
                             ..
                         } = p
                         {
-                            changed |= grounded.insert(Fact::CardHasAspect(
-                                card.clone(),
-                                key.clone(),
-                            ));
+                            changed |=
+                                grounded.insert(Fact::CardHasAspect(card.clone(), key.clone()));
                         }
                     }
                 }
@@ -333,7 +332,12 @@ impl MatchOracle {
     }
 
     /// Whether one declaration can match the term list.
-    pub(crate) fn can_match(&self, content: &Content, terms: &[QueryTerm], decl: &CardDecl) -> bool {
+    pub(crate) fn can_match(
+        &self,
+        content: &Content,
+        terms: &[QueryTerm],
+        decl: &CardDecl,
+    ) -> bool {
         terms
             .iter()
             .all(|t| self.term_can_hold(content, t, decl, false))
@@ -344,11 +348,7 @@ impl MatchOracle {
     /// and inlined predicates are disjunctive — no single card's liveness is
     /// necessary — so they contribute nothing (a missing requirement only
     /// ever answers "plausible", never "impossible").
-    pub(crate) fn requirement_cards(
-        &self,
-        content: &Content,
-        terms: &[QueryTerm],
-    ) -> Vec<CardId> {
+    pub(crate) fn requirement_cards(&self, content: &Content, terms: &[QueryTerm]) -> Vec<CardId> {
         if terms
             .iter()
             .any(|t| matches!(t, QueryTerm::Not(_) | QueryTerm::Pred(_)))
@@ -382,11 +382,10 @@ impl MatchOracle {
     ) -> bool {
         match t {
             QueryTerm::Aspect(a) => {
-                let value = decl
-                    .aspects
-                    .get(&a.key)
-                    .copied()
-                    .unwrap_or_else(|| content.aspects.get(&a.key).map(|d| d.default).unwrap_or(0));
+                let value =
+                    decl.aspects.get(&a.key).copied().unwrap_or_else(|| {
+                        content.aspects.get(&a.key).map(|d| d.default).unwrap_or(0)
+                    });
                 let holds = match a.op {
                     None => value >= 1,
                     Some(CmpOp::Ge) => value >= a.value,
@@ -461,8 +460,17 @@ impl<'a> Builder<'a> {
 
     fn finish(self) -> CausalGraph {
         let mut producers: BTreeMap<Fact, Vec<usize>> = BTreeMap::new();
+        let mut zones: BTreeSet<(CardId, ZoneName)> = BTreeSet::new();
         for (i, edge) in self.edges.iter().enumerate() {
+            for r in &edge.requires {
+                if let Fact::CardInZone(c, z) = r {
+                    zones.insert((c.clone(), z.clone()));
+                }
+            }
             for p in &edge.produces {
+                if let Fact::CardInZone(c, z) = p {
+                    zones.insert((c.clone(), z.clone()));
+                }
                 producers.entry(p.clone()).or_default().push(i);
             }
         }
@@ -473,6 +481,7 @@ impl<'a> Builder<'a> {
         CausalGraph {
             edges: self.edges,
             producers,
+            zone_facts: zones.into_iter().collect(),
             host_opaque: false,
         }
     }
@@ -608,13 +617,7 @@ impl<'a> Builder<'a> {
             let binders = self.binders(&decl.id);
             let routes: Vec<RecipeId> = binders
                 .into_iter()
-                .chain(
-                    minters
-                        .get(&decl.id)
-                        .into_iter()
-                        .flatten()
-                        .cloned(),
-                )
+                .chain(minters.get(&decl.id).into_iter().flatten().cloned())
                 .collect();
             for (qualifier, book) in &decl.on_complete {
                 let ctx = SiteCtx {
@@ -701,7 +704,9 @@ impl<'a> Builder<'a> {
         let mut cards: Vec<&CardDecl> = self.content.cards.values().collect();
         cards.sort_by_key(|c| c.decl_index);
         for decl in cards {
-            let Some(book) = &decl.on_expire else { continue };
+            let Some(book) = &decl.on_expire else {
+                continue;
+            };
             if decl.lifetime.is_none() {
                 continue;
             }
@@ -775,7 +780,11 @@ impl<'a> Builder<'a> {
         let mut stack: Vec<&Expr> = vec![when];
         while let Some(e) = stack.pop() {
             match e {
-                Expr::Cmp { op: CmpOp::Ge | CmpOp::Gt, left, right } => {
+                Expr::Cmp {
+                    op: CmpOp::Ge | CmpOp::Gt,
+                    left,
+                    right,
+                } => {
                     if let Expr::Lit(n) = right.as_ref() {
                         self.require_read(left, *n, subject, requires);
                         continue;
@@ -1069,16 +1078,13 @@ impl<'a> Builder<'a> {
 
     /// The cards whose liveness the target necessarily requires (the strict
     /// read of the term list; see `MatchOracle::requirement_cards`).
-    fn requirement_cards(
-        &self,
-        t: &Target,
-        ctx: SiteCtx<'_>,
-        ex: &Extraction,
-    ) -> Vec<CardId> {
+    fn requirement_cards(&self, t: &Target, ctx: SiteCtx<'_>, ex: &Extraction) -> Vec<CardId> {
         match t {
             Target::Name { card, .. } => vec![card.clone()],
             Target::Slot(name) => {
-                let Some(rec) = ctx.recipe else { return Vec::new() };
+                let Some(rec) = ctx.recipe else {
+                    return Vec::new();
+                };
                 let Some(sd) = rec.slots.iter().find(|s| &s.name == name) else {
                     return Vec::new();
                 };
@@ -1104,7 +1110,9 @@ impl<'a> Builder<'a> {
         match t {
             Target::Name { card, .. } => vec![card.clone()],
             Target::Slot(name) => {
-                let Some(rec) = ctx.recipe else { return Vec::new() };
+                let Some(rec) = ctx.recipe else {
+                    return Vec::new();
+                };
                 let Some(sd) = rec.slots.iter().find(|s| &s.name == name) else {
                     return Vec::new();
                 };
@@ -1147,39 +1155,81 @@ impl CausalGraph {
         }
         // Fixpoint relaxation (the hypergraph is small; plain sweeps are
         // exact and allocation-free). An edge requiring an aspect read is
-        // grounded by the aspect's increase capability: raising the value
-        // from the declared default makes the read hold — the same bridge
-        // `producers_of` uses.
+        // grounded by the aspect's increase capability or by a live mint
+        // whose template declares the aspect at >= 1.
         fn increase<'a>(
             cost: &'a BTreeMap<Fact, u32>,
+            content: &Content,
             r: &Fact,
         ) -> Option<&'a u32> {
-            cost.get(r).or_else(|| match r {
-                Fact::CardHasAspect(card, key) => cost
-                    .get(&Fact::AspectCanIncrease {
-                        card: Some(card.clone()),
-                        key: key.clone(),
-                        unclamped: false,
-                    })
-                    .or_else(|| {
-                        cost.get(&Fact::AspectCanIncrease {
+            let direct = cost.get(r);
+            let bridged = match r {
+                Fact::CardHasAspect(card, key) => {
+                    let inc = cost
+                        .get(&Fact::AspectCanIncrease {
                             card: Some(card.clone()),
                             key: key.clone(),
-                            unclamped: true,
+                            unclamped: false,
                         })
-                    }),
+                        .or_else(|| {
+                            cost.get(&Fact::AspectCanIncrease {
+                                card: Some(card.clone()),
+                                key: key.clone(),
+                                unclamped: true,
+                            })
+                        });
+                    let decl_has = template_of(content, card)
+                        .and_then(|d| d.aspects.get(key))
+                        .copied()
+                        .unwrap_or(0)
+                        >= 1;
+                    let live = if decl_has {
+                        cost.get(&Fact::CardLive(card.clone()))
+                    } else {
+                        None
+                    };
+                    match (inc, live) {
+                        (Some(a), Some(b)) => Some(if a <= b { a } else { b }),
+                        (Some(a), None) => Some(a),
+                        (None, Some(b)) => Some(b),
+                        (None, None) => None,
+                    }
+                }
                 _ => None,
-            })
+            };
+            match (direct, bridged) {
+                (Some(a), Some(b)) => Some(if a <= b { a } else { b }),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            }
         }
+        let content = engine.content();
         let mut rounds = 0;
         loop {
             let mut changed = false;
             rounds += 1;
             for edge in &self.edges {
+                // Boot and bare deck edges have empty requirements for Tier-1
+                // static grounding; mid-search `state` already grounds live
+                // entities directly, and runtime draws ride their site edge.
+                if matches!(edge.site, Site::Boot(_) | Site::BootState | Site::Deck(_)) {
+                    continue;
+                }
+                if let Site::Recipe(r) | Site::RecipeAbort(r) = &edge.site {
+                    let exhausted = content
+                        .recipe(r.as_str())
+                        .and_then(|d| d.max)
+                        .is_some_and(|m| state.recipe_runs.get(r).copied().unwrap_or(0) >= m)
+                        && !state.situations.values().any(|s| &s.recipe == r);
+                    if exhausted {
+                        continue;
+                    }
+                }
                 let mut sum = 1u32;
                 let mut ready = true;
                 for r in &edge.requires {
-                    match increase(&cost, r) {
+                    match increase(&cost, content, r) {
                         Some(c) => sum = sum.saturating_add(*c),
                         None => {
                             ready = false;
@@ -1203,7 +1253,7 @@ impl CausalGraph {
         }
         goals
             .iter()
-            .map(|g| increase(&cost, g).copied().unwrap_or(u32::MAX / 4))
+            .map(|g| increase(&cost, content, g).copied().unwrap_or(u32::MAX / 4))
             .fold(0u32, |a, b| a.saturating_add(b))
     }
 
@@ -1213,7 +1263,8 @@ impl CausalGraph {
         state: &story_core::State,
         engine: &story_engine::Engine,
     ) -> BTreeSet<Fact> {
-        use story_content::ir::Scope;
+        use story_content::ir::{Scope, VerbMode};
+        let content = engine.content();
         let mut out = BTreeSet::new();
         let mut live: BTreeMap<CardId, Vec<story_core::EntityId>> = BTreeMap::new();
         for (&eid, ent) in &state.entities {
@@ -1223,43 +1274,58 @@ impl CausalGraph {
             out.insert(Fact::CardLive(card.clone()));
             for eid in ids {
                 let ent = &state.entities[eid];
-                for key in ent.aspects.keys() {
-                    out.insert(Fact::CardHasAspect(card.clone(), key.clone()));
+                for (key, &val) in &ent.aspects {
+                    if val >= 1 {
+                        out.insert(Fact::CardHasAspect(card.clone(), key.clone()));
+                    }
+                }
+                for (key, decl) in &content.aspects {
+                    if decl.default >= 1 && !ent.aspects.contains_key(key) {
+                        out.insert(Fact::CardHasAspect(card.clone(), key.clone()));
+                    }
                 }
             }
         }
         // Zone facts resolve through the kernel's scope face (zone scopes
         // include nested subtrees).
-        for fact in self.all_facts() {
-            if let Fact::CardInZone(card, zone) = &fact {
-                let scope = Scope::Zone(zone.clone());
-                if engine
-                    .scope_entities(&scope)
-                    .iter()
-                    .any(|e| state.entities.get(e).is_some_and(|ent| &ent.prototype == card))
-                {
-                    out.insert(fact);
+        for (card, zone) in &self.zone_facts {
+            let scope = Scope::Zone(zone.clone());
+            if engine.scope_entities(&scope).iter().any(|e| {
+                state
+                    .entities
+                    .get(e)
+                    .is_some_and(|ent| &ent.prototype == card)
+            }) {
+                out.insert(Fact::CardInZone(card.clone(), zone.clone()));
+            }
+        }
+        for (l, &val) in &state.legacy {
+            let default = content
+                .legacies
+                .get(l.as_str())
+                .map(|d| d.default)
+                .unwrap_or(0);
+            if val != default || val >= 1 {
+                out.insert(Fact::LegacyCanChange(l.clone()));
+            }
+        }
+        for sit in state.situations.values() {
+            out.insert(Fact::RecipeCanOpen(sit.recipe.clone()));
+        }
+        // Committable and autonomous verbs ground their open affordances
+        // when the recipe's run cap has not been exhausted.
+        for verb in content.verbs.values() {
+            if !matches!(verb.mode, VerbMode::Committable | VerbMode::Autonomous) {
+                continue;
+            }
+            for rec in verb.recipes.values() {
+                let exhausted = rec
+                    .max
+                    .is_some_and(|m| state.recipe_runs.get(&rec.id).copied().unwrap_or(0) >= m);
+                if !exhausted {
+                    out.insert(Fact::RecipeCanOpen(rec.id.clone()));
                 }
             }
-        }
-        for l in state.legacy.keys() {
-            out.insert(Fact::LegacyCanChange(l.clone()));
-        }
-        // The verbs' open affordances ground for free (the boot edge).
-        for verb in engine.content().verbs.values() {
-            for rec in verb.recipes.values() {
-                out.insert(Fact::RecipeCanOpen(rec.id.clone()));
-            }
-        }
-        out
-    }
-
-    /// Every fact that appears anywhere in the graph.
-    fn all_facts(&self) -> BTreeSet<Fact> {
-        let mut out = BTreeSet::new();
-        for edge in &self.edges {
-            out.extend(edge.requires.iter().cloned());
-            out.extend(edge.produces.iter().cloned());
         }
         out
     }
@@ -1270,6 +1336,17 @@ impl CausalGraph {
         let mut cone = goals.clone();
         loop {
             let mut changed = false;
+            for f in cone.clone() {
+                if let Fact::CardHasAspect(card, key) = f {
+                    for unclamped in [false, true] {
+                        changed |= cone.insert(Fact::AspectCanIncrease {
+                            card: Some(card.clone()),
+                            key: key.clone(),
+                            unclamped,
+                        });
+                    }
+                }
+            }
             for edge in &self.edges {
                 if edge.produces.iter().any(|p| cone.contains(p)) {
                     for r in &edge.requires {
@@ -1296,6 +1373,16 @@ impl CausalGraph {
             let mut set = seeds.clone();
             loop {
                 let mut changed = false;
+                for f in set.clone() {
+                    if let Fact::AspectCanIncrease {
+                        card: Some(card),
+                        key,
+                        ..
+                    } = f
+                    {
+                        changed |= set.insert(Fact::CardHasAspect(card, key));
+                    }
+                }
                 for edge in &self.edges {
                     // The boot edges ground the state's affordances for
                     // every verb alike — they say nothing about this
@@ -1359,12 +1446,16 @@ impl CausalGraph {
 }
 
 /// The goal facts of a query predicate (the heuristic's and the pruning's
-/// input): a conservative extraction over the goal's structure.
+/// input): a conservative extraction of necessary facts over the goal's
+/// structure. Conjunctive branches union; disjunctive branches intersect;
+/// negated branches and upper bounds contribute nothing.
 pub fn goal_facts(goal: &crate::query::GoalPredicate) -> BTreeSet<Fact> {
-    use crate::query::GoalPredicate;
-    use story_content::ir::Expr;
-    let mut out = BTreeSet::new();
-    fn expr_facts(e: &Expr, out: &mut BTreeSet<Fact>) {
+    use crate::query::{EventMatcher, GoalPredicate};
+    use story_content::ir::{Expr, LogicOp, Scope};
+    fn positive_read(e: &Expr, n: i64, out: &mut BTreeSet<Fact>) {
+        if n < 1 {
+            return;
+        }
         match e {
             Expr::NamePath { card, key } => {
                 out.insert(Fact::CardHasAspect(card.clone(), key.clone()));
@@ -1372,42 +1463,140 @@ pub fn goal_facts(goal: &crate::query::GoalPredicate) -> BTreeSet<Fact> {
             Expr::Legacy(key) => {
                 out.insert(Fact::LegacyCanChange(key.clone()));
             }
-            Expr::Arith { left, right, .. }
-            | Expr::Cmp { left, right, .. }
-            | Expr::Logic { left, right, .. } => {
-                expr_facts(left, out);
-                expr_facts(right, out);
-            }
-            Expr::Not(inner) => expr_facts(inner, out),
             _ => {}
         }
     }
+    fn expr_facts(e: &Expr) -> BTreeSet<Fact> {
+        let mut out = BTreeSet::new();
+        match e {
+            Expr::NamePath { card, key } => {
+                out.insert(Fact::CardHasAspect(card.clone(), key.clone()));
+            }
+            Expr::Legacy(key) => {
+                out.insert(Fact::LegacyCanChange(key.clone()));
+            }
+            Expr::Alive(card) => {
+                out.insert(Fact::CardLive(card.clone()));
+            }
+            Expr::Cmp { op, left, right } => match (op, left.as_ref(), right.as_ref()) {
+                (CmpOp::Ge | CmpOp::Eq, _, Expr::Lit(n)) => positive_read(left, *n, &mut out),
+                (CmpOp::Gt, _, Expr::Lit(n)) => positive_read(left, n.saturating_add(1), &mut out),
+                (CmpOp::Le | CmpOp::Eq, Expr::Lit(n), _) => positive_read(right, *n, &mut out),
+                (CmpOp::Lt, Expr::Lit(n), _) => positive_read(right, n.saturating_add(1), &mut out),
+                _ => {}
+            },
+            Expr::Logic {
+                op: LogicOp::And,
+                left,
+                right,
+            } => {
+                out.extend(expr_facts(left));
+                out.extend(expr_facts(right));
+            }
+            Expr::Logic {
+                op: LogicOp::Or,
+                left,
+                right,
+            } => {
+                let l = expr_facts(left);
+                let r = expr_facts(right);
+                out.extend(l.intersection(&r).cloned());
+            }
+            Expr::Not(_) => {}
+            _ => {}
+        }
+        out
+    }
+    let mut out = BTreeSet::new();
     match goal {
-        GoalPredicate::Expr(e) => expr_facts(e, &mut out),
+        GoalPredicate::Expr(e) => out.extend(expr_facts(e)),
         GoalPredicate::CardMatch {
+            scope,
             prototype: Some(p),
+            terms,
+            min_count,
             ..
-        } => {
+        } if *min_count >= 1 => {
             out.insert(Fact::CardLive(p.clone()));
+            if let Scope::Zone(z) = scope {
+                out.insert(Fact::CardInZone(p.clone(), z.clone()));
+            }
+            for t in terms {
+                if let QueryTerm::Aspect(a) = t {
+                    let low = match a.op {
+                        None => 1,
+                        Some(CmpOp::Ge | CmpOp::Eq) => a.value,
+                        Some(CmpOp::Gt) => a.value.saturating_add(1),
+                        _ => 0,
+                    };
+                    if low >= 1 {
+                        out.insert(Fact::CardHasAspect(p.clone(), a.key.clone()));
+                    }
+                }
+            }
         }
         GoalPredicate::Ending(Some(id)) => {
             out.insert(Fact::EndingReached(id.clone()));
         }
-        GoalPredicate::Ending(None) => {
-            // Any ending: every ending fact qualifies (handled by callers
-            // via the graph's own ending set).
-        }
+        GoalPredicate::Ending(None) => {}
         GoalPredicate::SituationActive {
             recipe: Some(r), ..
         } => {
             out.insert(Fact::RecipeCanOpen(r.clone()));
         }
-        GoalPredicate::And(ps) | GoalPredicate::Or(ps) => {
+        GoalPredicate::TransitionEvent(EventMatcher::SituationCompleted { recipe }) => {
+            out.insert(Fact::RecipeCanComplete(recipe.clone()));
+        }
+        GoalPredicate::TransitionEvent(EventMatcher::Continued { recipe }) => {
+            out.insert(Fact::RecipeCanOpen(recipe.clone()));
+        }
+        GoalPredicate::PartialState(ps) => {
+            for (card, key, val) in &ps.aspects {
+                if *val >= 1 {
+                    out.insert(Fact::CardHasAspect(card.clone(), key.clone()));
+                }
+            }
+            for (scope, proto, terms) in &ps.cards {
+                if let Some(p) = proto {
+                    out.insert(Fact::CardLive(p.clone()));
+                    if let Scope::Zone(z) = scope {
+                        out.insert(Fact::CardInZone(p.clone(), z.clone()));
+                    }
+                    for t in terms {
+                        if let QueryTerm::Aspect(a) = t {
+                            let low = match a.op {
+                                None => 1,
+                                Some(CmpOp::Ge | CmpOp::Eq) => a.value,
+                                Some(CmpOp::Gt) => a.value.saturating_add(1),
+                                _ => 0,
+                            };
+                            if low >= 1 {
+                                out.insert(Fact::CardHasAspect(p.clone(), a.key.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+            for (lkey, val) in &ps.legacy {
+                if *val >= 1 {
+                    out.insert(Fact::LegacyCanChange(lkey.clone()));
+                }
+            }
+        }
+        GoalPredicate::And(ps) => {
             for p in ps {
                 out.extend(goal_facts(p));
             }
         }
-        GoalPredicate::Not(p) => out.extend(goal_facts(p)),
+        GoalPredicate::Or(ps) => {
+            let mut iter = ps.iter().map(goal_facts);
+            if let Some(first) = iter.next() {
+                out = iter.fold(first, |acc, next| {
+                    acc.intersection(&next).cloned().collect()
+                });
+            }
+        }
+        GoalPredicate::Not(_) => {}
         _ => {}
     }
     out

@@ -101,10 +101,7 @@ fn the_door_goal_prunes_through_the_relaxation_gate() {
     assert!(off.witnesses.is_empty() && off.conclusive());
     let on = run(true);
     assert!(on.witnesses.is_empty());
-    assert!(
-        on.pruned > 0,
-        "the relaxation gate cut the dead branches"
-    );
+    assert!(on.pruned > 0, "the relaxation gate cut the dead branches");
 }
 
 #[test]
@@ -121,8 +118,13 @@ fn witnesses_survive_the_gate() {
     };
     let off = run(false);
     let on = run(true);
-    assert_eq!(off.witnesses.len(), on.witnesses.len(), "same witness count");
-    assert_eq!(on.pruned, 0, "the survived line prunes nothing yet");
+    assert_eq!(
+        off.witnesses.len(),
+        on.witnesses.len(),
+        "same witness count"
+    );
+    assert!(on.pruned > 0, "dead branches are pruned");
+    assert!(on.expansions <= off.expansions);
     if let (Some(a), Some(b)) = (off.witnesses.first(), on.witnesses.first()) {
         assert_eq!(a.final_state().ended, b.final_state().ended);
         assert_eq!(a.records.len(), b.records.len());
@@ -164,6 +166,8 @@ legacies
 endings
   ending lit "Lit" grand
     text "The lamp holds."
+  ending dark "Dark" somber
+    text "Cold filament."
 
 verbs
   verb charge committable instances 1
@@ -175,13 +179,22 @@ verbs
         consume aspect:juice 1
         set lamp.charge += 1
         narrate "One cell in."
+    recipe hand_crank
+      max 1
+      craftable
+      duration 0
+      effects
+        set lamp.charge += 1
   verb light committable instances 1
     recipe strike
       craftable
       duration 0
-      when lamp.charge >= 3
+      when clock >= 30m
       effects
-        ending lit
+        if lamp.charge >= 4
+          ending lit
+        else
+          ending dark
 "#
     )
 }
@@ -195,8 +208,9 @@ fn lit_query(prune: bool) -> ReachQuery {
 
 #[test]
 fn a_dead_scarcity_budget_prunes_and_degrades_honestly() {
-    // Two cells against a three-charge door: every branch is arithmetically
-    // dead, exhaustively or heuristically depending on the flag.
+    // Two cells plus one max-1 hand crank against a four-charge door: every
+    // branch is arithmetically dead, exhaustively or heuristically depending
+    // on the flag, and the MDP solver degrades `complete` when pruning fires.
     let content = common::compile(&charged_cell_fixture(2));
 
     let off = common::analyzer(content.clone(), 3).solve(&lit_query(false));
@@ -204,42 +218,33 @@ fn a_dead_scarcity_budget_prunes_and_degrades_honestly() {
     assert_eq!(off.pruned, 0);
     assert!(off.conclusive(), "exhaustive runs are conclusive");
 
-    let on = common::analyzer(content, 3).solve(&lit_query(true));
+    let on = common::analyzer(content.clone(), 3).solve(&lit_query(true));
     assert!(on.witnesses.is_empty());
     assert!(on.pruned > 0, "the scarcity gate fired");
     assert!(!on.conclusive(), "a pruned empty answer is not exhaustive");
+
+    let mut mdp_cfg = story_analyze::mdp::MdpConfig::new(GoalPredicate::Ending(Some("lit".into())));
+    mdp_cfg.max_time = Some(600);
+    mdp_cfg.prune = true;
+    let mdp_on = story_analyze::mdp::solve(&common::analyzer(content, 3), &mdp_cfg);
+    assert_eq!(mdp_on.start.v_max, 0.0);
+    assert!(!mdp_on.complete, "pruned MDP runs are not exhaustive");
 }
 
 #[test]
-fn a_live_scarcity_budget_is_never_pruned() {
-    // Three cells: the door is reachable with and without the gate, and the
-    // gate never fires.
+fn a_live_scarcity_budget_and_else_branch_ending_are_never_pruned() {
+    // Three cells plus one hand crank reaches `lit` (charge >= 4), while the
+    // `else` branch ending `dark` (charge < 4) stays reachable from boot
+    // without raising `lamp.charge`.
     let content = common::compile(&charged_cell_fixture(3));
     for prune in [false, true] {
         let out = common::analyzer(content.clone(), 3).solve(&lit_query(prune));
-        assert_eq!(out.witnesses.len(), 1, "prune={prune} reaches the door");
-        assert!(out.pruned == 0 || out.witnesses.len() == 1, "prune={prune}");
-    }
-}
+        assert_eq!(out.witnesses.len(), 1, "prune={prune} reaches lit");
 
-#[test]
-fn scarcity_never_hides_a_real_witness_on_emberwatch() {
-    // The survived line's witness is identical with the gate on and off:
-    // the numeric bound over-approximates gains, so it cannot cut a live
-    // route.
-    let content = common::compile(EMBERWATCH);
-    let run = |prune| {
-        let mut q = ReachQuery::new(GoalPredicate::Ending(Some("survived".into())));
-        q.prune = prune;
-        q.max_states = 60_000;
-        q.max_time = Some(430);
-        common::analyzer(content.clone(), 7).solve(&q)
-    };
-    let off = run(false);
-    let on = run(true);
-    assert_eq!(off.witnesses.len(), on.witnesses.len());
-    if let (Some(a), Some(b)) = (off.witnesses.first(), on.witnesses.first()) {
-        assert_eq!(a.final_state().ended, b.final_state().ended);
-        assert_eq!(a.final_clock(), b.final_clock());
+        let mut dark = ReachQuery::new(GoalPredicate::Ending(Some("dark".into())));
+        dark.prune = prune;
+        dark.max_time = Some(600);
+        let dark_out = common::analyzer(content.clone(), 3).solve(&dark);
+        assert_eq!(dark_out.witnesses.len(), 1, "prune={prune} reaches dark");
     }
 }

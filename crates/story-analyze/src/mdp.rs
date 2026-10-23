@@ -14,9 +14,9 @@ use story_content::Content;
 use story_core::{State, Time};
 
 use crate::canonical::CanonicalStateKey;
-use crate::Analyzer;
 use crate::query::{GoalCtx, GoalPredicate, RngMode};
 use crate::transitions::{GeneratorConfig, TransitionGenerator};
+use crate::Analyzer;
 
 /// The solver configuration: the exploration budgets of the game-graph
 /// construction (§1.2 — analyzer certainty is bounded by its bounds).
@@ -119,12 +119,30 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
     let mut counter = NodeCounter {
         count: 0,
         limit: config.max_nodes,
+        pruned: 0,
     };
     let vals = {
         let goal_facts = crate::causal::goal_facts(&config.goal);
+        let recipe_mintable = if config.prune && !analyzer.host_opaque() {
+            analyzer.causal().recipe_mintable_cards()
+        } else {
+            BTreeSet::new()
+        };
+        let goal_cards: Vec<story_core::CardId> = if config.prune && !analyzer.host_opaque() {
+            goal_facts
+                .iter()
+                .filter_map(|f| match f {
+                    crate::causal::Fact::CardLive(c)
+                    | crate::causal::Fact::CardInZone(c, _)
+                    | crate::causal::Fact::CardHasAspect(c, _) => Some(c.clone()),
+                    _ => None,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let scarcity = if config.prune && !analyzer.host_opaque() {
-            let mintable = analyzer.causal().recipe_mintable_cards();
-            crate::scarcity::Scarcity::build(&config.goal, &content, &mintable)
+            crate::scarcity::Scarcity::build(&config.goal, &content, &recipe_mintable)
         } else {
             crate::scarcity::Scarcity::empty()
         };
@@ -134,6 +152,8 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
             symmetry: analyzer.symmetry(),
             causal: analyzer.causal(),
             goal_facts,
+            goal_cards,
+            recipe_mintable,
             scarcity,
             config,
             memo: &mut memo,
@@ -141,8 +161,8 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
         };
         eval(&mut ctx, &start, 0, 0)
     };
-    // `count == limit` means some subtree was cut by the budget.
-    let complete = vals.is_some() && counter.count < counter.limit;
+    // `count == limit` or `pruned > 0` means some subtree was cut.
+    let complete = vals.is_some() && counter.count < counter.limit && counter.pruned == 0;
     MdpOutcome {
         start: vals.map_or_else(MdpValues::default, MdpValues::from),
         nodes: counter.count,
@@ -153,6 +173,7 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
 struct NodeCounter {
     count: usize,
     limit: usize,
+    pruned: usize,
 }
 
 /// The recursion context of one induction, bundling the eval parameters.
@@ -163,6 +184,8 @@ struct Ctx<'a> {
     causal: &'a crate::causal::CausalGraph,
     /// The goal's relaxed-grounding facts, computed once for the prune gate.
     goal_facts: std::collections::BTreeSet<crate::causal::Fact>,
+    goal_cards: Vec<story_core::CardId>,
+    recipe_mintable: BTreeSet<story_core::CardId>,
     scarcity: crate::scarcity::Scarcity,
     config: &'a MdpConfig,
     memo: &'a mut BTreeMap<(CanonicalStateKey, usize), Option<Vals>>,
@@ -182,20 +205,6 @@ fn eval(ctx: &mut Ctx<'_>, state: &State, actions: usize, depth: usize) -> Optio
     {
         return None;
     }
-    if ctx.config.prune && !ctx.causal.host_opaque() {
-        ctx.gen.install_state(state);
-        let raw = ctx.causal.h_add(state, ctx.gen.engine(), &ctx.goal_facts);
-        if raw >= u32::MAX / 4 {
-            // A pruned state scores 0, the same conservative direction as a
-            // budget cut, and marks the outcome incomplete.
-            ctx.counter.count += 1;
-            return Some(Vals::default());
-        }
-        if !ctx.scarcity.is_empty() && ctx.scarcity.dead(state, ctx.content) {
-            ctx.counter.count += 1;
-            return Some(Vals::default());
-        }
-    }
     let key = CanonicalStateKey::of_with(state, ctx.content, ctx.symmetry);
     let memo_key = (key, actions);
     if let Some(cached) = ctx.memo.get(&memo_key) {
@@ -206,16 +215,41 @@ fn eval(ctx: &mut Ctx<'_>, state: &State, actions: usize, depth: usize) -> Optio
     ctx.counter.count += 1;
 
     let goal_here = eval_goal(ctx.gen, ctx.config, state);
-    let vals = if goal_here {
-        Some(Vals {
+    if goal_here {
+        let vals = Some(Vals {
             max: 1.0,
             minimax: 1.0,
             unif: 1.0,
             actions: 0.0,
-        })
-    } else if state.ended.is_some() {
-        Some(Vals::default())
-    } else {
+        });
+        ctx.memo.insert(memo_key, vals.clone());
+        return vals;
+    }
+    if state.ended.is_some() {
+        let vals = Some(Vals::default());
+        ctx.memo.insert(memo_key, vals.clone());
+        return vals;
+    }
+    if ctx.config.prune && !ctx.causal.host_opaque() {
+        let extinct = !ctx.goal_cards.is_empty()
+            && ctx.goal_cards.iter().any(|c| {
+                !state.entities.values().any(|e| &e.prototype == c)
+                    && !ctx.recipe_mintable.contains(c)
+            });
+        let scarce =
+            !ctx.scarcity.is_empty() && ctx.scarcity.dead(state, ctx.content, ctx.config.max_time);
+        ctx.gen.install_state(state);
+        let raw = ctx.causal.h_add(state, ctx.gen.engine(), &ctx.goal_facts);
+        if extinct || scarce || raw >= u32::MAX / 4 {
+            // A pruned state scores 0, the same conservative direction as a
+            // budget cut, and marks the outcome incomplete.
+            ctx.counter.pruned += 1;
+            let vals = Some(Vals::default());
+            ctx.memo.insert(memo_key, vals.clone());
+            return vals;
+        }
+    }
+    let vals = {
         // The three value kinds are tracked independently through the
         // induction (§7.2): `v_max` maximizes the expectation over actions,
         // `v_minimax` maximizes each action's positive-probability minimum,
@@ -246,7 +280,12 @@ fn eval(ctx: &mut Ctx<'_>, state: &State, actions: usize, depth: usize) -> Optio
             let mut act_expected = 0.0;
             let mut total_p = 0.0;
             for record in &records {
-                let branch = eval(ctx, &record.state_after, actions + record.actions(), depth + 1);
+                let branch = eval(
+                    ctx,
+                    &record.state_after,
+                    actions + record.actions(),
+                    depth + 1,
+                );
                 let p = record.probability;
                 total_p += p;
                 let v = branch.as_ref().map_or(0.0, |b| b.max);
@@ -278,9 +317,7 @@ fn eval(ctx: &mut Ctx<'_>, state: &State, actions: usize, depth: usize) -> Optio
             };
             best = Some(match best {
                 None => cand,
-                Some(b) if cand.max > b.max
-                    || (cand.max == b.max && cand.actions < b.actions) =>
-                {
+                Some(b) if cand.max > b.max || (cand.max == b.max && cand.actions < b.actions) => {
                     cand
                 }
                 Some(b) => b,

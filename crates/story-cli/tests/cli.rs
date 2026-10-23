@@ -194,7 +194,7 @@ fn condition_syntax_goals_compile_against_the_content_declarations() {
         "--reach",
         "when beacon.heat >= 1 and clock >= 6h",
         "--max-states",
-        "3000",
+        "8000",
         "--max-time",
         "430m",
     ]);

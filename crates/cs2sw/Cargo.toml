@@ -1,0 +1,21 @@
+[package]
+name = "cs2sw"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+story-content = { workspace = true }
+story-lang = { workspace = true }
+
+[dev-dependencies]
+story-core = { workspace = true }
+story-engine = { workspace = true }
+
+[lib]
+name = "cs2sw"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cs2sw"
+path = "src/main.rs"

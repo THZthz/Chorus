@@ -390,6 +390,12 @@ verbs
       duration 0m
       effects
         narrate \"x\"
+    recipe chain_r
+      priority 90
+      chain-only
+      duration 0m
+      effects
+        narrate \"x\"
   verb b autonomous instances any
     recipe r
       duration 0m
@@ -408,6 +414,8 @@ verbs
         &content.verbs["c"].recipes["r"],
     );
     assert!(a.craftable && !a.chain_only);
+    let chain_r = &content.verbs["a"].recipes["chain_r"];
+    assert!(!chain_r.craftable && chain_r.chain_only);
     assert!(!b.craftable && !b.chain_only);
     assert!(!c.craftable && c.chain_only);
     assert!(matches!(

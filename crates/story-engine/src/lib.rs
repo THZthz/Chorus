@@ -543,10 +543,10 @@ impl Engine {
     /// Is the entity bound by any live instance? Locks are derived by walking
     /// situation bindings; locking is total (spec.md §4.1).
     pub(crate) fn is_locked(&self, e: EntityId) -> bool {
-        self.state
-            .situations
-            .values()
-            .any(|s| s.bindings.values().any(|b| b.iter().any(|b| b.entity == e)))
+        let zone = self.state.entities.get(&e).map(|ent| &ent.zone);
+        self.state.situations.values().any(|s| {
+            Some(&s.interior) == zone || s.bindings.values().any(|b| b.iter().any(|b| b.entity == e))
+        })
     }
 
     pub(crate) fn verb_full(&self, verb: &VerbDecl) -> bool {

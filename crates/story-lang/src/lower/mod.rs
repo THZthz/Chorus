@@ -944,13 +944,7 @@ impl Compiler {
                 VerbMode::Autonomous => (false, false),
                 VerbMode::Uncommittable => (false, true),
             };
-            if r.craftable.is_some() {
-                craftable = true;
-            }
-            if r.chain_only.is_some() {
-                chain_only = true;
-            }
-            if craftable && chain_only {
+            if r.craftable.is_some() && r.chain_only.is_some() {
                 self.err(r.span.error(
                     code::E222,
                     format!(
@@ -958,6 +952,12 @@ impl Compiler {
                         r.name.1
                     ),
                 ));
+            } else if r.chain_only.is_some() {
+                craftable = false;
+                chain_only = true;
+            } else if r.craftable.is_some() {
+                craftable = true;
+                chain_only = false;
             }
             let duration = match r.duration {
                 Some((_, m)) => m,

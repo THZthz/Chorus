@@ -7,6 +7,7 @@ members = [
     "crates/story-engine",
     "crates/story-cli",
     "crates/story-analyze",
+    "crates/cs2sw",
 ]
 
 [workspace.package]

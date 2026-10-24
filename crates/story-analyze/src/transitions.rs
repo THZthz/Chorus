@@ -135,6 +135,9 @@ pub struct GeneratorConfig {
     pub invariant: Option<GoalPredicate>,
     /// Extra static critical moments: the query's own `clock` thresholds.
     pub query_thresholds: BTreeSet<Time>,
+    /// Verbs permitted in this exploration; if `Some`, commits and binds
+    /// outside this set are skipped.
+    pub allowed_verbs: Option<BTreeSet<VerbId>>,
 }
 
 /// The Tier 2 transition generator: enumerates the legal steps at a state
@@ -223,6 +226,11 @@ impl TransitionGenerator {
         let mut verbs: Vec<&story_content::ir::VerbDecl> = content.verbs.values().collect();
         verbs.sort_by_key(|v| v.decl_index);
         for verb in verbs {
+            if let Some(allowed) = &self.config.allowed_verbs {
+                if !allowed.contains(&verb.id) {
+                    continue;
+                }
+            }
             if verb.mode != VerbMode::Committable {
                 continue;
             }
@@ -380,6 +388,11 @@ impl TransitionGenerator {
         let sits: Vec<story_core::SituationId> = state.situations.keys().copied().collect();
         for sit in sits {
             let situation = &state.situations[&sit];
+            if let Some(allowed) = &self.config.allowed_verbs {
+                if !allowed.contains(&situation.verb) {
+                    continue;
+                }
+            }
             let Some(rec) = content.recipe(situation.recipe.as_str()) else {
                 continue;
             };

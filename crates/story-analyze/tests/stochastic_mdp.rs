@@ -96,6 +96,7 @@ fn a_roll_fed_destroy_count_partitions_the_classes() {
         max_time: None,
         invariant: None,
         query_thresholds: Default::default(),
+        allowed_verbs: None,
     };
     let mut gen = TransitionGenerator::new(content, engine, cfg);
     let state = gen.state().clone();
@@ -177,6 +178,7 @@ fn roll_classes_partition_exactly() {
         max_time: None,
         invariant: None,
         query_thresholds: Default::default(),
+        allowed_verbs: None,
     };
     let mut gen = TransitionGenerator::new(content, engine, cfg);
     let state = gen.state().clone();
@@ -215,6 +217,7 @@ fn draw_branches_cover_the_remaining_multiset() {
         max_time: None,
         invariant: None,
         query_thresholds: Default::default(),
+        allowed_verbs: None,
     };
     let mut gen = TransitionGenerator::new(content.clone(), engine, cfg);
     let state = gen.state().clone();
@@ -264,6 +267,7 @@ fn draw_branches_cover_the_remaining_multiset() {
         max_time: None,
         invariant: None,
         query_thresholds: Default::default(),
+        allowed_verbs: None,
     };
     let engine = common::boot(content2.clone(), 1);
     let mut gen = TransitionGenerator::new(content2, engine, cfg);

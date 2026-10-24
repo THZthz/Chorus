@@ -39,6 +39,9 @@ pub struct MdpConfig {
     /// score 0 — the same conservative direction as a budget cut, and the
     /// outcome reports incomplete. Skipped for host-opaque content.
     pub prune: bool,
+    /// Verbs permitted in this exploration; if `Some`, commits and binds
+    /// outside this set are skipped.
+    pub allowed_verbs: Option<BTreeSet<story_core::VerbId>>,
 }
 
 impl MdpConfig {
@@ -53,6 +56,7 @@ impl MdpConfig {
             max_depth: 192,
             allow_mid_run_bind: true,
             prune: false,
+            allowed_verbs: None,
         }
     }
 }
@@ -111,6 +115,7 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
             }
             t
         },
+        allowed_verbs: config.allowed_verbs.clone(),
     };
     let mut gen =
         TransitionGenerator::new(content.clone(), analyzer.engine_with_start(), gen_config);

@@ -61,6 +61,7 @@ fn gen(content: &std::sync::Arc<story_content::Content>) -> TransitionGenerator 
         max_time: None,
         invariant: None,
         query_thresholds: Default::default(),
+        allowed_verbs: None,
     };
     TransitionGenerator::new(content.clone(), engine, cfg)
 }
@@ -484,6 +485,7 @@ fn the_invariant_gate_checks_the_due_window() {
         max_time: None,
         invariant: Some(inv),
         query_thresholds: Default::default(),
+        allowed_verbs: None,
     };
     let mut g = TransitionGenerator::new(content, engine, cfg);
     let state = g.state().clone();

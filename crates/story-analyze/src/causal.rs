@@ -57,6 +57,33 @@ pub enum Fact {
     EndingReached(EndingId),
 }
 
+impl std::fmt::Display for Fact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CardLive(c) => write!(f, "card \"{c}\" live"),
+            Self::CardInZone(c, z) => write!(f, "card \"{c}\" in zone \"{z}\""),
+            Self::CardHasAspect(c, k) => write!(f, "card \"{c}\" has aspect \"{k}\""),
+            Self::AspectCanIncrease {
+                card: Some(c), key, ..
+            } => write!(f, "aspect \"{c}.{key}\" can increase"),
+            Self::AspectCanIncrease { card: None, key, .. } => {
+                write!(f, "aspect \"{key}\" can increase")
+            }
+            Self::AspectCanDecrease {
+                card: Some(c), key, ..
+            } => write!(f, "aspect \"{c}.{key}\" can decrease"),
+            Self::AspectCanDecrease { card: None, key, .. } => {
+                write!(f, "aspect \"{key}\" can decrease")
+            }
+            Self::LegacyCanChange(k) => write!(f, "legacy \"{k}\" can change"),
+            Self::RecipeCanOpen(r) => write!(f, "recipe \"{r}\" can open"),
+            Self::RecipeCanComplete(r) => write!(f, "recipe \"{r}\" can complete"),
+            Self::EventSignaled(e) => write!(f, "event \"{e}\" signaled"),
+            Self::EndingReached(e) => write!(f, "ending \"{e}\" reached"),
+        }
+    }
+}
+
 /// Where a hyperedge was extracted from; the provenance label of the edge.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Site {

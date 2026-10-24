@@ -128,6 +128,9 @@ pub struct ReachQuery {
     /// pruned run's "no witness" is weaker than exhaustive unreachability —
     /// the caller must say so. Witnesses stay replay-verified.
     pub prune: bool,
+    /// Verbs permitted in this exploration; if `Some`, commits and binds
+    /// outside this set are skipped.
+    pub allowed_verbs: Option<BTreeSet<VerbId>>,
 }
 
 impl ReachQuery {
@@ -143,6 +146,7 @@ impl ReachQuery {
             max_states: 100_000,
             allow_mid_run_bind: true,
             prune: false,
+            allowed_verbs: None,
         }
     }
 

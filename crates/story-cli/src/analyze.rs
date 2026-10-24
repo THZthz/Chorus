@@ -9,6 +9,7 @@
 //! deterministic output, sorted findings, and bounds truncation and
 //! inconclusive answers stated, never silently dropped.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -19,10 +20,13 @@ use story_analyze::mdp::{MdpConfig, MdpOutcome};
 use story_analyze::pareto::{analyze as pareto_analyze, Direction, Objective, ParetoConfig};
 use story_analyze::query::{GoalPredicate, ReachQuery, RngMode, SearchObjective};
 use story_analyze::search::{Analyzer, ExploreConfig, SolveOutcome};
+use story_analyze::slice::{
+    apply_assumption, slice_content, Assumption, InterfaceBoundary, SliceTarget,
+};
 use story_analyze::transitions::{PlayerStep, WitnessPath};
 use story_content::ir::{QueryTerm, Scope, SeedSpec};
 use story_content::Content;
-use story_core::{CardId, EndingId, MintPolicy, Time};
+use story_core::{CardId, EndingId, MintPolicy, State, Time, VerbId};
 use story_engine::{EffectRegistry, Event};
 
 /// Buffered-report print: section writers append to a string so the
@@ -60,6 +64,15 @@ GOAL FORMS (for --reach and --mdp):
 OBJECTIVE FORMS (for --pareto; comma-separated):
     max(<expression>)    maximize the expression at the goal state
     min(<expression>)    minimize the expression at the goal state
+MODULAR SLICING:
+    --slice <target>     isolate one verb or arc for modular analysis:
+                         verb:<id>            e.g. --slice verb:tend
+                         arc:<v1,v2,...>      e.g. --slice arc:tend,furnace
+    --assume <facts>     boundary assumptions (comma-separated):
+                         card:<id>[=<n>]      e.g. card:coal=2
+                         legacy:<key>=<n>     e.g. legacy:dawns_seen=1
+                         aspect:<c>.<k>=<n>   e.g. aspect:beacon.heat=2
+                         when <condition>     filter states during exploration
 MODIFIERS:
     --rng <mode>         deterministic | optimistic | adversarial
                          (default deterministic)
@@ -103,6 +116,15 @@ enum GoalArg {
     When(String),
 }
 
+/// An assumption in `--assume` position.
+#[derive(Clone, Debug)]
+enum AssumptionArg {
+    Card(String, u32),
+    Legacy(String, i64),
+    Aspect(String, String, i64),
+    When(String),
+}
+
 /// One `--pareto` objective, direction plus the raw expression text.
 #[derive(Clone, Debug)]
 struct ObjArg {
@@ -114,6 +136,8 @@ struct ObjArg {
 #[derive(Debug)]
 struct Options {
     path: String,
+    slice: Option<SliceTarget>,
+    assumes: Vec<AssumptionArg>,
     reaches: Vec<GoalArg>,
     classify: bool,
     /// `--mdp` given; the optional goal argument.
@@ -173,6 +197,8 @@ fn usage_error(msg: String) -> i32 {
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut opts = Options {
         path: String::new(),
+        slice: None,
+        assumes: Vec::new(),
         reaches: Vec::new(),
         classify: false,
         mdp: None,
@@ -201,6 +227,25 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 no_inline(inline, "--help")?;
                 println!("{ANALYZE_USAGE}");
                 std::process::exit(0);
+            }
+            "--slice" => {
+                let v = take_value(inline, args, &mut i, "--slice")?;
+                let target = parse_slice_arg(&v)?;
+                match &mut opts.slice {
+                    Some(SliceTarget::Verbs(set)) => match target {
+                        SliceTarget::Verbs(more) => set.extend(more),
+                    },
+                    None => opts.slice = Some(target),
+                }
+            }
+            "--assume" => {
+                let v = take_value(inline, args, &mut i, "--assume")?;
+                for piece in split_top_level_commas(&v) {
+                    let p = piece.trim();
+                    if !p.is_empty() {
+                        opts.assumes.push(parse_assume_arg(p)?);
+                    }
+                }
             }
             "--reach" => {
                 let v = take_value(inline, args, &mut i, "--reach")?;
@@ -328,10 +373,11 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         && opts.mdp.is_none()
         && opts.pareto.is_none()
         && !opts.audit
+        && opts.slice.is_none()
     {
         return Err(
-            "no analysis requested: give a goal selector (--reach, --classify, --mdp, --pareto) \
-             or --audit"
+            "no analysis requested: give a goal selector (--reach, --classify, --mdp, --pareto), \
+             --audit, or --slice"
                 .to_string(),
         );
     }
@@ -390,8 +436,97 @@ fn parse_goal_arg(s: &str) -> Result<GoalArg, String> {
     ))
 }
 
-fn split_objectives(s: &str) -> Result<Vec<ObjArg>, String> {
-    let mut pieces: Vec<String> = Vec::new();
+fn parse_slice_arg(s: &str) -> Result<SliceTarget, String> {
+    if let Some(verb) = s.strip_prefix("verb:") {
+        let v = verb.trim();
+        if v.is_empty() {
+            return Err("verb: needs a verb id".to_string());
+        }
+        return Ok(SliceTarget::single(VerbId::from(v)));
+    }
+    if let Some(arc) = s.strip_prefix("arc:") {
+        let verbs: BTreeSet<VerbId> = arc
+            .split(',')
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(VerbId::from)
+            .collect();
+        if verbs.is_empty() {
+            return Err("arc: needs at least one verb id".to_string());
+        }
+        return Ok(SliceTarget::arc(verbs));
+    }
+    Err(format!(
+        "unknown slice target `{s}` — use verb:<id> or arc:<v1,v2,...>"
+    ))
+}
+
+fn parse_assume_arg(s: &str) -> Result<AssumptionArg, String> {
+    let s = s.trim();
+    if let Some(card_part) = s.strip_prefix("card:") {
+        let (name, count) = match card_part.split_once('=') {
+            Some((name, cnt)) => {
+                let n: u32 = cnt
+                    .trim()
+                    .parse()
+                    .map_err(|_| format!("invalid card count in `{s}`"))?;
+                if n == 0 {
+                    return Err("card count must be positive".to_string());
+                }
+                (name.trim(), n)
+            }
+            None => (card_part.trim(), 1),
+        };
+        if name.is_empty() {
+            return Err("card: needs a card name".to_string());
+        }
+        return Ok(AssumptionArg::Card(name.to_string(), count));
+    }
+    if let Some(leg_part) = s.strip_prefix("legacy:") {
+        let Some((key, val)) = leg_part.split_once('=') else {
+            return Err(format!("legacy assumption `{s}` must be legacy:<key>=<n>"));
+        };
+        let v: i64 = val
+            .trim()
+            .parse()
+            .map_err(|_| format!("invalid legacy value in `{s}`"))?;
+        return Ok(AssumptionArg::Legacy(key.trim().to_string(), v));
+    }
+    if let Some(asp_part) = s.strip_prefix("aspect:") {
+        let Some((target_key, val)) = asp_part.split_once('=') else {
+            return Err(format!(
+                "aspect assumption `{s}` must be aspect:<card>.<key>=<n>"
+            ));
+        };
+        let Some((card, key)) = target_key.split_once('.') else {
+            return Err(format!(
+                "aspect assumption `{s}` must specify card and key, e.g. aspect:beacon.heat=2"
+            ));
+        };
+        let v: i64 = val
+            .trim()
+            .parse()
+            .map_err(|_| format!("invalid aspect value in `{s}`"))?;
+        return Ok(AssumptionArg::Aspect(
+            card.trim().to_string(),
+            key.trim().to_string(),
+            v,
+        ));
+    }
+    if let Some(cond) = s.strip_prefix("when ") {
+        let cond = cond.trim();
+        if cond.is_empty() {
+            return Err("when: needs a condition".to_string());
+        }
+        return Ok(AssumptionArg::When(cond.to_string()));
+    }
+    Err(format!(
+        "unknown assumption form `{s}` — use card:<id>[=<n>], legacy:<k>=<v>, aspect:<c>.<k>=<v>, or 'when <condition>'"
+    ))
+}
+
+fn split_top_level_commas(s: &str) -> Vec<String> {
+    let mut pieces = Vec::new();
     let mut depth = 0usize;
     let mut cur = String::new();
     for ch in s.chars() {
@@ -409,8 +544,12 @@ fn split_objectives(s: &str) -> Result<Vec<ObjArg>, String> {
         }
     }
     pieces.push(cur);
+    pieces
+}
+
+fn split_objectives(s: &str) -> Result<Vec<ObjArg>, String> {
     let mut objs = Vec::new();
-    for piece in pieces {
+    for piece in split_top_level_commas(s) {
         let p = piece.trim();
         if p.is_empty() {
             return Err("empty objective in --pareto".to_string());
@@ -499,6 +638,36 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         )));
     }
     validate_endings(opts, &content)?;
+    if let Some(target) = &opts.slice {
+        for verb in target.verbs() {
+            if !content.verbs.contains_key(verb.as_str()) {
+                return Err(Failure::Usage(format!("unknown verb `{verb}` in --slice")));
+            }
+        }
+    }
+    for a in &opts.assumes {
+        match a {
+            AssumptionArg::Card(name, _) => {
+                if !content.cards.contains_key(&CardId::from(name.as_str())) {
+                    return Err(Failure::Usage(format!("unknown card `{name}` in --assume")));
+                }
+            }
+            AssumptionArg::Legacy(key, _) => {
+                if !content.legacies.contains_key(key) {
+                    return Err(Failure::Usage(format!("unknown legacy `{key}` in --assume")));
+                }
+            }
+            AssumptionArg::Aspect(card, key, _) => {
+                if !content.cards.contains_key(&CardId::from(card.as_str())) {
+                    return Err(Failure::Usage(format!("unknown card `{card}` in --assume")));
+                }
+                if !content.aspects.contains_key(key) {
+                    return Err(Failure::Usage(format!("unknown aspect `{key}` in --assume")));
+                }
+            }
+            AssumptionArg::When(_) => {}
+        }
+    }
     if let (Some(turn), Some(game)) = (opts.turn, content.game.as_mut()) {
         game.turn = turn;
     }
@@ -541,13 +710,18 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
     if let Some(game) = content.game.as_ref() {
         println!("{} — seed {}, turn {}m", game.title, seed, game.turn);
     }
-    let mut settings = vec![
-        format!("rng {}", rng_name(opts.rng)),
-        format!(
-            "max-states {}",
-            opts.max_states.unwrap_or(DEFAULT_MAX_STATES)
-        ),
-    ];
+    let mut settings = Vec::new();
+    if let Some(target) = &opts.slice {
+        settings.push(format!("slice {}", describe_slice(target)));
+    }
+    if !opts.assumes.is_empty() {
+        settings.push(format!("assume {}", describe_assumes(&opts.assumes)));
+    }
+    settings.push(format!("rng {}", rng_name(opts.rng)));
+    settings.push(format!(
+        "max-states {}",
+        opts.max_states.unwrap_or(DEFAULT_MAX_STATES)
+    ));
     if let Some(t) = opts.max_time {
         settings.push(format!("max-time {t}m"));
     } else if let Some(h) = content_horizon {
@@ -596,64 +770,116 @@ fn run_analyses(opts: &Options) -> Result<(), Failure> {
         None => None,
     };
 
+    let mut assumptions = Vec::new();
+    let mut assumption_invariants = Vec::new();
+    for a in &opts.assumes {
+        match a {
+            AssumptionArg::Card(name, count) => {
+                assumptions.push(Assumption::Card {
+                    id: CardId::from(name.as_str()),
+                    count: *count,
+                });
+            }
+            AssumptionArg::Legacy(key, val) => {
+                assumptions.push(Assumption::Legacy {
+                    key: key.clone(),
+                    value: *val,
+                });
+            }
+            AssumptionArg::Aspect(card, key, val) => {
+                assumptions.push(Assumption::Aspect {
+                    card: CardId::from(card.as_str()),
+                    key: key.clone(),
+                    value: *val,
+                });
+            }
+            AssumptionArg::When(cond) => {
+                let goal = goal_predicate(&GoalArg::When(cond.clone()), &decls).map_err(Failure::Usage)?;
+                assumptions.push(Assumption::Invariant(goal.clone()));
+                assumption_invariants.push(goal);
+            }
+        }
+    }
+    let extra_invariant = match assumption_invariants.len() {
+        0 => None,
+        1 => Some(assumption_invariants.remove(0)),
+        _ => Some(GoalPredicate::And(assumption_invariants)),
+    };
+    let mut start_state = boot_analyzer.start().clone();
+    for a in &assumptions {
+        apply_assumption(&mut start_state, &content, a).map_err(Failure::Run)?;
+    }
+    let (active_content, slice_boundary) = if let Some(target) = &opts.slice {
+        let b = InterfaceBoundary::extract(boot_analyzer.causal(), target);
+        (Arc::new(slice_content(&content, target)), Some(b))
+    } else {
+        (content.clone(), None)
+    };
+
     // The sections run on parallel threads — at most `opts.jobs` at a time,
     // each with a private analyzer boot; the buffers print in the fixed
     // section order after all of them settle, so the output stays
     // deterministic.
-    let content = &content;
+    let content = &active_content;
+    let start_state = &start_state;
+    let extra_inv = extra_invariant.as_ref();
     let mut sections: Vec<SectionJob<'_>> = Vec::new();
+    if let (Some(target), Some(boundary)) = (&opts.slice, &slice_boundary) {
+        let target = target.clone();
+        let boundary = boundary.clone();
+        let assumes = opts.assumes.clone();
+        sections.push(Box::new(move || {
+            let mut out = String::new();
+            slice_section(&mut out, &target, &boundary, &assumes);
+            out
+        }));
+    }
     if !reach_goals.is_empty() {
-        let opts = opts;
-        let max_time = max_time;
         let goals = &reach_goals;
         sections.push(Box::new(move || {
-            let mut analyzer = boot_quiet(content, seed);
+            let mut analyzer = boot_quiet(content, seed, start_state);
             let mut out = String::new();
             for (desc, goal) in goals {
-                reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts, prune, max_time);
+                reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts, prune, max_time, extra_inv);
             }
             out
         }));
     }
     if opts.classify {
-        let opts = opts;
         let goal = shared_goal.clone();
         sections.push(Box::new(move || {
-            let mut analyzer = boot_quiet(content, seed);
+            let mut analyzer = boot_quiet(content, seed, start_state);
             let mut out = String::new();
-            classify_section(&mut out, &mut analyzer, goal.as_ref().map(|(_, g)| g), opts, prune, max_time);
+            classify_section(&mut out, &mut analyzer, goal.as_ref().map(|(_, g)| g), opts, prune, max_time, extra_inv);
             out
         }));
     }
     if let Some((desc, goal)) = &mdp_goal {
-        let opts = opts;
         let desc = desc.clone();
         let goal = goal.clone();
         sections.push(Box::new(move || {
-            let analyzer = boot_quiet(content, seed);
+            let analyzer = boot_quiet(content, seed, start_state);
             let mut out = String::new();
-            mdp_section(&mut out, &analyzer, &desc, goal, opts, prune, max_time);
+            mdp_section(&mut out, &analyzer, &desc, goal, opts, prune, max_time, extra_inv);
             out
         }));
     }
     if let (Some((desc, goal)), Some(objectives)) = (&shared_goal, &pareto_objectives) {
-        let opts = opts;
         let desc = desc.clone();
         let goal = goal.clone();
         let objectives = objectives.clone();
         sections.push(Box::new(move || {
-            let analyzer = boot_quiet(content, seed);
+            let analyzer = boot_quiet(content, seed, start_state);
             let mut out = String::new();
-            pareto_section(&mut out, &analyzer, &desc, goal, &objectives, opts, prune, max_time);
+            pareto_section(&mut out, &analyzer, &desc, goal, &objectives, opts, prune, max_time, extra_inv);
             out
         }));
     }
     if opts.audit {
-        let opts = opts;
         sections.push(Box::new(move || {
-            let mut analyzer = boot_quiet(content, seed);
+            let mut analyzer = boot_quiet(content, seed, start_state);
             let mut out = String::new();
-            audit_section(&mut out, &mut analyzer, opts, prune, max_time);
+            audit_section(&mut out, &mut analyzer, opts, prune, max_time, extra_inv);
             out
         }));
     }
@@ -705,9 +931,9 @@ fn run_sections(jobs: usize, sections: Vec<SectionJob<'_>>) -> Vec<String> {
 
 /// A private analyzer for a section thread: the sequential boot above
 /// already reported the diagnostics, so this one is silent.
-fn boot_quiet(content: &Arc<Content>, seed: u64) -> Analyzer {
+fn boot_quiet(content: &Arc<Content>, seed: u64, start: &State) -> Analyzer {
     let (analyzer, _) = Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None);
-    analyzer
+    analyzer.with_start_state(start.clone())
 }
 
 /// Every `ending:<ID>` goal must name a declared ending: a typo'd id would
@@ -757,14 +983,24 @@ fn turn_setting(turn: Time, applied: bool) -> String {
 
 const DEFAULT_MAX_STATES: usize = 100_000;
 
-fn explore_config(opts: &Options, prune: bool, max_time: Option<Time>) -> ExploreConfig {
-    ExploreConfig {
+fn explore_config(
+    opts: &Options,
+    prune: bool,
+    max_time: Option<Time>,
+    extra_invariant: Option<&GoalPredicate>,
+) -> ExploreConfig {
+    let mut cfg = ExploreConfig {
         rng_mode: opts.rng,
         max_states: opts.max_states.unwrap_or(DEFAULT_MAX_STATES),
         max_time,
         prune,
+        allowed_verbs: opts.slice.as_ref().map(|t| t.verbs().clone()),
         ..Default::default()
+    };
+    if let Some(inv) = extra_invariant {
+        cfg.invariant = Some(inv.clone());
     }
+    cfg
 }
 
 fn truncated_note(truncated: bool, bounded: bool) -> &'static str {
@@ -777,8 +1013,94 @@ fn truncated_note(truncated: bool, bounded: bool) -> &'static str {
     }
 }
 
+// -- slice ------------------------------------------------------------------
+
+fn slice_section(
+    out: &mut String,
+    target: &SliceTarget,
+    boundary: &InterfaceBoundary,
+    assumes: &[AssumptionArg],
+) {
+    outln!(out);
+    match target {
+        SliceTarget::Verbs(vs) => {
+            let names: Vec<&str> = vs.iter().map(|v| v.as_str()).collect();
+            if names.len() == 1 {
+                outln!(out, "== slice: verb \"{}\" ==", names[0]);
+            } else {
+                outln!(out, "== slice: arc [{}] ==", names.join(", "));
+            }
+        }
+    }
+    outln!(out, "interface facts:");
+    outln!(out, "  assumes (inputs from outside):");
+    if boundary.inputs.is_empty() {
+        outln!(out, "    (none — self-contained on inputs)");
+    } else {
+        for f in &boundary.inputs {
+            outln!(out, "    - {f}");
+        }
+    }
+    outln!(out, "  guarantees (outputs to outside):");
+    if boundary.outputs.is_empty() {
+        outln!(out, "    (none — no external products)");
+    } else {
+        for f in &boundary.outputs {
+            outln!(out, "    - {f}");
+        }
+    }
+    outln!(out, "  internal:");
+    if boundary.internal.is_empty() {
+        outln!(out, "    (none)");
+    } else {
+        for f in &boundary.internal {
+            outln!(out, "    - {f}");
+        }
+    }
+    if !assumes.is_empty() {
+        outln!(out, "applied assumptions:");
+        for a in assumes {
+            match a {
+                AssumptionArg::Card(id, count) => outln!(out, "  - card:{id}={count}"),
+                AssumptionArg::Legacy(key, value) => outln!(out, "  - legacy:{key}={value}"),
+                AssumptionArg::Aspect(card, key, value) => {
+                    outln!(out, "  - aspect:{card}.{key}={value}")
+                }
+                AssumptionArg::When(cond) => outln!(out, "  - when {cond}"),
+            }
+        }
+    }
+}
+
+fn describe_slice(target: &SliceTarget) -> String {
+    match target {
+        SliceTarget::Verbs(vs) => {
+            let names: Vec<&str> = vs.iter().map(|v| v.as_str()).collect();
+            if names.len() == 1 {
+                format!("verb \"{}\"", names[0])
+            } else {
+                format!("arc [{}]", names.join(", "))
+            }
+        }
+    }
+}
+
+fn describe_assumes(assumes: &[AssumptionArg]) -> String {
+    assumes
+        .iter()
+        .map(|a| match a {
+            AssumptionArg::Card(name, cnt) => format!("card:{name}={cnt}"),
+            AssumptionArg::Legacy(k, v) => format!("legacy:{k}={v}"),
+            AssumptionArg::Aspect(c, k, v) => format!("aspect:{c}.{k}={v}"),
+            AssumptionArg::When(w) => format!("when {w}"),
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 // -- reach ------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn reach_section(
     out: &mut String,
     analyzer: &mut Analyzer,
@@ -787,6 +1109,7 @@ fn reach_section(
     opts: &Options,
     prune: bool,
     max_time: Option<Time>,
+    extra_invariant: Option<&GoalPredicate>,
 ) {
     let _span = tracing::info_span!("reach").entered();
     outln!(out);
@@ -800,6 +1123,12 @@ fn reach_section(
     }
     if let Some(k) = opts.diverse {
         query.objective = SearchObjective::DiverseWays { max_ways: k };
+    }
+    if let Some(target) = &opts.slice {
+        query.allowed_verbs = Some(target.verbs().clone());
+    }
+    if let Some(inv) = extra_invariant {
+        query.invariant = Some(inv.clone());
     }
     let outcome = analyzer.solve(&query);
     print_solve(out, &outcome, opts, max_time);
@@ -936,12 +1265,13 @@ fn classify_section(
     opts: &Options,
     prune: bool,
     max_time: Option<Time>,
+    extra_invariant: Option<&GoalPredicate>,
 ) {
     let _span = tracing::info_span!("classify").entered();
     outln!(out);
     outln!(out, "== classify ==");
     let mut config = ClassifyConfig {
-        explore: explore_config(opts, prune, max_time),
+        explore: explore_config(opts, prune, max_time, extra_invariant),
         winning_endings: goal.and_then(|g| match g {
             GoalPredicate::Ending(id) => Some(ending_set(id.as_ref())),
             _ => None,
@@ -1021,6 +1351,7 @@ fn classify_section(
 
 // -- mdp --------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn mdp_section(
     out: &mut String,
     analyzer: &Analyzer,
@@ -1029,6 +1360,7 @@ fn mdp_section(
     opts: &Options,
     prune: bool,
     max_time: Option<Time>,
+    extra_invariant: Option<&GoalPredicate>,
 ) {
     let _span = tracing::info_span!("mdp").entered();
     outln!(out);
@@ -1040,6 +1372,12 @@ fn mdp_section(
     // --max-states is the expansion bound everywhere: the game graph's node
     // budget here. max_actions/max_depth keep the crate defaults.
     config.max_nodes = opts.max_states.unwrap_or(DEFAULT_MAX_STATES);
+    if let Some(target) = &opts.slice {
+        config.allowed_verbs = Some(target.verbs().clone());
+    }
+    if let Some(inv) = extra_invariant {
+        config.invariant = Some(inv.clone());
+    }
     let outcome = story_analyze::mdp::solve(analyzer, &config);
     print_mdp(out, &outcome);
 }
@@ -1079,6 +1417,7 @@ fn print_mdp(out: &mut String, outcome: &MdpOutcome) {
 
 // -- pareto -----------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn pareto_section(
     out: &mut String,
     analyzer: &Analyzer,
@@ -1088,6 +1427,7 @@ fn pareto_section(
     opts: &Options,
     prune: bool,
     max_time: Option<Time>,
+    extra_invariant: Option<&GoalPredicate>,
 ) {
     let _span = tracing::info_span!("pareto").entered();
     let obj_desc: Vec<&str> = objectives.iter().map(|(text, _)| text.as_str()).collect();
@@ -1099,7 +1439,7 @@ fn pareto_section(
         obj_desc.join(", ")
     );
     let mut config = ParetoConfig::new(goal, only);
-    config.explore = explore_config(opts, prune, max_time);
+    config.explore = explore_config(opts, prune, max_time, extra_invariant);
     let report = pareto_analyze(analyzer, &config);
     if report.frontier.is_empty() {
         outln!(out, "frontier: empty — no explored state satisfies the goal within the bounds");
@@ -1172,11 +1512,12 @@ fn audit_section(
     opts: &Options,
     prune: bool,
     max_time: Option<Time>,
+    extra_invariant: Option<&GoalPredicate>,
 ) {
     let _span = tracing::info_span!("audit").entered();
     outln!(out);
     outln!(out, "== audit ==");
-    let report = audit(analyzer, &explore_config(opts, prune, max_time));
+    let report = audit(analyzer, &explore_config(opts, prune, max_time, extra_invariant));
     outln!(
         out,
         "explored: {} states ({})",

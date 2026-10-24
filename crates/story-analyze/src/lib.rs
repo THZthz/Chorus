@@ -33,6 +33,7 @@ pub mod query;
 pub mod replay;
 mod scarcity;
 pub mod search;
+pub mod slice;
 pub mod stochastic;
 pub mod symmetry;
 pub mod transitions;
@@ -55,6 +56,11 @@ pub use query::{
 };
 pub use replay::{Replayer, ReplayError};
 pub use search::{Analyzer, ExploredGraph, ExploreConfig, GraphEdge, GraphNode, SolveOutcome};
+pub use slice::{
+    apply_assumption, compose_witnesses, slice_content, verify_composition, Assumption,
+    CompositionReport, CompositionViolation, InterfaceBoundary, SliceContract, SliceTarget,
+    SlicedAnalyzer,
+};
 pub use stochastic::{OutcomeClass, RollConsumers, Settlement};
 pub use symmetry::{symmetry_classes, EntityEquivSig};
 pub use transitions::{PlayerStep, TransitionGenerator, TransitionRecord, WitnessPath};

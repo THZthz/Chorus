@@ -562,3 +562,142 @@ fn the_turn_override_reaches_the_boot_header() {
     assert!(out.contains("Emberwatch — seed 7, turn 15m"), "{out}");
     assert!(out.contains("| turn 15m"), "{out}");
 }
+
+// ---------------------------------------------------------------------------
+// modular slicing
+// ---------------------------------------------------------------------------
+
+#[test]
+fn analyze_slice_verb_reports_interface_boundaries() {
+    let (code, out, _) = run(&[
+        "analyze",
+        EMBER,
+        "--slice",
+        "verb:tend",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("== slice: verb \"tend\" =="), "{out}");
+    assert!(out.contains("guarantees (outputs to outside):"), "{out}");
+    assert!(out.contains("card \"beacon\" has aspect \"heat\""), "{out}");
+}
+
+#[test]
+fn analyze_slice_with_assume_and_reach() {
+    let (code, out, _) = run(&[
+        "analyze",
+        EMBER,
+        "--slice",
+        "verb:omen_sight",
+        "--assume",
+        "card:portent=1",
+        "--reach",
+        "when warden.dread >= 1",
+        "--max-states",
+        "100",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("== slice: verb \"omen_sight\" =="), "{out}");
+    assert!(out.contains("assumes (inputs from outside):"), "{out}");
+    assert!(out.contains("card \"portent\" live"), "{out}");
+    assert!(out.contains("applied assumptions:"), "{out}");
+    assert!(out.contains("card:portent=1"), "{out}");
+    assert!(out.contains("== reach: when warden.dread >= 1 =="), "{out}");
+}
+
+#[test]
+fn analyze_slice_arc_reports_internal_and_output_facts() {
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--slice",
+        "arc:gamble,seal",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("== slice: arc [gamble, seal] =="), "{out}");
+    assert!(out.contains("internal:"), "{out}");
+    assert!(out.contains("legacy \"luck\" can change"), "{out}");
+    assert!(out.contains("guarantees (outputs to outside):"), "{out}");
+    assert!(out.contains("ending \"lit\" reached"), "{out}");
+}
+
+#[test]
+fn analyze_slice_semantic_isolation_blocks_out_of_slice_verbs() {
+    // Seal alone cannot reach ending:lit without gamble or luck.
+    let (code_unreach, out_unreach, _) = run(&[
+        "analyze",
+        TINY,
+        "--slice",
+        "verb:seal",
+        "--reach",
+        "ending:lit",
+        "--max-time",
+        "1h",
+    ]);
+    assert_eq!(code_unreach, 0);
+    assert!(out_unreach.contains("UNREACHABLE"), "{out_unreach}");
+
+    // Providing the assumed legacy precondition allows seal alone to reach ending:lit.
+    let (code_reach, out_reach, _) = run(&[
+        "analyze",
+        TINY,
+        "--slice",
+        "verb:seal",
+        "--assume",
+        "legacy:luck=1",
+        "--reach",
+        "ending:lit",
+        "--max-time",
+        "1h",
+    ]);
+    assert_eq!(code_reach, 0);
+    assert!(out_reach.contains("outcome: REACHABLE"), "{out_reach}");
+    assert!(out_reach.contains("1 action(s)"), "{out_reach}");
+}
+
+#[test]
+fn analyze_slice_with_comma_condition_assumption() {
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--slice",
+        "verb:seal",
+        "--assume",
+        "when count(world, kind:matter) >= 1, legacy:luck=1",
+        "--reach",
+        "ending:lit",
+        "--max-time",
+        "1h",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+    assert!(out.contains("when count(world, kind:matter) >= 1"), "{out}");
+    assert!(out.contains("legacy:luck=1"), "{out}");
+}
+
+#[test]
+fn analyze_slice_unknown_verb_fails() {
+    let (code, _, err) = run(&[
+        "analyze",
+        EMBER,
+        "--slice",
+        "verb:nonexistent",
+    ]);
+    assert_eq!(code, 2);
+    assert!(err.contains("unknown verb `nonexistent` in --slice"), "{err}");
+}
+
+#[test]
+fn analyze_assume_unknown_card_fails() {
+    let (code, _, err) = run(&[
+        "analyze",
+        EMBER,
+        "--slice",
+        "verb:tend",
+        "--assume",
+        "card:nonexistent",
+    ]);
+    assert_eq!(code, 2);
+    assert!(err.contains("unknown card `nonexistent` in --assume"), "{err}");
+}
+
+

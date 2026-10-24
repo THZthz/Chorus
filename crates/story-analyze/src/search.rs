@@ -87,6 +87,7 @@ impl Analyzer {
     /// Analyze from a different start state (e.g. a depleted late-game
     /// state for point-of-no-return classification, §10).
     pub fn with_start_state(mut self, state: State) -> Analyzer {
+        *self.engine.state_mut() = state.clone();
         self.start = state;
         self
     }
@@ -171,8 +172,9 @@ impl Analyzer {
             max_time: query.max_time,
             invariant: query.invariant.clone(),
             query_thresholds: query.clock_thresholds(),
+            allowed_verbs: query.allowed_verbs.clone(),
         };
-        TransitionGenerator::new(self.content.clone(), self.engine.clone(), config)
+        TransitionGenerator::new(self.content.clone(), self.engine_with_start(), config)
     }
 
     /// Solve one reach query (§5.5): best-first search over the transition
@@ -545,6 +547,7 @@ impl Analyzer {
             max_states: config.max_states,
             allow_mid_run_bind: config.allow_mid_run_bind,
             prune: false,
+            allowed_verbs: config.allowed_verbs.clone(),
         };
         // Feasibility pruning expands only toward a target: without
         // `stop_at` there is nothing to be "impossible" for, so the flag is
@@ -761,6 +764,9 @@ pub struct ExploreConfig {
     /// relaxation are not expanded, so the explored graph loses edges and
     /// every downstream finding becomes an under-approximation.
     pub prune: bool,
+    /// Verbs permitted in this exploration; if `Some`, commits and binds
+    /// outside this set are skipped.
+    pub allowed_verbs: Option<BTreeSet<story_core::VerbId>>,
 }
 
 impl Default for ExploreConfig {
@@ -773,6 +779,7 @@ impl Default for ExploreConfig {
             stop_at: None,
             allow_mid_run_bind: true,
             prune: false,
+            allowed_verbs: None,
         }
     }
 }

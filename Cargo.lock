@@ -112,6 +112,8 @@ dependencies = [
 name = "story-analyze"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "story-content",
  "story-core",
  "story-engine",

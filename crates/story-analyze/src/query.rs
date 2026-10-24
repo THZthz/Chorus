@@ -131,6 +131,14 @@ pub struct ReachQuery {
     /// Verbs permitted in this exploration; if `Some`, commits and binds
     /// outside this set are skipped.
     pub allowed_verbs: Option<BTreeSet<VerbId>>,
+    /// Number of sampled rollout plays to seed the search with.
+    pub seed_samples: usize,
+    /// An external play trace to seed the search with.
+    pub seed_trace: Option<crate::trace::PlayTrace>,
+    /// Neighborhood radius around seed trajectories (default: 1 when seeded, None when unseeded).
+    pub tube_radius: Option<usize>,
+    /// Whether to record and report the explored envelope coverage.
+    pub envelope: bool,
 }
 
 impl ReachQuery {
@@ -147,6 +155,10 @@ impl ReachQuery {
             allow_mid_run_bind: true,
             prune: false,
             allowed_verbs: None,
+            seed_samples: 0,
+            seed_trace: None,
+            tube_radius: None,
+            envelope: false,
         }
     }
 

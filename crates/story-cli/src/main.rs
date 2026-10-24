@@ -18,14 +18,15 @@ const USAGE: &str = "\
 story-cli — the Chorus² dev driver and design analyzer
 
 USAGE:
-    story-cli play <file.sw> [--seed N]
+    story-cli play <file.sw> [--seed N] [--record <file.json>]
     story-cli analyze <file.sw> [options]
     story-cli <file.sw> [--seed N]            alias for play
 
 PLAY — the interactive terminal driver; commands at the `>` prompt:
     verbs | commit <verb> [slot=card ...] | bind <sit> <slot> <card> |
-    give <card> [n] | advance [n] | state | undo | quit
-    --seed N    host seed when the content declares `seed host` (default 1)
+    give <card> [n] | advance [n] | trace <file> | state | undo | quit
+    --seed N      host seed when the content declares `seed host` (default 1)
+    --record <f>  record forward play trace to JSON file on exit
 
 ANALYZE — boot the content and run design analyses; reports go to stdout.
     story-cli analyze <file.sw> [options]
@@ -64,12 +65,17 @@ fn usage_exit(code: i32) -> ! {
 fn play(args: &[String]) {
     let mut path: Option<String> = None;
     let mut seed: u64 = 1;
+    let mut record_path: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--seed" => {
                 i += 1;
                 seed = args.get(i).and_then(|s| s.parse().ok()).unwrap_or(1);
+            }
+            "--record" => {
+                i += 1;
+                record_path = args.get(i).cloned();
             }
             other => path = Some(other.to_string()),
         }
@@ -114,7 +120,8 @@ fn play(args: &[String]) {
         println!("{} — seed {}, turn {}m", game.title, seed, game.turn);
     }
 
-    let mut undo: Vec<story_engine::Snapshot> = Vec::new();
+    let mut undo: Vec<(story_engine::Snapshot, bool)> = Vec::new();
+    let mut trace_steps: Vec<story_analyze::TraceStep> = Vec::new();
     let stdin = std::io::stdin();
     loop {
         print!("> ");
@@ -131,16 +138,28 @@ fn play(args: &[String]) {
             ["help" | "h"] => print_help(),
             ["verbs"] => print_verbs(&engine),
             ["state"] => print_state(&engine),
-            ["advance"] => do_advance(&mut engine, &mut undo, 1),
+            ["advance"] => {
+                if let Some(step) = do_advance(&mut engine, &mut undo, 1) {
+                    trace_steps.push(step);
+                }
+            }
             ["advance", n] => match n.parse::<i64>() {
-                Ok(n) if n > 0 => do_advance(&mut engine, &mut undo, n),
+                Ok(n) if n > 0 => {
+                    if let Some(step) = do_advance(&mut engine, &mut undo, n) {
+                        trace_steps.push(step);
+                    }
+                }
                 _ => println!("  advance takes a positive turn count"),
             },
             ["commit", verb, rest @ ..] => {
-                do_commit(&mut engine, &mut undo, verb, rest);
+                if let Some(step) = do_commit(&mut engine, &mut undo, verb, rest) {
+                    trace_steps.push(step);
+                }
             }
             ["bind", sit, slot, card] => {
-                do_bind(&mut engine, &mut undo, sit, slot, card);
+                if let Some(step) = do_bind(&mut engine, &mut undo, sit, slot, card) {
+                    trace_steps.push(step);
+                }
             }
             ["give", card] => do_give(&mut engine, &mut undo, card, 1),
             ["give", card, n] => match n.parse::<i64>() {
@@ -148,15 +167,40 @@ fn play(args: &[String]) {
                 _ => println!("  give takes a positive count"),
             },
             ["undo"] => match undo.pop() {
-                Some(snap) => match engine.restore(&snap) {
-                    Ok(()) => println!("  undone"),
+                Some((snap, was_trace_step)) => match engine.restore(&snap) {
+                    Ok(()) => {
+                        if was_trace_step {
+                            trace_steps.pop();
+                        }
+                        println!("  undone");
+                    }
                     Err(d) => println!("  refused: {d}"),
                 },
                 None => println!("  nothing to undo"),
             },
+            ["trace" | "export-trace", out_path] => {
+                let mut trace = story_analyze::PlayTrace::new(seed, None);
+                trace.game = engine.content().game.as_ref().map(|g| g.title.clone());
+                trace.steps = trace_steps.clone();
+                match trace.to_json() {
+                    Ok(json) => match std::fs::write(out_path, json) {
+                        Ok(()) => println!("  exported trace ({} steps) to {out_path}", trace.steps.len()),
+                        Err(e) => println!("  failed to write trace file: {e}"),
+                    },
+                    Err(e) => println!("  failed to serialize trace: {e}"),
+                }
+            }
             _ => {
                 print_help();
             }
+        }
+    }
+    if let Some(path) = record_path {
+        let mut trace = story_analyze::PlayTrace::new(seed, None);
+        trace.game = engine.content().game.as_ref().map(|g| g.title.clone());
+        trace.steps = trace_steps;
+        if let Ok(json) = trace.to_json() {
+            let _ = std::fs::write(&path, json);
         }
     }
 }
@@ -164,7 +208,7 @@ fn play(args: &[String]) {
 fn print_help() {
     println!(
         "  verbs | commit <verb> [slot=card ...] | bind <sit> <slot> <card> | \
-         give <card> [n] | advance [n] | state | undo | quit"
+         give <card> [n] | advance [n] | trace <file> | state | undo | quit"
     );
 }
 
@@ -172,7 +216,7 @@ fn print_help() {
 /// The host route is snapshot surgery (L2: the snapshot is the save) — the
 /// engine's mint pipeline runs through authored effects only, and the probe
 /// driver owns the undo snapshot either way.
-fn do_give(engine: &mut Engine, undo: &mut Vec<story_engine::Snapshot>, card: &str, n: i64) {
+fn do_give(engine: &mut Engine, undo: &mut Vec<(story_engine::Snapshot, bool)>, card: &str, n: i64) {
     let Some(decl) = engine
         .content()
         .cards
@@ -228,7 +272,7 @@ fn do_give(engine: &mut Engine, undo: &mut Vec<story_engine::Snapshot>, card: &s
     };
     match engine.restore(&prepared) {
         Ok(()) => {
-            undo.push(snap);
+            undo.push((snap, false));
             println!("  gave {minted} x {card}");
         }
         Err(d) => println!("  refused: {d}"),
@@ -246,15 +290,16 @@ fn find_entity(engine: &Engine, name: &str) -> Option<EntityId> {
 
 fn do_commit(
     engine: &mut Engine,
-    undo: &mut Vec<story_engine::Snapshot>,
+    undo: &mut Vec<(story_engine::Snapshot, bool)>,
     verb: &str,
     rest: &[&str],
-) {
+) -> Option<story_analyze::TraceStep> {
     let mut bindings: Vec<(SlotName, EntityId)> = Vec::new();
+    let mut trace_bindings: Vec<(SlotName, String)> = Vec::new();
     for pair in rest {
         let Some((slot, card)) = pair.split_once('=') else {
             println!("  bindings are slot=card, e.g. fuel=coal");
-            return;
+            return None;
         };
         // `slot=#<id>` addresses an entity directly (the probe driver's
         // escape hatch when several copies share a name).
@@ -266,9 +311,10 @@ fn do_commit(
             .or_else(|| find_entity(engine, card));
         let Some(e) = e else {
             println!("  no live card named `{card}`");
-            return;
+            return None;
         };
         bindings.push((SlotName::from(slot), e));
+        trace_bindings.push((SlotName::from(slot), card.to_string()));
     }
     let snap = engine.snapshot();
     let action = CommitAction {
@@ -279,54 +325,77 @@ fn do_commit(
         // The undo snapshot is host-held and pushed only for an applied
         // action; a refusal leaves nothing to undo.
         Ok(events) => {
-            undo.push(snap);
+            undo.push((snap, true));
             print_events(&events);
+            Some(story_analyze::TraceStep::Commit {
+                verb: VerbId::from(verb),
+                bindings: trace_bindings,
+            })
         }
-        Err(d) => println!("  refused: {d}"),
+        Err(d) => {
+            println!("  refused: {d}");
+            None
+        }
     }
 }
 
 fn do_bind(
     engine: &mut Engine,
-    undo: &mut Vec<story_engine::Snapshot>,
+    undo: &mut Vec<(story_engine::Snapshot, bool)>,
     sit: &str,
     slot: &str,
     card: &str,
-) {
-    let Ok(sit) = sit.parse::<u64>() else {
+) -> Option<story_analyze::TraceStep> {
+    let Ok(sit_id) = sit.parse::<u64>() else {
         println!("  bind takes a situation number (see `state`)");
-        return;
+        return None;
     };
     let Some(e) = find_entity(engine, card) else {
         println!("  no live card named `{card}`");
-        return;
+        return None;
     };
     let snap = engine.snapshot();
-    match engine.bind(SituationId(sit), SlotName::from(slot), e) {
+    match engine.bind(SituationId(sit_id), SlotName::from(slot), e) {
         Ok(events) => {
-            undo.push(snap);
+            undo.push((snap, true));
             print_events(&events);
+            Some(story_analyze::TraceStep::Bind {
+                situation: SituationId(sit_id),
+                slot: SlotName::from(slot),
+                card: card.to_string(),
+            })
         }
-        Err(d) => println!("  refused: {d}"),
+        Err(d) => {
+            println!("  refused: {d}");
+            None
+        }
     }
 }
 
-fn do_advance(engine: &mut Engine, undo: &mut Vec<story_engine::Snapshot>, turns: i64) {
+fn do_advance(
+    engine: &mut Engine,
+    undo: &mut Vec<(story_engine::Snapshot, bool)>,
+    turns: i64,
+) -> Option<story_analyze::TraceStep> {
     let Some(dt) = engine.turn().checked_mul(turns) else {
         println!(
             "  refused: error BadDuration [effects]: advance {turns} turns overflows the clock"
         );
-        return;
+        return None;
     };
     let snap = engine.snapshot();
     match engine.advance(dt) {
         Ok(events) => {
-            undo.push(snap);
+            undo.push((snap, true));
             print_events(&events);
+            print_ending(engine);
+            Some(story_analyze::TraceStep::Advance { turns })
         }
-        Err(d) => println!("  refused: {d}"),
+        Err(d) => {
+            println!("  refused: {d}");
+            None
+        }
     }
-    print_ending(engine);
 }
 
 fn print_events(events: &[Event]) {

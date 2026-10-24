@@ -190,6 +190,11 @@ impl CausalGraph {
         &self.edges
     }
 
+    /// Every fact produced by at least one hyperedge in the causal graph.
+    pub fn facts(&self) -> impl Iterator<Item = &Fact> {
+        self.producers.keys()
+    }
+
     /// Whether any effect list references a host-registered `Op`; content
     /// relying on them degrades to Tier-2-only guarantees.
     pub fn host_opaque(&self) -> bool {
@@ -1285,7 +1290,7 @@ impl CausalGraph {
     }
 
     /// The facts the state itself grounds (the heuristic's base costs).
-    fn grounded_state_facts(
+    pub(crate) fn grounded_state_facts(
         &self,
         state: &story_core::State,
         engine: &story_engine::Engine,

@@ -27,15 +27,18 @@ pub mod audit;
 pub mod canonical;
 pub mod causal;
 pub mod classify;
+pub mod envelope;
 pub mod mdp;
 pub mod pareto;
 pub mod query;
 pub mod replay;
+pub mod sample;
 mod scarcity;
 pub mod search;
 pub mod slice;
 pub mod stochastic;
 pub mod symmetry;
+pub mod trace;
 pub mod transitions;
 
 #[cfg(feature = "lang")]
@@ -49,12 +52,14 @@ pub use audit::{AuditReport, Evidence, FaultEvent, FaultWitness, Shadowing, Unre
 pub use canonical::CanonicalStateKey;
 pub use causal::{CausalGraph, Fact, Plausibility, Provenance, Site};
 pub use classify::{ClassifyConfig, Classification};
+pub use envelope::ExploredEnvelope;
 pub use mdp::{MdpConfig, MdpOutcome, MdpValues};
 pub use pareto::{Direction, Objective, ParetoConfig, ParetoPoint, ParetoReport};
 pub use query::{
     EventMatcher, GoalPredicate, ReachQuery, RngMode, SearchObjective, StatePattern,
 };
 pub use replay::{Replayer, ReplayError};
+pub use sample::{RolloutConfig, RolloutSampler};
 pub use search::{Analyzer, ExploredGraph, ExploreConfig, GraphEdge, GraphNode, SolveOutcome};
 pub use slice::{
     apply_assumption, compose_witnesses, slice_content, verify_composition, Assumption,
@@ -63,4 +68,5 @@ pub use slice::{
 };
 pub use stochastic::{OutcomeClass, RollConsumers, Settlement};
 pub use symmetry::{symmetry_classes, EntityEquivSig};
+pub use trace::{PlayTrace, TraceStep};
 pub use transitions::{PlayerStep, TransitionGenerator, TransitionRecord, WitnessPath};

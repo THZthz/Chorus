@@ -92,6 +92,10 @@ MODIFIERS:
                          so with no witness the answer reads NO WITNESS
                          UNDER PRUNING, never UNREACHABLE. Witness-bearing
                          answers are unaffected. Inert for host-op content.
+    --samples <n>        seed reachability search with <n> runtime rollouts
+    --seed-trace <file>  seed reachability search with an external play trace
+    --radius <k>         neighborhood radius around seeds (default 1 when seeded)
+    --envelope           display the explored envelope coverage report
     --profile            accumulate span wall times and print the table to
                          stderr when the run ends
     --jobs <n>           section concurrency cap (default 1); a full
@@ -152,6 +156,10 @@ struct Options {
     seed: u64,
     profile: bool,
     prune: bool,
+    samples: Option<usize>,
+    seed_trace: Option<String>,
+    radius: Option<usize>,
+    envelope: bool,
     /// Section concurrency cap. The explorations are allocation-heavy
     /// (~1 GB per full state space on emberwatch), so more concurrent
     /// sections trade wall time for memory pressure.
@@ -212,6 +220,10 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         seed: 1,
         profile: false,
         prune: false,
+        samples: None,
+        seed_trace: None,
+        radius: None,
+        envelope: false,
         jobs: 1,
     };
     let mut i = 0usize;
@@ -341,6 +353,32 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                     return Err("--jobs must be positive".to_string());
                 }
                 opts.jobs = n;
+            }
+            "--samples" => {
+                let v = take_value(inline, args, &mut i, "--samples")?;
+                let n: usize = v
+                    .parse()
+                    .map_err(|_| format!("--samples needs an unsigned integer; got `{v}`"))?;
+                opts.samples = Some(n);
+            }
+            "--seed-trace" => {
+                let v = take_value(inline, args, &mut i, "--seed-trace")?;
+                opts.seed_trace = Some(v);
+            }
+            "--radius" => {
+                let v = take_value(inline, args, &mut i, "--radius")?;
+                if v == "inf" || v == "none" {
+                    opts.radius = Some(usize::MAX);
+                } else {
+                    let n: usize = v
+                        .parse()
+                        .map_err(|_| format!("--radius needs an integer or `inf`; got `{v}`"))?;
+                    opts.radius = Some(n);
+                }
+            }
+            "--envelope" => {
+                no_inline(inline, "--envelope")?;
+                opts.envelope = true;
             }
             other if other.starts_with("--") => return Err(format!("unknown option `{other}`")),
             other => {
@@ -1130,6 +1168,26 @@ fn reach_section(
     if let Some(inv) = extra_invariant {
         query.invariant = Some(inv.clone());
     }
+    if let Some(n) = opts.samples {
+        query.seed_samples = n;
+    }
+    if let Some(path) = &opts.seed_trace {
+        match std::fs::read_to_string(path) {
+            Ok(content) => match story_analyze::PlayTrace::from_json(&content) {
+                Ok(trace) => query.seed_trace = Some(trace),
+                Err(e) => {
+                    outln!(out, "seed trace `{path}` parse error: {e}");
+                }
+            },
+            Err(e) => {
+                outln!(out, "seed trace `{path}` file error: {e}");
+            }
+        }
+    }
+    if let Some(k) = opts.radius {
+        query.tube_radius = Some(k);
+    }
+    query.envelope = opts.envelope;
     let outcome = analyzer.solve(&query);
     print_solve(out, &outcome, opts, max_time);
 }
@@ -1197,6 +1255,59 @@ fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options, max_tim
             probability_text(witness.probability),
         );
         print_witness(out, witness);
+    }
+    if opts.envelope {
+        if let Some(env) = &outcome.envelope {
+            outln!(out);
+            outln!(out, "explored envelope:");
+            outln!(
+                out,
+                "  states: {} evaluated, {} canonical states discovered, time: [{}m, {}m]",
+                env.states_evaluated,
+                env.unique_canonical_states,
+                env.time_span.0,
+                env.time_span.1
+            );
+            outln!(
+                out,
+                "  mechanics: {} verbs, {} recipes completed ({:.0}%)",
+                env.verbs_used.len(),
+                env.recipes_completed.len(),
+                env.recipe_coverage_ratio * 100.0
+            );
+            if !env.aspect_ranges.is_empty() {
+                let aspects: Vec<String> = env
+                    .aspect_ranges
+                    .iter()
+                    .take(6)
+                    .map(|((c, k), (min, max))| format!("{c}.{k}: [{min}, {max}]"))
+                    .collect();
+                outln!(out, "  aspects: {}", aspects.join(", "));
+            }
+            if env.total_causal_landmarks > 0 {
+                let ratio = env.causal_landmarks_reached as f64
+                    / env.total_causal_landmarks as f64
+                    * 100.0;
+                outln!(
+                    out,
+                    "  landmarks: {}/{} causal landmarks grounded ({:.0}%)",
+                    env.causal_landmarks_reached,
+                    env.total_causal_landmarks,
+                    ratio
+                );
+            }
+            outln!(
+                out,
+                "  topology: {} seed trajectory(ies), radius {}, {} frontier edges",
+                env.seed_trajectories,
+                if env.exhaustive_radius == usize::MAX {
+                    "inf".to_string()
+                } else {
+                    env.exhaustive_radius.to_string()
+                },
+                env.frontier_boundary_edges
+            );
+        }
     }
 }
 

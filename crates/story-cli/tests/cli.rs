@@ -700,4 +700,54 @@ fn analyze_assume_unknown_card_fails() {
     assert!(err.contains("unknown card `nonexistent` in --assume"), "{err}");
 }
 
+#[test]
+fn analyze_trajectory_guided_search_with_envelope() {
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--samples",
+        "3",
+        "--radius",
+        "1",
+        "--envelope",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+    assert!(out.contains("explored envelope:"), "{out}");
+    assert!(out.contains("states:"), "{out}");
+    assert!(out.contains("time: ["), "{out}");
+    assert!(out.contains("mechanics:"), "{out}");
+    assert!(out.contains("topology:"), "{out}");
+}
+
+#[test]
+fn play_record_and_seed_trace_in_analyze() {
+    let temp_trace = std::env::temp_dir().join(format!("story_trace_{}.json", std::process::id()));
+    let temp_trace_str = temp_trace.to_str().expect("valid utf-8 path");
+
+    let script = "commit gamble\ncommit gamble\ncommit gamble\nquit\n";
+    let (code, _) = play_with_stdin(&["play", TINY, "--record", temp_trace_str], script);
+    assert_eq!(code, 0);
+    assert!(temp_trace.exists(), "trace file should be written");
+
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--seed-trace",
+        temp_trace_str,
+        "--radius",
+        "1",
+        "--envelope",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+    assert!(out.contains("explored envelope:"), "{out}");
+
+    let _ = std::fs::remove_file(temp_trace);
+}
+
 

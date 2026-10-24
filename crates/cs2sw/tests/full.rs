@@ -322,3 +322,96 @@ fn card_book_fires_at_a_completion_that_binds_the_requirement_card() {
     );
     assert_ne!(bechet, bechetready);
 }
+
+#[test]
+fn aspirant_opening_sequence_and_instancecap_fault() {
+    let Some(root) = cs_core() else { return };
+    let content = compile(&root, "cultist-simulator.aspirant.sw");
+    let (mut engine, _) =
+        Engine::boot(content.clone(), EffectRegistry::new(), cs2sw::SEED, None);
+
+    let introjob = find(&engine, "introjob").expect("introjob on table");
+    let passion = find(&engine, "passion").expect("passion on table");
+
+    // Commit work with introjob
+    engine
+        .commit(CommitAction {
+            verb: VerbId::from("work"),
+            bindings: vec![(SlotName::from("cost_introjob"), introjob)],
+        })
+        .expect("commit workintrojob succeeds");
+
+    // Reproduce the analyzer's fault: commit dream with passion while work is running
+    engine
+        .commit(CommitAction {
+            verb: VerbId::from("dream"),
+            bindings: vec![(SlotName::from("dream_dream"), passion)],
+        })
+        .expect("commit dream starting passion succeeds at t=0 because dream is open");
+
+    // Advance 10m to workintrojob completion
+    let events = engine.advance(engine.turn() * 10).expect("advance 10m");
+
+    // Check that start dream was skipped due to InstanceCap
+    let skipped = events.iter().any(|e| matches!(e, Event::StartSkipped {
+        verb,
+        reason: story_engine::StartSkipReason::InstanceCap,
+    } if verb.as_str() == "dream"));
+    assert!(skipped, "reproduced fault: start dream was skipped due to InstanceCap");
+}
+
+#[test]
+fn aspirant_intended_opening_loop_progression() {
+    let Some(root) = cs_core() else { return };
+    let content = compile(&root, "cultist-simulator.clean.sw");
+    let (mut engine, _) =
+        Engine::boot(content.clone(), EffectRegistry::new(), cs2sw::SEED, None);
+
+    let introjob = find(&engine, "introjob").expect("introjob on table");
+
+    // Commit work with introjob
+    engine
+        .commit(CommitAction {
+            verb: VerbId::from("work"),
+            bindings: vec![(SlotName::from("cost_introjob"), introjob)],
+        })
+        .expect("commit workintrojob succeeds");
+
+    // Advance 10m to workintrojob completion: starts introdream in dream
+    let _ev1 = engine.advance(engine.turn() * 10).expect("advance 10m");
+    assert!(
+        engine
+            .state()
+            .situations
+            .values()
+            .any(|s| s.verb.as_str() == "dream" && s.recipe.as_str() == "introdream"),
+        "introdream is running in dream"
+    );
+
+    // Advance 30m to introdream completion: starts bequestcountdown in study
+    let _ev2 = engine.advance(engine.turn() * 30).expect("advance 30m");
+    assert!(
+        engine
+            .state()
+            .situations
+            .values()
+            .any(|s| s.verb.as_str() == "study" && s.recipe.as_str() == "bequestcountdown"),
+        "bequestcountdown is running in study"
+    );
+
+    // Advance 60m: bequestcountdown completes and links to bequestarrives
+    let _ev3 = engine.advance(engine.turn() * 60).expect("advance 60m");
+    assert!(
+        engine
+            .state()
+            .situations
+            .values()
+            .any(|s| s.verb.as_str() == "study" && s.recipe.as_str() == "bequestarrives"),
+        "bequestarrives is running in study"
+    );
+
+    // Advance 30m: bequestarrives completes, spawning funds, reason, and bequestintro
+    let _ev4 = engine.advance(engine.turn() * 30).expect("advance 30m");
+    assert!(find(&engine, "bequestintro").is_some(), "bequest arrived with papers");
+    assert!(find(&engine, "reason").is_some(), "player receives reason");
+}

@@ -18,19 +18,22 @@ pub struct Engine {
 
 impl Engine {
     pub fn boot(content: Arc<Content>, registry: EffectRegistry, seed: u64,
-                legacy_in: Option<BTreeMap<String, i64>>) -> (Self, Vec<Diagnostic>);
-    pub fn commit(&mut self, action: CommitAction) -> Result<Vec<Event>, Diagnostic>;
-    pub fn bind(&mut self, sit: SituationId, slot: SlotName, e: EntityId) -> Result<Vec<Event>, Diagnostic>;
-    pub fn advance(&mut self, dt: Time) -> Result<Vec<Event>, Diagnostic>;  // dt = k * turn, k >= 1
+                legacy_in: Option<BTreeMap<String, i64>>) -> (Self, Vec<RuntimeDiagnostic>);
+    pub fn commit(&mut self, action: CommitAction) -> Result<Vec<Event>, RuntimeDiagnostic>;
+    pub fn bind(&mut self, sit: SituationId, slot: SlotName, e: EntityId) -> Result<Vec<Event>, RuntimeDiagnostic>;
+    pub fn advance(&mut self, dt: Time) -> Result<Vec<Event>, RuntimeDiagnostic>;  // dt = k * turn, k >= 1
     // recognition face (read-only, for UI):
     pub fn state(&self) -> &State;
-    pub fn preview_commit(&self, action: &CommitAction) -> Result<RecipeId, Diagnostic>;
-    pub fn can_bind(&self, sit: SituationId, slot: SlotName, e: EntityId) -> Result<(), Diagnostic>;
+    pub fn content(&self) -> &Arc<Content>;
+    pub fn turn(&self) -> Time;
+    pub fn preview_commit(&self, action: &CommitAction) -> Result<RecipeId, RuntimeDiagnostic>;
+    pub fn can_bind(&self, sit: SituationId, slot: SlotName, e: EntityId) -> Result<(), RuntimeDiagnostic>;
     pub fn slot_candidates(&self, recipe: RecipeId, slot: SlotName) -> Vec<EntityId>;
+    pub fn can_autonomous_start(&self, allowed: Option<&BTreeSet<VerbId>>) -> bool;
     // persistence face:
     pub fn legacy_out(&self) -> &BTreeMap<String, i64>;
     pub fn snapshot(&self) -> Snapshot;
-    pub fn restore(&mut self, snap: &Snapshot) -> Result<(), Diagnostic>;
+    pub fn restore(&mut self, snap: &Snapshot) -> Result<(), RuntimeDiagnostic>;
     // tool faces (design-time drivers; spec.md §4.10):
     // `Engine` and `EffectRegistry` are `Clone`; every `Engine` field beyond
     // `state` is boot-derived and read-only after boot.
@@ -47,18 +50,18 @@ impl Engine {
     // runs the kernel's deterministic path:
     pub fn commit_forked(&mut self, action: CommitAction,
         fork: &mut dyn FnMut(&ChancePoint) -> Option<ChanceOutcome>)
-        -> Result<Vec<Event>, Diagnostic>;
+        -> Result<Vec<Event>, RuntimeDiagnostic>;
     pub fn advance_forked(&mut self, dt: Time,
         fork: &mut dyn FnMut(&ChancePoint) -> Option<ChanceOutcome>)
-        -> Result<Vec<Event>, Diagnostic>;
+        -> Result<Vec<Event>, RuntimeDiagnostic>;
 }
 pub struct CommitAction { pub verb: VerbId, pub bindings: Vec<(SlotName, EntityId)> }
 ```
 
 - `boot` validates the content-fixed seed (`SeedMismatch` is blocking; `seed host` content delegates the seed to the argument), folds `legacy_in` over the declared defaults, arms boot instances (timers anchored at t=0), and runs one autonomous checkpoint at t=0. Its diagnostics split into warnings (play may proceed) and errors (the host must not proceed).
-- `can_bind` addresses open slots of a live situation; `slot_candidates` addresses a recipe, not a verb, because two recipes of one verb may reuse a slot name under different filters.
+- `can_bind` addresses open slots of a live situation; `slot_candidates` addresses a recipe, not a verb, because two recipes of one verb may reuse a slot name under different filters. `can_autonomous_start` answers whether any autonomous verb — optionally restricted to the `allowed` set — would open on a poll in the current state.
 - `preview_commit` runs the selection pipeline — eligibility, minimum-fill, when-scan, guard — and reports the would-be selection including the guard outcome, without mutating state or spending time.
-- Invariants: every entry point returns `Result<_, Diagnostic>`; content-driven failure is always a value, never a panic. `commit` is all-or-nothing. `advance` is atomic per resolution unit (§9).
+- Invariants: every entry point returns `Result<_, RuntimeDiagnostic>`; content-driven failure is always a value, never a panic. `commit` is all-or-nothing. `advance` is atomic per resolution unit (§9).
 
 ```rust
 pub enum ChancePoint {
@@ -147,7 +150,7 @@ pub enum Event {
     /// A mint was skipped by uniqueness policy.
     SpawnSkipped { name: String },
     /// A resolution unit failed and rolled back; its situation aborted through
-    /// the release path. Advance traffic, deliberately not a Diagnostic.
+    /// the release path. Advance traffic, deliberately not a RuntimeDiagnostic.
     ResolutionFailed { sit: SituationId, reason: String },
     /// A logical relation edge was written by an authored `relate` (one per
     /// written edge, authored orientation). Boot edges emit nothing.
@@ -165,7 +168,7 @@ pub enum StartSkipReason { InstanceCap, MaterializationFailed }
 ## 4. The Effect Registry
 
 ```rust
-pub trait Effect { fn apply(&self, state: &mut State, ctx: &mut EffectCtx) -> Vec<Event>; }
+pub trait Effect: Send + Sync { fn apply(&self, state: &mut State, ctx: &mut EffectCtx) -> Vec<Event>; }
 
 pub enum Target {
     Name { card: CardId, aspect: Option<AspectKey> },  // aspect present on Set; unique-checked at compile
@@ -188,8 +191,8 @@ pub enum EffectNode {
     Draw { deck: DeckId, count: Expr, into: Option<Into> },
     Start { verb: VerbId, via: Option<RecipeId>, count: Expr },
     Continue { recipe: RecipeId },                      // recipe effects only; [E247] elsewhere
-    Relate { from: Target, to: Target, kind: String },  // total; one Related per written edge
-    Unrelate { from: Target, to: Target, kind: Option<String> },  // None severs every edge per pair
+    Relate { from: Box<Target>, to: Box<Target>, kind: String },  // total; one Related per written edge
+    Unrelate { from: Box<Target>, to: Box<Target>, kind: Option<String> },  // None severs every edge per pair
     Signal { event: String },
     Ending { id: EndingId },
     Branch { cond: Expr, then: Vec<EffectNode>, els: Vec<EffectNode> },
@@ -198,7 +201,7 @@ pub enum EffectNode {
 
 pub enum RegistryEntry {
     Compiled(Vec<EffectNode>),
-    Host(Arc<dyn Fn(&mut State, &mut EffectCtx) -> Vec<Event> + Send + Sync>),
+    Host(Arc<dyn Effect>),
 }
 
 pub struct EffectCtx {
@@ -220,13 +223,13 @@ Extension without kernel changes: host Rust registers `Host` closures by name; `
 ## 5. Engine-Side Queries and Expressions
 
 ```rust
-enum Scope { Interior, Bindings, Slot(SlotName), Zone(ZoneId), Related { kind, of: CardRef, incoming },
+enum Scope { Interior, Bindings, Slot(SlotName), Zone(ZoneName), Related { kind, of: Box<CardRef>, incoming },
              Table, World /* public */, Anywhere }
 enum CardRef { Name(CardId), Subject, Query { scope, terms } }   // relation endpoints
 enum Expr { Lit(i64), Bool(bool), NamePath { card, key }, Subject(key),
             Aspect { scope, query, key }, Count { scope, query }, Exists { scope, query },
             Attr { scope, query, key }, Legacy(LegacyKey), Roll, Counter, Clock,
-            Alive(String), Rel { kind, from: CardRef, to: CardRef }, Arith, Cmp, Logic, Not }
+            Alive(CardId), Rel { kind, from: Box<CardRef>, to: Box<CardRef> }, Arith, Cmp, Logic, Not }
 ```
 
 The engine-side grammar mirrors the DSL's (language.md §3). `Interior` is the interior zone of the situation whose resolution is currently running — for a `start` fired inside a completion, the parent situation's interior with its still-locked bindings. `Slot(s)` is the context's binding set for that slot name. `Zone(z)` includes the nested subtree. `Bindings` (the `bound` scope) counts per binding — a card bound in two slots counts twice; it reads empty outside a running situation, as do `Interior` and `Slot`. `Table` is the public live cards plus every situation's non-greedy slot bindings; greedy bindings and situation interiors are excluded. `kind:<k>` terms compare against `Entity.kind`; the compiler validates the kind against the collected card declarations [E203].
@@ -238,19 +241,19 @@ The engine-side grammar mirrors the DSL's (language.md §3). `Interior` is the i
 - **advance(dt) settlement.** `target = now + dt`; the loop repeatedly takes the least due item under the total-order key `(moment, phase, id)`, with `phase: 0=Completion < 1=Expiry < 2=Autonomous` and `id` the mint order. Before resolving an item, the engine sets `state.now = item.moment`; checkpoints, effects, spawn anchoring, and event timestamps observe the stepped now. When the loop drains, `now = target`.
 - **Per-unit failure policy.** Every resolution unit checkpoints (a `State` clone) before its first effect. An effect failure rolls the unit back to that checkpoint; a failed completion unit's situation aborts through the release path (bindings released — `take` slots to `bound_from`, the rest in place — interior leftovers to `releases` / `home`, interior destroyed) and `Event::ResolutionFailed { reason }` is emitted for it, while a failed expiry unit — no situation to name — rolls back silently and the timer is spent; the loop continues with the next item.
 - **Budgets and constants:**
-  - `MAX_RESOLUTIONS_PER_ADVANCE = 4096` — exceeding it rolls the entire advance back to its entry checkpoint and returns `Diagnostic::Livelock`. The only whole-advance rollback.
+  - `MAX_RESOLUTIONS_PER_ADVANCE = 4096` — exceeding it rolls the entire advance back to its entry checkpoint and returns the `Livelock` runtime diagnostic. The only whole-advance rollback.
   - `MAX_RESOLUTION_DEPTH = 128` — the native recursion depth of inline resolution (instant `start` chains, signal cycles); a breach takes the same Livelock rollback path instead of exhausting the stack.
-  - `EFFECTSET_EXPANSION_DEPTH = 16` — compile-time cap, shared with predicate inlining depth policy; exceeding is [E235].
+  - `INLINE_DEPTH_CAP = 16` — the story-lang compile-time inline depth cap, shared by predicate inlining and `effectset` expansion; exceeding is [E235].
 - **Expiry.** The anchor is the mint moment (the resolution's stepped now); expiry is a one-shot timer cleared at settlement. An expiry item that finds its card locked is deferred: on release the card re-enters the due queue if past due and expires at the next resolution pass; `on expire` books do not fire while the card is bound.
 - **Autonomous checkpoints.** At every distinct settled moment (after phases 0/1 finish) and once at the end of the advance. In verb declaration order, each autonomous verb not at its `instances` cap runs the selection law over empty bindings; a hit materializes at most one instance; a miss is silent. Boot runs one checkpoint at t=0.
 - **Seed handling.** `seed <N>` content requires `boot` to receive the same seed (`SeedMismatch`, blocking); `seed host` content takes the boot argument. The seed participates in the RNG stream and in deck permutation setup.
 
 ## 7. Runtime Diagnostics Catalog
 
-`Diagnostic { kind, message, context }`, in four families. Compile diagnostics (E-numbers) live in language.md §9 and are produced by `story-content` / `story-lang`; this catalog is the runtime face.
+`RuntimeDiagnostic { severity, kind, message, context }`, in four families. Compile diagnostics (E-numbers) live in language.md §9 and are produced by `story-content` / `story-lang`; this catalog is the runtime face. `severity` splits boot output into warnings (play may proceed) and errors (it must not); the kind is the catalog entry below.
 
 - **Lookup:** UnknownVerb / UnknownEntity / UnknownRecipe / UnknownZone / UnknownDeck / UnknownEnding / UnresolvableRef / UndeclaredEvent
-- **Eligibility (commit and bind refusals):** VerbAutonomous / StoryEnded / InstanceCapReached / EntityDead / EntityLocked / ZoneNotBindable / SlotFilterFail / SlotUnderMin / SlotOverMax / NoRecipe / GuardRefused { prose }
+- **Eligibility (commit and bind refusals):** VerbAutonomous / StoryEnded / InstanceCapReached / EntityDead / EntityLocked / ZoneNotBindable / SlotFilterFail / SlotUnderMin / SlotOverMax / NoRecipe / GuardRefused (the guard's prose rides in `message` / `context`)
 - **Effects:** NameInUse / DeckExhausted / UnregisteredOp / BadLifetime / BadDuration / EffectFailure
 - **Advance / Snapshot / Boot:** Livelock / FormatVersion / ContentMismatch / Deserialize / SeedMismatch
 

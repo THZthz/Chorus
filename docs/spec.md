@@ -21,14 +21,15 @@ The first release ships conditional expressions, multi-instance situations, cros
 
 | crate | responsibility | public interface (one line) |
 |---|---|---|
-| `story-core` | value types and state: Entity / Zone / Situation / State / Clock / Rng / Snapshot, serde | "serializable game-state values + pure functions" |
+| `story-core` | value types and state: Entity / Zone / Situation / State / Snapshot, `Time = i64`, the seeded `splitmix64` stream, serde | "serializable game-state values + pure functions" |
 | `story-content` | compiled content DB and IR types (recipes / slots / effect trees / expressions / registry name tables) + diagnostics | compile IR into a validated content database with diagnostics; read-only queries |
 | `story-lang` | the text DSL (`.sw`) → IR → `story-content` | compile source text into a content database, diagnostics on failure |
 | `story-engine` | the kernel: selection law, settlement, slots, mint pipeline, effect registry, snapshots | boot from content, registry, seed, legacy; commit / bind / advance / state / snapshot / restore |
 | `story-analyze` | design-time analysis of compiled content: reachability, state-space classification, design audit, Pareto frontiers (§8) | queries over the public kernel faces (§4.10); tool-layer consumer only |
-| `story-cli` | thin dev driver (load one root file and follow includes, dumb terminal loop) | optional, not a product |
+| `story-cli` | thin dev driver (the `play` REPL) and the design-analysis front end over `story-analyze` (the `analyze` modes and the profile face) | optional, not a product |
+| `cs2sw` | Cultist Simulator core-content converter: tolerant JSON loading, mechanical mapping passes, and a gap report for every construct the language cannot carry | CS core JSON in; a compile-checked `.sw` file plus a gap report out |
 
-Dependency law: `core ← content ← engine`; `lang → {core, content}`; `analyze → {core, content, engine}` with `lang` optional behind a feature; **the engine never depends on lang or analyze** — the compiler, the runtime, and the analysis tools are separate programs. Diagnostic types live in `story-content` and are shared by every crate.
+Dependency law: `core ← content ← engine`; `lang → {core, content}`; `analyze → {core, content, engine}` with `lang` optional behind a feature; `cs2sw → {content, lang}` (with `core` and `engine` as test-time dependencies) — a standalone converter outside the play and analyze surface; **the engine never depends on lang or analyze** — the compiler, the runtime, and the analysis tools are separate programs. Diagnostic types live in `story-content` and are shared by every crate.
 
 ## 4. Kernel Semantics
 
@@ -306,4 +307,4 @@ Four analyses build on this machinery:
 
 The analysis horizon is contractable from content: `meta horizon "6h"` on the `game` header (language.md §2.8) bounds every query by default — the flag `--max-time` overrides it, and the runtime pairing is an authored deadline recipe (`when clock >= 6h` → an epilogue ending, emberwatch's dawn). An analysis horizon in the game meta is the CS-scale enabler: without a natural ending, exhaustive analysis has no envelope.
 
-An optional `story-lang` feature lets queries be written in the `.sw` condition grammar itself. The working design reference is `.artifacts/story-analyze-spec.md`.
+An optional `story-lang` feature lets queries be written in the `.sw` condition grammar itself.

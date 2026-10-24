@@ -370,7 +370,7 @@ Every prose string — `narrate`, card `desc`, ending `text`, guard prose — su
 - `{legacy.<key>}` renders a legacy value;
 - `{related:<kind> (of | to) <card-ref>}` renders the related cards' display names, comma-joined; an empty set renders the empty string. The card-ref may be a unique name, `subject` (in a subject context), or `first(<scope> [<terms>])` over the checkable term forms (`aspect:`/`kind:`/`name:`/negation).
 
-An unknown token is [E205] — including an unknown relation kind or an unresolvable card-ref inside a `related:` token. Every prose string is addressable by a template id (its declaration site plus field, with an occurrence index for repeats within one recipe); a load-time override table keyed by template id substitutes alternate text before interpolation — the localization seam (spec.md §7).
+An unknown token is [E205] — including an unknown relation kind or an unresolvable card-ref inside a `related:` token. One exception: a `kind:` term inside the token's `first(...)` that names an undeclared kind is the query-term checker's [E203]. Every prose string is addressable by a template id (its declaration site plus field, with an occurrence index for repeats within one recipe); a load-time override table keyed by template id substitutes alternate text before interpolation — the localization seam (spec.md §7).
 
 ## 8. Idioms
 
@@ -403,7 +403,7 @@ Compile diagnostics carry `file:line:col`, a stable number, and a note phrased a
 |---|---|
 | E201 | The line's syntax is malformed (unknown declaration, missing separator, unexpected token). |
 | E202 | The text is not lexable: a tab, an uppercase identifier, a bad string, escape, or duration spelling. |
-| E203 | An aspect key or card kind is read in a query, condition, predicate, or effect but is not declared (the aspects registry, card `kind` lines). |
+| E203 | An aspect key or card kind is read in a query, condition, predicate, or effect but is not declared (the aspects registry, card `kind` lines). A `kind:` term inside a prose token's `first(...)` counts too (§7). |
 | E204 | A legacy key is read or written but is not declared. |
 | E205 | A prose `{token}` resolves to nothing known (slot, name path, handle, roll binding, legacy key). |
 | E221 | A card declares `unique` together with `stackable` or `group`. |

@@ -278,10 +278,6 @@ const GUARDED_SLOTS: &[(&str, &str, &str, &str)] = &[(
     "Choose Founding Principles: bind a Lore card as the cult's Doctrine.",
 )];
 
-/// The cap on synthesized requirement slots per recipe; anything beyond is
-/// gap-reported with its keys.
-const MAX_SYNTH_SLOTS: usize = 6;
-
 /// The actions whose CS verb declares its own drop slot (`verbs` table, the
 /// singular `slot` field); mapped onto every recipe of that action.
 fn verb_slot_of<'a>(d: &'a CsData, action: &str) -> Option<&'a Value> {
@@ -293,12 +289,34 @@ fn verb_slot_of<'a>(d: &'a CsData, action: &str) -> Option<&'a Value> {
 // ---------------------------------------------------------------------------
 
 pub fn convert(d: &CsData) -> Conversion {
+    // An element a recipe's effects write positively but the tree never
+    // declares (a DLC-side id the core data leaks) becomes a minimal stub
+    // card, so the spawn lands the way it does against CS's full data. Each
+    // minted stub is named in the gap report.
+    let mut owned = d.clone();
+    let tree_elements = d.elements.len();
+    let mut stubs: Vec<String> = Vec::new();
+    for (_, r) in &owned.recipes {
+        for (k, v) in pairs(r, "effects") {
+            if v > 0 && !k.starts_with("lever_") && !owned.elements.contains_key(&k)
+                && !stubs.contains(&k)
+            {
+                stubs.push(k);
+            }
+        }
+    }
+    for k in &stubs {
+        owned
+            .elements
+            .insert(k.clone(), serde_json::json!({ "id": k, "label": k }));
+    }
+    let d = &owned;
     let mut c = Converter {
         d,
         names: Names::new(),
         gaps: Gaps::default(),
         stats: Stats {
-            elements_in: d.elements.len(),
+            elements_in: tree_elements,
             recipes_in: d.recipes.len(),
             ..Stats::default()
         },
@@ -318,12 +336,19 @@ pub fn convert(d: &CsData) -> Conversion {
         merged_element_slots: BTreeSet::new(),
         merge_preds: BTreeMap::new(),
         plans: BTreeMap::new(),
-        levers_used: BTreeMap::new(),
         started: BTreeSet::new(),
         continued: BTreeSet::new(),
         dead_verb_detail: Vec::new(),
         alt_targets_with_warmup: BTreeSet::new(),
     };
+    for k in &stubs {
+        c.gaps.hit(
+            "tree-absent element stubbed as a card",
+            Class::ExtensionSeam,
+            "the effect writes an element the loaded tree never declares (DLC-side id); a minimal card is minted so the spawn lands",
+            k,
+        );
+    }
     c.inventory();
     c.name_everything();
     let sw = c.emit();
@@ -430,9 +455,6 @@ struct Converter<'a> {
     merge_preds: BTreeMap<(String, String, String), String>,
     /// Per-recipe slot plans (built in the naming pass).
     plans: BTreeMap<String, RecipePlan>,
-    /// Lever id -> max positive effect count over its sites (the resolver's
-    /// spawn count).
-    levers_used: BTreeMap<String, i64>,
     /// (verb id, CS recipe id) targets of emitted `start` effects (the census).
     started: BTreeSet<(String, String)>,
     /// (verb id, CS recipe id) targets of emitted `continue` effects (the
@@ -641,17 +663,6 @@ impl<'a> Converter<'a> {
                     self.note_group_read(&k);
                 }
             }
-            // Lever effect sites feed the resolver verb (one legacy-gated
-            // recipe pair per lever, `start`-routed from the site).
-            for (k, v) in pairs(r, "effects") {
-                if let Some(lever) = k.strip_prefix("lever_") {
-                    let lever = lever.to_lowercase();
-                    let e = self.levers_used.entry(lever).or_insert(0);
-                    if *e < v {
-                        *e = v;
-                    }
-                }
-            }
             for sl in r
                 .get("slots")
                 .and_then(|x| x.as_array())
@@ -813,20 +824,6 @@ impl<'a> Converter<'a> {
         for p in popups {
             let name = self.names.reserve_id(&p);
             self.names.verb.insert(p, name);
-        }
-
-        // The cross-run lever resolver verb and its recipe locals (spec.md
-        // §7.8): reserved in content order so emission and reference agree.
-        if !self.levers_used.is_empty() {
-            let name = self.names.reserve_id("lever_resolver");
-            self.names.verb.insert("lever_resolver".to_string(), name);
-            for lever in self.levers_used.keys() {
-                for suffix in ["routed", "default"] {
-                    let raw = format!("lever_{lever}_{suffix}");
-                    let name = self.names.reserve_id(&raw);
-                    self.names.recipe.insert(("lever_resolver".to_string(), raw), name);
-                }
-            }
         }
 
         for id in self.d.decks.keys() {
@@ -1199,24 +1196,11 @@ impl<'a> Converter<'a> {
 
         // Synthesized requirement slots: every remaining positive requirement
         // key gets `req_<key>: 0..1 open <term>` so the card its gate reads is
-        // bindable. Keys beyond the cap are gap-reported.
-        let mut synth = 0usize;
+        // bindable.
         for (k, v) in &reqs {
             if *v <= 0 || covered.contains(k) || plan.costs.contains_key(k) {
                 continue;
             }
-            if synth >= MAX_SYNTH_SLOTS {
-                self.gaps.hit(
-                    "requirement keys beyond the synthesized-slot cap",
-                    Class::ConverterIdiom,
-                    &format!(
-                        "the recipe needs more bindable requirement routes than the {MAX_SYNTH_SLOTS}-slot sanity cap; the excess keys gate through the interior sum alone"
-                    ),
-                    &format!("{rid}:{k}"),
-                );
-                continue;
-            }
-            synth += 1;
             let base = mangle(&format!("req_{k}"));
             let mut name = base.clone();
             let mut i = 2;
@@ -1330,24 +1314,8 @@ impl<'a> Converter<'a> {
         self.emit_cards(&mut out);
         self.emit_decks(&mut out);
         self.emit_endings(&mut out);
-        self.emit_legacies(&mut out);
         self.emit_verbs(&mut out);
         out.join("\n") + "\n"
-    }
-
-    /// The lever keys the resolver verb routes on (spec.md §7.8): one legacy
-    /// key per CS lever with effect sites, declared at 0 — a single run
-    /// routes every lever through the default arm; a host folding incoming
-    /// legacy flips the gate onto the routed arm.
-    fn emit_legacies(&mut self, out: &mut Vec<String>) {
-        if self.levers_used.is_empty() {
-            return;
-        }
-        out.push("legacies".into());
-        for lever in self.levers_used.keys() {
-            out.push(format!("  {}: 0", mangle(lever)));
-        }
-        out.push(String::new());
     }
 
     /// The derived predicates the disjunctive slot filters call (language.md
@@ -1441,22 +1409,30 @@ impl<'a> Converter<'a> {
                 }
             }
 
-            // Storage-only (non-consuming) element slots are reported: the
-            // card keeps its contents instead of burning them. Consuming
-            // element slots burn at CS's completion flush, never at a book:
-            // the converter merges them into the slot block of every recipe
-            // whose requirements or slot filters admit the element, and only
-            // the unmergeable ones are named gaps below.
-            let has_storage_slot = e
+            // A card's non-consuming element slots ride as `0..1 open` merged
+            // slots on every recipe whose requirements or slot filters admit
+            // the card (plan_recipe). Where no recipe admits it — CS opens the
+            // sphere on the resting card, which the map has no host for — the
+            // storage slot binds nowhere and is named here.
+            let unmerged_storage_slot = e
                 .get("slots")
                 .and_then(|x| x.as_array())
-                .map(|a| a.iter().any(|sl| !truthy(sl, "consumes")))
+                .map(|a| {
+                    a.iter()
+                        .filter(|sl| !truthy(sl, "consumes"))
+                        .any(|sl| {
+                            let raw = s(sl, "id").unwrap_or("slot").to_string();
+                            !self
+                                .merged_element_slots
+                                .contains(&(id.clone(), raw))
+                        })
+                })
                 .unwrap_or(false);
-            if has_storage_slot {
+            if unmerged_storage_slot {
                 self.gaps.hit(
                     "non-consuming element slot",
                     Class::ConverterIdiom,
-                    "storage-only element slots bind nothing in the map; where the behavior matters it is expressible via a card on complete book (consuming slots merge into referencing recipes' slot blocks)",
+                    "no recipe admits the element, so its storage slot has no host: CS's table-anchored spheres stay out of the map (in-situation slots merge into admitting recipes' slot blocks)",
                     &id,
                 );
             }
@@ -1842,66 +1818,6 @@ impl<'a> Converter<'a> {
             self.stats.verbs_out += 1;
             out.push(String::new());
         }
-        self.emit_lever_resolver(out);
-    }
-
-    /// The cross-run lever resolver (spec.md §7.8): one autonomous verb whose
-    /// recipes are chain-only (the heartbeat cannot open them; only the
-    /// `start` emitted at a lever effect site can), one legacy-gated pair per
-    /// lever — the routed arm answers a host-fed legacy value, the default
-    /// arm spawns the lever's `defaultValue`. The selection law picks the
-    /// arm, so each site emits a plain `start lever_resolver`.
-    fn emit_lever_resolver(&mut self, out: &mut Vec<String>) {
-        if self.levers_used.is_empty() {
-            return;
-        }
-        let vname = self
-            .names
-            .verb
-            .get("lever_resolver")
-            .cloned()
-            .unwrap_or_else(|| "lever_resolver".to_string());
-        out.push(format!("  verb {vname} autonomous instances any"));
-        out.push("    title \"Cross-Run Legacy Resolver\"".into());
-        out.push(String::new());
-        for (lever, count) in self.levers_used.clone() {
-            let default = self
-                .d
-                .levers
-                .get(&lever)
-                .and_then(|l| s(l, "defaultValue"))
-                .and_then(|dv| self.target_card(dv));
-            let Some(cname) = default else {
-                self.gaps.hit(
-                    "lever with no resolvable default",
-                    Class::ExtensionSeam,
-                    "the lever's defaultValue names no card; no resolver recipes are emitted and the lever sites drop their effect",
-                    &lever,
-                );
-                continue;
-            };
-            let n = count.clamp(1, 20);
-            let lkey = mangle(&lever);
-            for (suffix, prio, when) in [
-                ("routed", 0usize, format!("legacy.{lkey} >= 1")),
-                ("default", 1usize, format!("legacy.{lkey} < 1")),
-            ] {
-                let local = self
-                    .names
-                    .recipe
-                    .get(&("lever_resolver".to_string(), format!("lever_{lever}_{suffix}")))
-                    .cloned()
-                    .unwrap_or_else(|| mangle(&format!("lever_{lever}_{suffix}")));
-                out.push(format!("    recipe {local}"));
-                out.push(format!("      priority {prio}"));
-                out.push("      chain-only".into());
-                out.push("      duration 0".into());
-                out.push(format!("      when {when}"));
-                out.push("      effects".into());
-                out.push(format!("        spawn {cname} count {n} into table"));
-            }
-        }
-        out.push(String::new());
     }
 
     fn emit_recipe(&mut self, out: &mut Vec<String>, verb: &str, rid: &str, local: &str, index: usize, r: &Value) {
@@ -2049,7 +1965,7 @@ impl<'a> Converter<'a> {
         // inductions pass regardless of which recipe the override installed —
         // so their gated starts sit ahead of the override cascade, evaluated
         // whether or not an override adopts.
-        self.emit_additional_starts(&mut body, ind, r, rid);
+        self.emit_additional_starts(&mut body, ind, r);
 
         let plain_alts: Vec<Value> = entries(r, "alt")
             .into_iter()
@@ -2275,7 +2191,9 @@ impl<'a> Converter<'a> {
     }
 
     /// A chain start for a recipe target: (verb name, local recipe name).
-    /// Targets on the ambient verb are heartbeat-served and never chained.
+    /// Ambient-verb targets qualify: the explicit start opens the situation
+    /// at the induction's own timing, and the verb's instance cap arbitrates
+    /// against the heartbeat (best-effort skip when full).
     fn recipe_target(&mut self, tid: &str) -> Option<(String, String)> {
         let host = match self.host.get(tid) {
             Some(h) => h.clone(),
@@ -2283,21 +2201,12 @@ impl<'a> Converter<'a> {
                 self.gaps.hit(
                     "chain target is not an emitted recipe",
                     Class::NonGoal,
-                    "the target was skipped upstream; the chain entry is dropped",
+                    "no recipe with that id exists in the CS data; the chain entry is dropped",
                     tid,
                 );
                 return None;
             }
         };
-        if host == TIME_VERB {
-            self.gaps.hit(
-                "chain target on the ambient verb",
-                Class::ConverterIdiom,
-                "the autonomous heartbeat re-opens ambient recipes, so no start is emitted",
-                tid,
-            );
-            return None;
-        }
         let vname = self.names.verb.get(&host).cloned()?;
         self.names
             .recipe
@@ -2306,8 +2215,8 @@ impl<'a> Converter<'a> {
             .map(|l| (vname, l))
     }
 
-    /// CS chance/challenges gate: the roll lines to emit and the success
-    /// condition over their bindings. With `challenges`, CS
+    /// CS chance/challenges gate: the roll line to emit and the success
+    /// condition over its binding. With `challenges`, CS
     /// (ChallengeArbiter.GetArbitratedChance) reads each challenge's
     /// aspect-banded chance over the situation's interior (the table replaces
     /// the flat chance), takes the MAX across every challenge, and rolls ONCE
@@ -2316,13 +2225,9 @@ impl<'a> Converter<'a> {
     /// pair of `(aspect-level-band and roll <= bandChance)` over the shared
     /// binding, which collapses at runtime to `roll <= max band chance`. A
     /// flat `chance` without challenges is one d100 against the entry's
-    /// percentage, sharing the walk's roll binding when one is provided.
-    fn gate_of(
-        &mut self,
-        e: &Value,
-        shared: Option<&str>,
-        rid: &str,
-    ) -> (Vec<String>, Option<String>) {
+    /// percentage. Every gated entry rolls its own d100 (CS rolls per entry
+    /// examined), so the binding is always freshly minted here.
+    fn gate_of(&mut self, e: &Value) -> (Vec<String>, Option<String>) {
         let chance = e.get("chance").and_then(|x| x.as_i64()).unwrap_or(100);
         let challenges = e.get("challenges").and_then(|x| x.as_object()).cloned();
         if chance >= 100 && challenges.is_none() {
@@ -2339,15 +2244,9 @@ impl<'a> Converter<'a> {
         let mut rolls: Vec<String> = Vec::new();
         let mut conds: Vec<String> = Vec::new();
         if ch.is_empty() {
-            let bind = match shared {
-                Some(b) => b.to_string(),
-                None => {
-                    let b = self.roll_bind();
-                    rolls.push(format!("roll 1d100 as {b}"));
-                    b
-                }
-            };
-            conds.push(format!("({bind} <= {chance})"));
+            let b = self.roll_bind();
+            rolls.push(format!("roll 1d100 as {b}"));
+            conds.push(format!("({b} <= {chance})"));
         } else {
             let bind = self.roll_bind();
             rolls.push(format!("roll 1d100 as {bind}"));
@@ -2369,12 +2268,6 @@ impl<'a> Converter<'a> {
             }
             conds.push(format!("({})", pairs.join(" or ")));
         }
-        self.gaps.hit(
-            "chance/challenges gate mapped to rolls",
-            Class::ConverterIdiom,
-            "CS's hidden roll becomes a roll 1d100 line plus the aspect-banded success table; CS's arbiter takes the max challenge chance and rolls once (Rolld100() > arbitrated fails), so the challenge bands OR over one shared binding; deviation: one shared d100 covers a whole linked walk (CS rolls per entry)",
-            rid,
-        );
         (rolls, Some(conds.join(" and ")))
     }
 
@@ -2402,7 +2295,7 @@ impl<'a> Converter<'a> {
                 self.gaps.hit(
                     "chain target is not an emitted recipe",
                     Class::NonGoal,
-                    "the target was skipped upstream; the chain entry is dropped",
+                    "no recipe with that id exists in the CS data; the chain entry is dropped",
                     tid,
                 );
                 return None;
@@ -2461,7 +2354,7 @@ impl<'a> Converter<'a> {
         let target_recipe = self.d.recipe(&tid);
         let gate = target_recipe
             .and_then(|t| self.when_of(t, &plan));
-        let (rolls, cond) = self.gate_of(&e, None, rid);
+        let (rolls, cond) = self.gate_of(&e);
         let gates: Vec<String> = gate.into_iter().chain(cond).collect();
         for rl in rolls {
             body.push((ind, rl));
@@ -2473,15 +2366,10 @@ impl<'a> Converter<'a> {
         };
         if gates.is_empty() {
             // An unconditional alternative adopts the situation outright; the
-            // core body never runs.
+            // core body never runs — exactly CS's own semantics (the override
+            // replaces the recipe being executed), so nothing is lost.
             body.push((ind, format!("continue via {}.{target_local}", target.0)));
             self.note_continue(&tid);
-            self.gaps.hit(
-                "unconditional alt replaces the recipe body",
-                Class::ConverterIdiom,
-                "CS resolves the alternative over the recipe's own effects; the arm's unconditional continue adopts the situation and the core body never runs",
-                rid,
-            );
             return;
         }
         if gates.len() > 1 {
@@ -2571,21 +2459,16 @@ impl<'a> Converter<'a> {
                     );
                     continue;
                 }
-                let Some(pname) = self.target_card(&k) else {
-                    self.gaps.hit(
-                        "positive effect on an unknown element",
-                        Class::NonGoal,
-                        "no card exists under that id; the spawn is dropped",
-                        &format!("{rid}:{k}"),
-                    );
-                    continue;
-                };
                 // CS RunRecipeEffects writes the situation's storage sphere:
                 // the spawn lands in the interior, feeds the completion's
                 // books and any continuation's `when` out of the same pool,
                 // and rides the interior-leftover release at completion.
-                let n = v.clamp(1, 20);
-                body.push((ind, format!("spawn {pname} count {n} into interior")));
+                // Tree-absent element ids were minted stub cards before
+                // conversion, so every non-aspect id resolves here.
+                if let Some(pname) = self.target_card(&k) {
+                    let n = v.clamp(1, 20);
+                    body.push((ind, format!("spawn {pname} count {n} into interior")));
+                }
             } else {
                 // A negative effect value drains the executing situation's
                 // interior only (CS RunRecipeEffects -> Sphere.ModifyElementQuantity
@@ -2626,17 +2509,16 @@ impl<'a> Converter<'a> {
         // Inductions: CS gates them after the effects (the inductions pass
         // runs post-ExecuteCurrentRecipe), so they stay behind the linked
         // cascade.
-        self.emit_induction_starts(body, ind, r, rid);
+        self.emit_induction_starts(body, ind, r);
     }
 
     /// The linked list: the `additional: true` entries spawn gated side
     /// situations (CS GetNextValidLink's spawnAdditionals), then the
     /// non-additional entries walk an exclusive if/else cascade of
     /// `continue via` arms — the same-situation continuation. Each arm gates
-    /// the target's `when` plus its chance/challenges; the walk shares one
-    /// flat d100 (arms compare the binding, CS's hidden roll made visible);
-    /// challenged entries roll their own d100 and pass at the max banded
-    /// chance (CS's arbiter rolls once against the max). An
+    /// the target's `when` plus its chance/challenges, rolling its own d100
+    /// (CS rolls per entry examined); challenged entries pass at the max
+    /// banded chance (CS's arbiter rolls once against the max). An
     /// unconditional entry ends the walk. Loops are the engine's to bound:
     /// each step re-arms the timer, and the gated arms make every CS cycle
     /// strictly progress (the needs/discardseason/drawseason heartbeat).
@@ -2650,26 +2532,14 @@ impl<'a> Converter<'a> {
         // Side situations first: they never take over the walk.
         for e in linked {
             if e.is_object() && truthy(e, "additional") {
-                self.emit_side_start(body, ind, rid, e);
+                self.emit_side_start(body, ind, e);
             }
         }
         let walk: Vec<&Value> = linked
             .iter()
             .filter(|e| !(e.is_object() && truthy(e, "additional")))
             .collect();
-        // One shared d100 per walk when any arm carries a flat chance.
-        let shared = walk
-            .iter()
-            .any(|e| {
-                let chance = e.get("chance").and_then(|x| x.as_i64()).unwrap_or(100);
-                (0..100).contains(&chance) && e.get("challenges").is_none()
-            })
-            .then(|| {
-                let b = self.roll_bind();
-                body.push((ind, format!("roll 1d100 as {b}")));
-                b
-            });
-        self.emit_linked_walk(body, &walk, 0, ind, rid, shared.as_deref());
+        self.emit_linked_walk(body, &walk, 0, ind, rid);
     }
 
     /// The exclusive walk over the non-additional linked entries.
@@ -2680,7 +2550,6 @@ impl<'a> Converter<'a> {
         i: usize,
         ind: usize,
         rid: &str,
-        shared: Option<&str>,
     ) {
         if i >= walk.len() {
             return;
@@ -2693,11 +2562,11 @@ impl<'a> Converter<'a> {
                 "the entry names no recipe; it is dropped",
                 rid,
             );
-            self.emit_linked_walk(body, walk, i + 1, ind, rid, shared);
+            self.emit_linked_walk(body, walk, i + 1, ind, rid);
             return;
         };
         let Some(target) = self.continue_target(&tid) else {
-            self.emit_linked_walk(body, walk, i + 1, ind, rid, shared);
+            self.emit_linked_walk(body, walk, i + 1, ind, rid);
             return;
         };
         let plan = self.plans.get(&tid).cloned().unwrap_or_default();
@@ -2705,7 +2574,7 @@ impl<'a> Converter<'a> {
             .d
             .recipe(&tid)
             .and_then(|t| self.when_of(t, &plan));
-        let (rolls, cond) = self.gate_of(&e, shared, rid);
+        let (rolls, cond) = self.gate_of(&e);
         let gates: Vec<String> = gate.into_iter().chain(cond).collect();
         for rl in rolls {
             body.push((ind, rl));
@@ -2725,7 +2594,7 @@ impl<'a> Converter<'a> {
         self.note_continue(&tid);
         body.push((ind, "else".into()));
         let mark = body.len();
-        self.emit_linked_walk(body, walk, i + 1, ind + 2, rid, shared);
+        self.emit_linked_walk(body, walk, i + 1, ind + 2, rid);
         if body.len() == mark {
             // The walk is exhausted past this arm: the else has no branch
             // to fill, so the arm ends the walk.
@@ -2735,53 +2604,35 @@ impl<'a> Converter<'a> {
 
     /// The additional-alt fan-out: every matching entry starts its own
     /// situation (gates decided pre-effects, CS GetValidOverride order).
-    fn emit_additional_starts(
-        &mut self,
-        body: &mut Vec<(usize, String)>,
-        ind: usize,
-        r: &Value,
-        rid: &str,
-    ) {
+    fn emit_additional_starts(&mut self, body: &mut Vec<(usize, String)>, ind: usize, r: &Value) {
         let additional: Vec<Value> = entries(r, "alt")
             .into_iter()
             .filter(|e| e.is_object() && truthy(e, "additional"))
             .collect();
         for e in additional {
-            self.emit_side_start(body, ind, rid, &e);
+            self.emit_side_start(body, ind, &e);
         }
     }
 
     /// The induction fan-out: every matching entry starts its own situation
     /// (gates decided post-effects, CS inductions-pass order).
-    fn emit_induction_starts(
-        &mut self,
-        body: &mut Vec<(usize, String)>,
-        ind: usize,
-        r: &Value,
-        rid: &str,
-    ) {
+    fn emit_induction_starts(&mut self, body: &mut Vec<(usize, String)>, ind: usize, r: &Value) {
         let mut inductions = entries(r, "inductions");
         inductions.retain(|e| e.is_object() || e.is_string());
         for e in inductions {
-            self.emit_side_start(body, ind, rid, &e);
+            self.emit_side_start(body, ind, &e);
         }
     }
 
     /// One side-situation start: chance gate, then the start line.
-    fn emit_side_start(
-        &mut self,
-        body: &mut Vec<(usize, String)>,
-        ind: usize,
-        rid: &str,
-        e: &Value,
-    ) {
+    fn emit_side_start(&mut self, body: &mut Vec<(usize, String)>, ind: usize, e: &Value) {
         let Some(tid) = entry_id(e) else {
             return;
         };
         let Some(target) = self.recipe_target(&tid) else {
             return;
         };
-        let (rolls, cond) = self.gate_of(e, None, rid);
+        let (rolls, cond) = self.gate_of(e);
         for rl in rolls {
             body.push((ind, rl));
         }
@@ -2817,34 +2668,22 @@ impl<'a> Converter<'a> {
             .get(&lever_id)
             .and_then(|l| s(l, "defaultValue"))
             .and_then(|dv| self.target_card(dv));
-        if default.is_some() && v > 0 {
-            // The site hands off to the resolver verb; the selection law
-            // picks the legacy-gated arm (spec.md §7.8).
-            let vname = self
-                .names
-                .verb
-                .get("lever_resolver")
-                .cloned()
-                .unwrap_or_else(|| "lever_resolver".to_string());
-            let n = v.clamp(1, 20);
-            if n > 1 {
-                body.push((ind, format!("start {vname} count {n}")));
-            } else {
-                body.push((ind, format!("start {vname}")));
+        // CS writes the lever's value against cross-run history; the map
+        // spawns the lever's defaultValue card into the table, count = the
+        // site's own effect value.
+        match default {
+            Some(cname) if v > 0 => {
+                let n = v.clamp(1, 20);
+                body.push((ind, format!("spawn {cname} count {n} into table")));
             }
-            self.gaps.hit(
-                "lever redirect routes through the legacy resolver",
-                Class::ConverterIdiom,
-                "CS resolves the lever key against cross-run history; the site starts the resolver verb, whose legacy-gated recipes spawn the defaultValue (a host folding incoming legacy flips the routed arm)",
-                &format!("{rid}:{key}"),
-            );
-        } else {
-            self.gaps.hit(
-                "lever effect with no resolvable default",
-                Class::ExtensionSeam,
-                "the lever's defaultValue names no card (or the effect value is not positive); the resolver has nothing to spawn and the effect is dropped",
-                &format!("{rid}:{key}"),
-            );
+            _ => {
+                self.gaps.hit(
+                    "lever effect with no resolvable default",
+                    Class::ExtensionSeam,
+                    "the lever's defaultValue names no card (or the effect value is not positive); nothing to spawn and the effect is dropped",
+                    &format!("{rid}:{key}"),
+                );
+            }
         }
     }
 

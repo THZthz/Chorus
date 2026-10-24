@@ -26,7 +26,7 @@ pub const SKIP_RECIPE_FILES: &[&str] = &[
     "z_legacyrecipepreservation.json",
 ];
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct CsData {
     /// Every element by id (first definition wins).
     pub elements: BTreeMap<String, serde_json::Value>,
@@ -129,19 +129,7 @@ pub fn load_tree(root: &Path) -> CsData {
         match read(&p) {
             Ok(v) => {
                 for r in list_of(&v, "recipes") {
-                    let Some(id) = r.get("id").and_then(|x| x.as_str()) else {
-                        continue;
-                    };
-                    if r.get("hintonly").map(|x| x.as_bool().unwrap_or(false)).unwrap_or(false) {
-                        d.note_skip("recipe", id, "hintonly: UI hint, never executes");
-                        continue;
-                    }
-                    if d.recipe_index.contains_key(id) {
-                        d.note_skip("recipe", id, "duplicate id");
-                        continue;
-                    }
-                    d.recipe_index.insert(id.to_string(), d.recipes.len());
-                    d.recipes.push((id.to_string(), r.clone()));
+                    ingest_recipe(&mut d, r);
                 }
             }
             Err(e) => d.note_skip("recipe-file", &base, &format!("unparseable: {e}")),
@@ -230,4 +218,41 @@ pub fn load_tree(root: &Path) -> CsData {
     }
 
     d
+}
+
+/// One recipe object: register it (first definition wins; `hintonly` never
+/// executes), then extract the recipe definitions nested inside its
+/// `linked`/`alt`/`inductions` entries.
+fn ingest_recipe(d: &mut CsData, r: &serde_json::Value) {
+    if let Some(id) = r.get("id").and_then(|x| x.as_str()) {
+        if r.get("hintonly").map(|x| x.as_bool().unwrap_or(false)).unwrap_or(false) {
+            d.note_skip("recipe", id, "hintonly: UI hint, never executes");
+        } else if d.recipe_index.contains_key(id) {
+            d.note_skip("recipe", id, "duplicate id");
+        } else {
+            d.recipe_index.insert(id.to_string(), d.recipes.len());
+            d.recipes.push((id.to_string(), r.clone()));
+        }
+    }
+    ingest_nested(d, r);
+}
+
+/// A chain entry is a full recipe definition when it carries any field
+/// beyond the link modifiers (`id`, `chance`, `challenges`, `additional`)
+/// and the linked-slot spec `expulsion`; CS merges such entries into the
+/// same recipe table, where other chains reference them by id. Their own
+/// chains recurse through the same rule.
+fn ingest_nested(d: &mut CsData, r: &serde_json::Value) {
+    for k in ["linked", "alt", "inductions"] {
+        for e in list_of(r, k) {
+            let is_definition = e.as_object().is_some_and(|o| {
+                o.keys().any(|kk| {
+                    !matches!(kk.as_str(), "id" | "chance" | "challenges" | "additional" | "expulsion")
+                })
+            });
+            if is_definition {
+                ingest_recipe(d, e);
+            }
+        }
+    }
 }

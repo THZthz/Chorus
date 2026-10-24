@@ -105,20 +105,33 @@ impl Engine {
             Expr::Alive(card) => i64::from(self.named_entity(card.as_str()).is_some()),
             Expr::Rel { kind, from, to } => i64::from(self.eval_rel(kind, from, to, ctx)),
             Expr::Arith { op, left, right } => {
-                let a = self.eval_expr_ctx(left, ctx);
-                let b = self.eval_expr_ctx(right, ctx);
-                match op {
-                    story_content::ir::ArithOp::Add => a.saturating_add(b),
-                    story_content::ir::ArithOp::Sub => a.saturating_sub(b),
-                    story_content::ir::ArithOp::Mul => a.saturating_mul(b),
-                    story_content::ir::ArithOp::Div => {
-                        if b == 0 {
-                            0
-                        } else {
-                            a.checked_div_euclid(b).unwrap_or(0)
-                        }
-                    }
+                // Fold the left spine iteratively: a `when` summing hundreds
+                // of carriers evaluates without per-node recursion.
+                let mut spine: Vec<(story_content::ir::ArithOp, &Expr)> =
+                    Vec::with_capacity(8);
+                spine.push((*op, right.as_ref()));
+                let mut cur: &Expr = left.as_ref();
+                while let Expr::Arith { op, left, right } = cur {
+                    spine.push((*op, right.as_ref()));
+                    cur = left.as_ref();
                 }
+                let mut acc = self.eval_expr_ctx(cur, ctx);
+                for (op, r) in spine.into_iter().rev() {
+                    let b = self.eval_expr_ctx(r, ctx);
+                    acc = match op {
+                        story_content::ir::ArithOp::Add => acc.saturating_add(b),
+                        story_content::ir::ArithOp::Sub => acc.saturating_sub(b),
+                        story_content::ir::ArithOp::Mul => acc.saturating_mul(b),
+                        story_content::ir::ArithOp::Div => {
+                            if b == 0 {
+                                0
+                            } else {
+                                acc.checked_div_euclid(b).unwrap_or(0)
+                            }
+                        }
+                    };
+                }
+                acc
             }
             Expr::Cmp { op, left, right } => {
                 let a = self.eval_expr_ctx(left, ctx);

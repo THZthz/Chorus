@@ -4,3 +4,4 @@
 /.worktrees/
 .zcode/
 .artifacts/
+/.cargo/

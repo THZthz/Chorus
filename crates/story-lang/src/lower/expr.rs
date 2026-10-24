@@ -133,20 +133,32 @@ impl Compiler {
                     right: Box::new(inner),
                 })
             }
-            ast::AExpr::Bin { span, op, l, r } => {
-                let l = self.lower_arith(l, env)?;
-                let r = self.lower_arith(r, env)?;
-                // [E242]: a constant zero divisor is a compile error, while
-                // a dynamic `x / 0` evaluates to 0 (totality).
-                if matches!(op, ast::ABinOp::Div) && ir::const_eval(&r) == Some(0) {
-                    self.err(span.error(code::E242, "expression divides by a constant zero"));
-                    return None;
+            ast::AExpr::Bin { .. } => {
+                // Fold the left spine iteratively: a long additive chain (a
+                // `when` summing hundreds of carriers) lowers without
+                // per-node recursion.
+                let mut spine: Vec<(&Span, ast::ABinOp, &ast::AExpr)> = Vec::new();
+                let mut cur: &ast::AExpr = e;
+                while let ast::AExpr::Bin { span, op, l, r } = cur {
+                    spine.push((span, *op, r));
+                    cur = l;
                 }
-                Some(Expr::Arith {
-                    op: arith_op(*op),
-                    left: Box::new(l),
-                    right: Box::new(r),
-                })
+                let mut acc = self.lower_arith(cur, env)?;
+                for (span, op, r) in spine.into_iter().rev() {
+                    let r = self.lower_arith(r, env)?;
+                    // [E242]: a constant zero divisor is a compile error, while
+                    // a dynamic `x / 0` evaluates to 0 (totality).
+                    if matches!(op, ast::ABinOp::Div) && ir::const_eval(&r) == Some(0) {
+                        self.err(span.error(code::E242, "expression divides by a constant zero"));
+                        return None;
+                    }
+                    acc = Expr::Arith {
+                        op: arith_op(op),
+                        left: Box::new(acc),
+                        right: Box::new(r),
+                    };
+                }
+                Some(acc)
             }
         }
     }

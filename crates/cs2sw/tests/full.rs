@@ -384,7 +384,7 @@ fn aspirant_intended_opening_loop_progression() {
             .state()
             .situations
             .values()
-            .any(|s| s.verb.as_str() == "dream" && s.recipe.as_str() == "introdream"),
+            .any(|s| s.verb.as_str() == "dream" && s.recipe.as_str() == "dream.introdream"),
         "introdream is running in dream"
     );
 
@@ -395,7 +395,7 @@ fn aspirant_intended_opening_loop_progression() {
             .state()
             .situations
             .values()
-            .any(|s| s.verb.as_str() == "study" && s.recipe.as_str() == "bequestcountdown"),
+            .any(|s| s.verb.as_str() == "study" && s.recipe.as_str() == "study.bequestcountdown"),
         "bequestcountdown is running in study"
     );
 
@@ -406,7 +406,7 @@ fn aspirant_intended_opening_loop_progression() {
             .state()
             .situations
             .values()
-            .any(|s| s.verb.as_str() == "study" && s.recipe.as_str() == "bequestarrives"),
+            .any(|s| s.verb.as_str() == "study" && s.recipe.as_str() == "study.bequestarrives"),
         "bequestarrives is running in study"
     );
 

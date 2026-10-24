@@ -268,7 +268,7 @@ Scope decisions, each with its reason:
 - **No event sourcing or durable action log.** The snapshot is the save (L2); a log would be a second representation of the same state with no promise attached.
 - **No byte-exact output or pinned error texts.** Rendering belongs to the host (L6); diagnostics are structured values (§4.8).
 - **No fixed tick grid and no tick triggers.** Time moves only when the host asks, in multiples of `turn`, and durations carry no quantization (L1, §4.6).
-- **No verb-level slots.** Slots belong to recipes; the verb declares only its instance cap and `releases` zone, so every slot decision is a per-recipe decision.
+- **No verb-level slots.** Slots belong to recipes; the verb declares only its instance cap and `releases` zone, so every slot decision is a per-recipe decision. Card-level slots are excluded by the same law: a resting card opens no sphere of its own — a card's storage behavior exists only where a recipe binds it into a slot.
 - **No one-instance-per-verb law.** `instances` is a plain numeric cap; multi-instance is first-class (§4.2).
 - **No marker-card access gates.** Reachability is expressed with ordinary conditions — `when` clauses and guards.
 - **No twin or shadow card copies.** `swap` and re-minting cover replacement (§4.5); every live card is exactly one entity.

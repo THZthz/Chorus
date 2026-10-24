@@ -1030,7 +1030,7 @@ fn explore_config(
     let mut cfg = ExploreConfig {
         rng_mode: opts.rng,
         max_states: opts.max_states.unwrap_or(DEFAULT_MAX_STATES),
-        max_time,
+        max_time: max_time.or(Some(story_analyze::query::DEFAULT_MAX_TIME)),
         prune,
         allowed_verbs: opts.slice.as_ref().map(|t| t.verbs().clone()),
         ..Default::default()
@@ -1154,7 +1154,7 @@ fn reach_section(
     outln!(out, "== reach: {desc} ==");
     let mut query = ReachQuery::new(goal);
     query.rng_mode = opts.rng;
-    query.max_time = max_time;
+    query.max_time = max_time.or(Some(story_analyze::query::DEFAULT_MAX_TIME));
     query.prune = prune;
     if let Some(n) = opts.max_states {
         query.max_states = n;

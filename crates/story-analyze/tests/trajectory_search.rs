@@ -93,6 +93,7 @@ fn test_rollout_sampler_produces_valid_witness() {
         invariant: None,
         query_thresholds: Default::default(),
         allowed_verbs: None,
+        quiescence_pruning: false,
     };
     let mut generator = story_analyze::TransitionGenerator::new(
         content.clone(),

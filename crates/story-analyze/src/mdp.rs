@@ -42,6 +42,8 @@ pub struct MdpConfig {
     /// Verbs permitted in this exploration; if `Some`, commits and binds
     /// outside this set are skipped.
     pub allowed_verbs: Option<BTreeSet<story_core::VerbId>>,
+    /// Suppress advance steps when the state is completely quiescent.
+    pub quiescence_pruning: bool,
 }
 
 impl MdpConfig {
@@ -50,13 +52,14 @@ impl MdpConfig {
             goal,
             invariant: None,
             rng_mode: RngMode::OptimisticBranching,
-            max_time: None,
+            max_time: Some(crate::query::DEFAULT_MAX_TIME),
             max_actions: 24,
             max_nodes: 20_000,
             max_depth: 192,
             allow_mid_run_bind: true,
             prune: false,
             allowed_verbs: None,
+            quiescence_pruning: true,
         }
     }
 }
@@ -116,6 +119,7 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
             t
         },
         allowed_verbs: config.allowed_verbs.clone(),
+        quiescence_pruning: config.quiescence_pruning,
     };
     let mut gen =
         TransitionGenerator::new(content.clone(), analyzer.engine_with_start(), gen_config);

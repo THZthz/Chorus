@@ -59,6 +59,7 @@ fn key_query(prune: bool) -> ReachQuery {
         min_ttl: None,
     });
     q.prune = prune;
+    q.quiescence_pruning = false;
     q.max_time = Some(600);
     q
 }
@@ -94,6 +95,7 @@ fn the_door_goal_prunes_through_the_relaxation_gate() {
     let run = |prune| {
         let mut q = ReachQuery::new(GoalPredicate::Ending(Some("open".into())));
         q.prune = prune;
+        q.quiescence_pruning = false;
         q.max_time = Some(600);
         common::analyzer(content.clone(), 3).solve(&q)
     };

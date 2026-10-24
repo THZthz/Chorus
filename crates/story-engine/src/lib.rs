@@ -290,6 +290,27 @@ impl Engine {
             .collect()
     }
 
+    /// Check whether any autonomous verb can start a recipe in the current state.
+    pub fn can_autonomous_start(&self, allowed: Option<&BTreeSet<VerbId>>) -> bool {
+        for verb in self.content.verbs.values() {
+            if verb.mode != VerbMode::Autonomous {
+                continue;
+            }
+            if let Some(allowed) = allowed {
+                if !allowed.contains(&verb.id) {
+                    continue;
+                }
+            }
+            if self.verb_full(verb) {
+                continue;
+            }
+            if let select::Selection::Matched(_) = self.select(Source::Poll, verb, None, None, None) {
+                return true;
+            }
+        }
+        false
+    }
+
     // -- actions ------------------------------------------------------------
 
     /// Open a new instance of a verb. All-or-nothing: a refusal or an effect

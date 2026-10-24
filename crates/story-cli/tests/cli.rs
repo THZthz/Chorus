@@ -289,9 +289,9 @@ fn classify_reports_winnability_on_tiny() {
     assert_eq!(code, 0);
     assert!(out.contains("== classify =="), "{out}");
     assert!(out.contains("winning endings: \"lit\""), "{out}");
-    assert!(out.contains("winnable states: 20 (the start is winnable)"), "{out}");
+    assert!(out.contains("winnable states: 5 (the start is winnable)"), "{out}");
     assert!(out.contains("softlocked live states: 0"), "{out}");
-    assert!(out.contains("explored: 20 states, 28 edges (within bounds)"), "{out}");
+    assert!(out.contains("explored: 5 states, 4 edges (within bounds)"), "{out}");
 }
 
 #[test]

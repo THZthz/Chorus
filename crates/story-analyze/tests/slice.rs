@@ -291,3 +291,21 @@ fn witness_splicing_combines_paths() {
     assert_eq!(composite.depth, 0);
     assert!((composite.probability.unwrap() - 0.4).abs() < 1e-6);
 }
+
+#[test]
+fn unreachable_goal_terminates_immediately_without_advance_hang() {
+    let content = common::compile(QUEST_SRC);
+    let base = common::analyzer(content, 1);
+
+    // Quench slice without blade assumption: temper cannot commit
+    let target = SliceTarget::single(VerbId::from("quench"));
+    let mut sliced = SlicedAnalyzer::new(&base, target, &[]).unwrap();
+
+    let mut query = story_analyze::ReachQuery::new(GoalPredicate::Expr(Expr::Alive(CardId::from("sword"))));
+    let start = std::time::Instant::now();
+    let outcome = sliced.solve(&mut query);
+    assert!(outcome.witnesses.is_empty());
+    // Quiescence pruning suppresses advance on idle state; search halts in 1 expansion
+    assert_eq!(outcome.expansions, 1);
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
+}

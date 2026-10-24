@@ -139,18 +139,25 @@ pub struct ReachQuery {
     pub tube_radius: Option<usize>,
     /// Whether to record and report the explored envelope coverage.
     pub envelope: bool,
+    /// Suppress advance steps when the state is completely quiescent (no active
+    /// situations, no expiring entities, no autonomous verb activations, and no
+    /// future static clock thresholds).
+    pub quiescence_pruning: bool,
 }
 
+/// Default clock horizon for unbounded explorations (e.g. 10,000 minutes).
+pub const DEFAULT_MAX_TIME: Time = 10_000;
+
 impl ReachQuery {
-    /// A query with the spec's default bounds: 100k expansions, no clock
-    /// horizon, mid-run binding allowed.
+    /// A query with default bounds: 100k expansions, default clock horizon,
+    /// quiescence pruning enabled, mid-run binding allowed.
     pub fn new(goal: GoalPredicate) -> ReachQuery {
         ReachQuery {
             goal,
             invariant: None,
             objective: SearchObjective::FewestActions,
             rng_mode: RngMode::Deterministic,
-            max_time: None,
+            max_time: Some(DEFAULT_MAX_TIME),
             max_states: 100_000,
             allow_mid_run_bind: true,
             prune: false,
@@ -159,6 +166,7 @@ impl ReachQuery {
             seed_trace: None,
             tube_radius: None,
             envelope: false,
+            quiescence_pruning: true,
         }
     }
 

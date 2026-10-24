@@ -104,6 +104,7 @@ fn gen_of(content: &std::sync::Arc<story_content::Content>, mode: RngMode) -> Tr
         invariant: None,
         query_thresholds: Default::default(),
         allowed_verbs: None,
+        quiescence_pruning: false,
     };
     TransitionGenerator::new(content.clone(), engine, cfg)
 }

@@ -138,6 +138,8 @@ pub struct GeneratorConfig {
     /// Verbs permitted in this exploration; if `Some`, commits and binds
     /// outside this set are skipped.
     pub allowed_verbs: Option<BTreeSet<VerbId>>,
+    /// Suppress advance steps when the state is completely quiescent.
+    pub quiescence_pruning: bool,
 }
 
 /// The Tier 2 transition generator: enumerates the legal steps at a state
@@ -452,7 +454,15 @@ impl TransitionGenerator {
     /// `dt = k·turn`) — and the walk continues to the aligned grid target
     /// as its own step. A jump never lands past the nearest due moment.
     fn advance_steps(&mut self, state: &State) -> Vec<PlayerStep> {
+        if self.config.quiescence_pruning && self.is_quiescent(state) {
+            return Vec::new();
+        }
         let turn = self.engine.turn();
+        if let Some(h) = self.config.max_time {
+            if state.now + turn > h {
+                return Vec::new();
+            }
+        }
         let mut steps = vec![PlayerStep::Advance { dt: turn }];
         let Some(t) = self.next_critical_moment(state) else {
             return steps;
@@ -485,6 +495,27 @@ impl TransitionGenerator {
             prev = landing;
         }
         steps
+    }
+
+    /// A state is quiescent if advancing the clock cannot cause any state change:
+    /// no situation is running (no completions due), no entity has an expiration timer,
+    /// no autonomous verb can start a recipe, and no static critical moment exists in the future.
+    pub fn is_quiescent(&mut self, state: &State) -> bool {
+        if !due_moments(state).is_empty() {
+            return false;
+        }
+        if self.can_autonomous_start(state) {
+            return false;
+        }
+        if self.crit_moments.iter().any(|&t| t > state.now) {
+            return false;
+        }
+        true
+    }
+
+    fn can_autonomous_start(&mut self, state: &State) -> bool {
+        self.install(state);
+        self.engine.can_autonomous_start(self.config.allowed_verbs.as_ref())
     }
 
     /// The nearest critical moment past `now + turn`: the next due

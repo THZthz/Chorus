@@ -174,6 +174,7 @@ impl Analyzer {
             invariant: query.invariant.clone(),
             query_thresholds: query.clock_thresholds(),
             allowed_verbs: query.allowed_verbs.clone(),
+            quiescence_pruning: query.quiescence_pruning,
         };
         TransitionGenerator::with_symmetry(
             self.content.clone(),
@@ -865,6 +866,7 @@ impl Analyzer {
             seed_trace: None,
             tube_radius: None,
             envelope: false,
+            quiescence_pruning: config.quiescence_pruning,
         };
         // Feasibility pruning expands only toward a target: without
         // `stop_at` there is nothing to be "impossible" for, so the flag is
@@ -1084,6 +1086,8 @@ pub struct ExploreConfig {
     /// Verbs permitted in this exploration; if `Some`, commits and binds
     /// outside this set are skipped.
     pub allowed_verbs: Option<BTreeSet<story_core::VerbId>>,
+    /// Suppress advance steps when the state is completely quiescent.
+    pub quiescence_pruning: bool,
 }
 
 impl Default for ExploreConfig {
@@ -1091,12 +1095,13 @@ impl Default for ExploreConfig {
         ExploreConfig {
             rng_mode: RngMode::Deterministic,
             max_states: 100_000,
-            max_time: None,
+            max_time: Some(crate::query::DEFAULT_MAX_TIME),
             invariant: None,
             stop_at: None,
             allow_mid_run_bind: true,
             prune: false,
             allowed_verbs: None,
+            quiescence_pruning: true,
         }
     }
 }

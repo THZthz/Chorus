@@ -62,6 +62,7 @@ fn gen(content: &std::sync::Arc<story_content::Content>) -> TransitionGenerator 
         invariant: None,
         query_thresholds: Default::default(),
         allowed_verbs: None,
+        quiescence_pruning: false,
     };
     TransitionGenerator::new(content.clone(), engine, cfg)
 }
@@ -486,6 +487,7 @@ fn the_invariant_gate_checks_the_due_window() {
         invariant: Some(inv),
         query_thresholds: Default::default(),
         allowed_verbs: None,
+        quiescence_pruning: false,
     };
     let mut g = TransitionGenerator::new(content, engine, cfg);
     let state = g.state().clone();
@@ -499,5 +501,29 @@ fn the_invariant_gate_checks_the_due_window() {
     assert!(
         jump.is_empty(),
         "a record whose span violates the invariant is discarded"
+    );
+}
+
+#[test]
+fn quiescence_pruning_suppresses_advance_on_idle_states() {
+    let content = common::compile(SYMMETRY);
+    let engine = common::boot(content.clone(), 1);
+    let cfg = GeneratorConfig {
+        seed: 1,
+        legacy_in: None,
+        rng_mode: story_analyze::RngMode::Deterministic,
+        allow_mid_run_bind: true,
+        max_time: None,
+        invariant: None,
+        query_thresholds: Default::default(),
+        allowed_verbs: None,
+        quiescence_pruning: true,
+    };
+    let mut g = TransitionGenerator::new(content, engine, cfg);
+    let state = g.state().clone();
+    let steps = g.steps(&state);
+    assert!(
+        !steps.iter().any(|s| matches!(s, PlayerStep::Advance { .. })),
+        "idle state with no active situations, timers, or autonomous verbs prunes advance"
     );
 }

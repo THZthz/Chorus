@@ -1640,30 +1640,31 @@ fn audit_section(
         (&a.verb, &a.shadower, &a.shadowed).cmp(&(&b.verb, &b.shadower, &b.shadowed))
     });
     outln!(out, "shadowing: {} finding(s)", shadowing.len());
-    for s in &shadowing {
-        let verb = s.verb.as_ref().map_or_else(String::new, |v| format!("verb {v}: "));
-        outln!(
-            out,
-            "  {verb}\"{}\" shadows \"{}\"{}",
-            s.shadower,
-            s.shadowed,
-            if s.conditional {
+    print_capped(
+        out,
+        shadowing.iter().map(|s| {
+            let verb = s.verb.as_ref().map_or_else(String::new, |v| format!("verb {v}: "));
+            let cond = if s.conditional {
                 " (conditional — the shadower is spent after firing)"
             } else {
                 ""
-            }
-        );
-    }
+            };
+            format!("{verb}\"{}\" shadows \"{}\"{cond}", s.shadower, s.shadowed)
+        }),
+    );
     let mut unreachable = report.unreachable.clone();
     unreachable.sort_by(|a, b| (a.kind, &a.id).cmp(&(b.kind, &b.id)));
     outln!(out, "unreachable content: {} finding(s)", unreachable.len());
-    for u in &unreachable {
-        let evidence = match u.evidence {
-            Evidence::StaticallyProved => "statically proved",
-            Evidence::NotWithinBounds => "not within the exploration bounds (bounds-conditional)",
-        };
-        outln!(out, "  {} {} — {evidence}", u.kind, u.id);
-    }
+    print_capped(
+        out,
+        unreachable.iter().map(|u| {
+            let evidence = match u.evidence {
+                Evidence::StaticallyProved => "statically proved",
+                Evidence::NotWithinBounds => "not within the exploration bounds (bounds-conditional)",
+            };
+            format!("{} {} — {evidence}", u.kind, u.id)
+        }),
+    );
     let mut faults: Vec<&FaultWitness> = report.faults.iter().collect();
     faults.sort_by_key(|f| fault_key(f));
     outln!(out, "reachable faults: {} finding(s)", faults.len());

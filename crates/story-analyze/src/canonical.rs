@@ -40,7 +40,7 @@ impl CanonicalStateKey {
 
     /// The hot path: the same canonicalization with a caller-held cache, so
     /// the content-wide walks run once per analysis, not once per state.
-    pub(crate) fn of_with(
+    pub fn of_with(
         state: &State,
         content: &Content,
         cache: &SymmetryCache,

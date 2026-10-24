@@ -15,7 +15,7 @@ use story_engine::{CommitAction, Engine, Event};
 
 use crate::query::{GoalCtx, GoalPredicate, RngMode};
 use crate::stochastic;
-use crate::symmetry::{self, BindingSet, slot_candidate_classes};
+use crate::symmetry::{self, BindingSet, SymmetryCache};
 
 /// One legal player step (story-analyze spec §5.1).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -152,12 +152,25 @@ pub struct TransitionGenerator {
     /// content's recipe/card/rule `when`s, guards, and `Branch` conditions
     /// (§5.4), plus the query's thresholds.
     crit_moments: BTreeSet<Time>,
+    symmetry: Arc<SymmetryCache>,
 }
 
 impl TransitionGenerator {
     /// Build a generator over compiled content. Boots one scratch engine
     /// (the start state is swapped in per call).
     pub fn new(content: Arc<Content>, engine: Engine, config: GeneratorConfig) -> TransitionGenerator {
+        let symmetry = Arc::new(SymmetryCache::new(&content));
+        Self::with_symmetry(content, engine, config, symmetry)
+    }
+
+    /// Build a generator reusing a caller-held symmetry cache so content-wide
+    /// surfaces are not re-walked.
+    pub fn with_symmetry(
+        content: Arc<Content>,
+        engine: Engine,
+        config: GeneratorConfig,
+        symmetry: Arc<SymmetryCache>,
+    ) -> TransitionGenerator {
         let mut crit_moments = static_thresholds(&content);
         crit_moments.extend(config.query_thresholds.iter().copied());
         TransitionGenerator {
@@ -165,6 +178,7 @@ impl TransitionGenerator {
             engine,
             config,
             crit_moments,
+            symmetry,
         }
     }
 
@@ -207,10 +221,11 @@ impl TransitionGenerator {
             return Vec::new();
         }
         self.install(state);
+        let state_classes = symmetry::symmetry_classes_with(state, self.content.as_ref(), &self.symmetry);
         let mut steps = Vec::new();
-        steps.extend(self.commit_steps(state));
+        steps.extend(self.commit_steps(state, &state_classes));
         if self.config.allow_mid_run_bind {
-            steps.extend(self.bind_steps());
+            steps.extend(self.bind_steps(&state_classes));
         }
         steps.extend(self.advance_steps(state));
         steps
@@ -219,7 +234,7 @@ impl TransitionGenerator {
     /// Commit steps: every committable verb below its instance cap, every
     /// craftable recipe whose `max` counter is unspent, every canonical
     /// binding set, validated with `preview_commit` and deduplicated.
-    fn commit_steps(&mut self, state: &State) -> Vec<PlayerStep> {
+    fn commit_steps(&mut self, state: &State, state_classes: &[Vec<EntityId>]) -> Vec<PlayerStep> {
         let content = self.content.clone();
         let mut steps = Vec::new();
         let mut seen: BTreeSet<(VerbId, BindingSet)> = BTreeSet::new();
@@ -252,7 +267,7 @@ impl TransitionGenerator {
                 {
                     continue;
                 }
-                for bindings in self.commit_binding_sets(state, rec) {
+                for bindings in self.commit_binding_sets(rec, state_classes) {
                     let key = (verb.id.clone(), bindings.clone());
                     if !seen.insert(key) {
                         continue;
@@ -295,19 +310,25 @@ impl TransitionGenerator {
     /// Cartesian product without reuse. Greedy slots baseline at exactly
     /// `min` explicit bindings, with one displacement variant per
     /// equivalence class whose representative the greedy pull cannot reach.
-    fn commit_binding_sets(&mut self, state: &State, rec: &RecipeDecl) -> Vec<BindingSet> {
-        self.install(state);
-        let content = self.content.clone();
+    fn commit_binding_sets(
+        &mut self,
+        rec: &RecipeDecl,
+        state_classes: &[Vec<EntityId>],
+    ) -> Vec<BindingSet> {
         let mut per_slot: Vec<(SlotName, Vec<Vec<EntityId>>)> = Vec::new();
         for sd in &rec.slots {
             let candidates = self.slot_pool(sd);
+            if candidates.len() < sd.min as usize {
+                // A slot that cannot be filled kills the recipe's candidacy.
+                return Vec::new();
+            }
+            let slot_classes = symmetry::partition_candidates_by_classes(state_classes, &candidates);
             let choices = if sd.greedy {
-                self.greedy_slot_choices(state, content.as_ref(), rec, sd, &candidates)
+                self.greedy_slot_choices(rec, sd, &slot_classes)
             } else {
-                symmetry::slot_choices(state, content.as_ref(), &candidates, sd.min, sd.max)
+                symmetry::slot_choices_from_classes(&slot_classes, sd.min, sd.max)
             };
             if choices.is_empty() {
-                // A slot that cannot be filled kills the recipe's candidacy.
                 return Vec::new();
             }
             per_slot.push((sd.name.clone(), choices));
@@ -343,18 +364,16 @@ impl TransitionGenerator {
 
     fn greedy_slot_choices(
         &mut self,
-        state: &State,
-        content: &Content,
         rec: &RecipeDecl,
         sd: &SlotDecl,
-        candidates: &[EntityId],
+        classes: &[Vec<EntityId>],
     ) -> Vec<Vec<EntityId>> {
         // Baseline: exactly `min` explicit bindings; the engine's greedy
         // top-up produces the same post-materialization state as
         // pre-filling. An open-ended greedy slot pulls nothing on a commit
         // (the kernel tops toward `max` only), so the baseline is the
         // whole story for it.
-        let mut out = symmetry::slot_choices(state, content, candidates, sd.min, Some(sd.min));
+        let mut out = symmetry::slot_choices_from_classes(classes, sd.min, Some(sd.min));
         // Displacement variants (§5.2): the player forces a card the
         // greedy pull cannot reach. One variant per distinct equivalence
         // class, emitted only where the single explicit binding is
@@ -369,7 +388,7 @@ impl TransitionGenerator {
             .engine
             .slot_candidates(rec.id.clone(), sd.name.clone());
         let reachable: BTreeSet<EntityId> = pull.into_iter().take(pull_depth).collect();
-        for class in slot_candidate_classes(state, content, candidates) {
+        for class in classes {
             let rep = class[0];
             if !reachable.contains(&rep) {
                 out.push(vec![rep]);
@@ -381,7 +400,7 @@ impl TransitionGenerator {
     /// Bind steps: every live situation, every `open` slot below `max`, one
     /// canonical representative per equivalence class passing `can_bind`
     /// (§5.1.2, §5.2).
-    fn bind_steps(&mut self) -> Vec<PlayerStep> {
+    fn bind_steps(&mut self, state_classes: &[Vec<EntityId>]) -> Vec<PlayerStep> {
         let mut steps = Vec::new();
         let state = self.engine.state();
         let content = self.content.clone();
@@ -412,7 +431,7 @@ impl TransitionGenerator {
                     .copied()
                     .filter(|e| self.engine.can_bind(sit, sd.name.clone(), *e).is_ok())
                     .collect();
-                for class in slot_candidate_classes(&state, content.as_ref(), &candidates) {
+                for class in symmetry::partition_candidates_by_classes(state_classes, &candidates) {
                     steps.push(PlayerStep::Bind {
                         sit,
                         slot: sd.name.clone(),

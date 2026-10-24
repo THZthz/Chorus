@@ -69,6 +69,7 @@ pub struct Replayer {
     pub registry: EffectRegistry,
     pub seed: u64,
     pub legacy_in: Option<BTreeMap<String, i64>>,
+    pub symmetry: Arc<crate::symmetry::SymmetryCache>,
 }
 
 impl Replayer {
@@ -78,11 +79,23 @@ impl Replayer {
         seed: u64,
         legacy_in: Option<BTreeMap<String, i64>>,
     ) -> Replayer {
+        let symmetry = Arc::new(crate::symmetry::SymmetryCache::new(&content));
+        Self::with_symmetry(content, registry, seed, legacy_in, symmetry)
+    }
+
+    pub fn with_symmetry(
+        content: Arc<Content>,
+        registry: EffectRegistry,
+        seed: u64,
+        legacy_in: Option<BTreeMap<String, i64>>,
+        symmetry: Arc<crate::symmetry::SymmetryCache>,
+    ) -> Replayer {
         Replayer {
             content,
             registry,
             seed,
             legacy_in,
+            symmetry,
         }
     }
 
@@ -131,8 +144,8 @@ impl Replayer {
             // entity interchange (§5.3). The kernel is deterministic given
             // the same actions and chance outcomes, so the keys must agree
             // exactly.
-            let key = crate::canonical::CanonicalStateKey::of(&state, &self.content);
-            let want = crate::canonical::CanonicalStateKey::of(&record.state_after, &self.content);
+            let key = crate::canonical::CanonicalStateKey::of_with(&state, &self.content, &self.symmetry);
+            let want = crate::canonical::CanonicalStateKey::of_with(&record.state_after, &self.content, &self.symmetry);
             if key != want {
                 return Err(ReplayError::StateMismatch { step: i });
             }

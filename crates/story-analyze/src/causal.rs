@@ -163,6 +163,7 @@ pub struct CausalGraph {
     producers: BTreeMap<Fact, Vec<usize>>,
     zone_facts: Vec<(CardId, ZoneName)>,
     host_opaque: bool,
+    grounded: BTreeSet<Fact>,
 }
 
 impl CausalGraph {
@@ -182,6 +183,7 @@ impl CausalGraph {
                 graph.host_opaque = true;
             }
         });
+        graph.grounded = graph.grounded_set();
         graph
     }
 
@@ -243,7 +245,7 @@ impl CausalGraph {
     /// 2): reject queries whose required facts are statically impossible
     /// before any search.
     pub fn plausibility(&self, goal: &Fact) -> Plausibility {
-        if self.grounded_set().contains(goal) {
+        if self.grounded.contains(goal) {
             Plausibility::Plausible
         } else if self.host_opaque {
             Plausibility::UnknownHost
@@ -256,8 +258,7 @@ impl CausalGraph {
     /// goal's required fact through a capable edge and its requirements,
     /// grounding in the boot state. `None` when no grounding cone exists.
     pub fn explain_how_to_get(&self, goal: &Fact) -> Option<Provenance> {
-        let grounded = self.grounded_set();
-        if !grounded.contains(goal) {
+        if !self.grounded.contains(goal) {
             return None;
         }
         let mut in_progress = BTreeSet::new();
@@ -515,6 +516,7 @@ impl<'a> Builder<'a> {
             producers,
             zone_facts: zones.into_iter().collect(),
             host_opaque: false,
+            grounded: BTreeSet::new(),
         }
     }
 

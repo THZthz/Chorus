@@ -42,7 +42,7 @@ pub struct Analyzer {
     /// surfaces), built once at boot: canonical keys and the symmetry
     /// classifier read it per state, and rebuilding it per state would walk
     /// every effect in the content each time.
-    symmetry: SymmetryCache,
+    symmetry: Arc<SymmetryCache>,
     /// The scratch engine: the search's evaluation face and the generator's
     /// template. Its state is the state under evaluation.
     engine: Engine,
@@ -66,7 +66,7 @@ impl Analyzer {
         let (engine, warnings) =
             Engine::boot(content.clone(), registry.clone(), seed, legacy_in.clone());
         let causal = CausalGraph::build(&content);
-        let symmetry = SymmetryCache::new(&content);
+        let symmetry = Arc::new(SymmetryCache::new(&content));
         let start = engine.state().clone();
         (
             Analyzer {
@@ -138,11 +138,12 @@ impl Analyzer {
     }
 
     pub fn replayer(&self) -> Replayer {
-        Replayer::new(
+        Replayer::with_symmetry(
             self.content.clone(),
             self.registry.clone(),
             self.seed,
             self.legacy_in.clone(),
+            self.symmetry.clone(),
         )
     }
 
@@ -174,7 +175,12 @@ impl Analyzer {
             query_thresholds: query.clock_thresholds(),
             allowed_verbs: query.allowed_verbs.clone(),
         };
-        TransitionGenerator::new(self.content.clone(), self.engine_with_start(), config)
+        TransitionGenerator::with_symmetry(
+            self.content.clone(),
+            self.engine_with_start(),
+            config,
+            self.symmetry.clone(),
+        )
     }
 
     /// Solve one reach query (§5.5): best-first search over the transition

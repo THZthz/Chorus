@@ -131,12 +131,13 @@ pub fn symmetry_classes(state: &State, content: &Content) -> Vec<Vec<EntityId>> 
 /// oracle plus the candidacy surfaces its contiguity refinement splits on.
 /// Both depend only on the content, so the analyzer builds one per boot and
 /// every state's classification reuses it.
-pub(crate) struct SymmetryCache {
+#[derive(Clone, Debug)]
+pub struct SymmetryCache {
     surfaces: Vec<BTreeSet<CardId>>,
 }
 
 impl SymmetryCache {
-    pub(crate) fn new(content: &Content) -> SymmetryCache {
+    pub fn new(content: &Content) -> SymmetryCache {
         let oracle = MatchOracle::new(content);
         let surfaces = candidacy_surfaces(content, &oracle);
         SymmetryCache { surfaces }
@@ -145,7 +146,7 @@ impl SymmetryCache {
 
 /// The hot path: the same classification with a caller-held cache, so the
 /// content-wide walks run once per analysis, not once per state.
-pub(crate) fn symmetry_classes_with(
+pub fn symmetry_classes_with(
     state: &State,
     content: &Content,
     cache: &SymmetryCache,
@@ -276,7 +277,26 @@ pub fn slot_candidate_classes(
     content: &Content,
     candidates: &[EntityId],
 ) -> Vec<Vec<EntityId>> {
-    let classes = symmetry_classes(state, content);
+    let cache = SymmetryCache::new(content);
+    slot_candidate_classes_with(state, content, &cache, candidates)
+}
+
+/// The hot path: partition candidate pool using a caller-held symmetry cache.
+pub fn slot_candidate_classes_with(
+    state: &State,
+    content: &Content,
+    cache: &SymmetryCache,
+    candidates: &[EntityId],
+) -> Vec<Vec<EntityId>> {
+    let classes = symmetry_classes_with(state, content, cache);
+    partition_candidates_by_classes(&classes, candidates)
+}
+
+/// Partition candidate entities by precomputed state symmetry classes.
+pub fn partition_candidates_by_classes(
+    classes: &[Vec<EntityId>],
+    candidates: &[EntityId],
+) -> Vec<Vec<EntityId>> {
     let class_of: BTreeMap<EntityId, usize> = classes
         .iter()
         .enumerate()
@@ -331,8 +351,36 @@ pub fn slot_choices(
     min: u32,
     max_picks: Option<u32>,
 ) -> Vec<Vec<EntityId>> {
-    let classes = slot_candidate_classes(state, content, candidates);
+    let cache = SymmetryCache::new(content);
+    slot_choices_with(state, content, &cache, candidates, min, max_picks)
+}
+
+/// The hot path: compute slot choices using a caller-held symmetry cache.
+pub fn slot_choices_with(
+    state: &State,
+    content: &Content,
+    cache: &SymmetryCache,
+    candidates: &[EntityId],
+    min: u32,
+    max_picks: Option<u32>,
+) -> Vec<Vec<EntityId>> {
+    if candidates.len() < min as usize {
+        return Vec::new();
+    }
+    let classes = slot_candidate_classes_with(state, content, cache, candidates);
+    slot_choices_from_classes(&classes, min, max_picks)
+}
+
+/// Compute slot choices from already-partitioned candidate classes.
+pub fn slot_choices_from_classes(
+    classes: &[Vec<EntityId>],
+    min: u32,
+    max_picks: Option<u32>,
+) -> Vec<Vec<EntityId>> {
     let pool: u32 = classes.iter().map(|c| c.len() as u32).sum();
+    if pool < min {
+        return Vec::new();
+    }
     let band = min.saturating_add(MAX_PICK_BAND);
     let top = match max_picks {
         Some(max) => max.min(band),
@@ -340,7 +388,7 @@ pub fn slot_choices(
     };
     let mut out = Vec::new();
     for k in min..=top {
-        product_of_classes(&classes, k, &mut out);
+        product_of_classes(classes, k, &mut out);
     }
     out
 }

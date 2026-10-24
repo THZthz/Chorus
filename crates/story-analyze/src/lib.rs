@@ -67,6 +67,6 @@ pub use slice::{
     SlicedAnalyzer,
 };
 pub use stochastic::{OutcomeClass, RollConsumers, Settlement};
-pub use symmetry::{symmetry_classes, EntityEquivSig};
+pub use symmetry::{symmetry_classes, EntityEquivSig, SymmetryCache};
 pub use trace::{PlayTrace, TraceStep};
 pub use transitions::{PlayerStep, TransitionGenerator, TransitionRecord, WitnessPath};

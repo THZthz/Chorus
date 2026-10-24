@@ -340,3 +340,74 @@ fn matrix_31_bind_happy_path_neg() {
         DiagKind::UnresolvableRef
     );
 }
+
+
+// matrix 45
+/// A greedy slot tops up from the world just before its completion
+/// evaluates: a card minted mid-flight is pulled and read by the
+/// completion's own conditions (spec.md §4.4).
+#[test]
+fn matrix_45_greedy_topup_before_completion() {
+    let src = r#"
+game "Wait"
+  seed host
+  turn 1m
+  home hall
+
+zones
+  hall
+
+aspects
+  spark: 0
+
+cards
+  card waiter_card
+    unique
+    start in hall
+
+  card orb
+    stackable
+    aspects spark 1
+
+verbs
+  verb waiter committable instances 1
+    recipe wait
+      duration 10m
+      slots
+        snag: 0..1 greedy open aspect:spark
+      effects
+        if (total(interior, aspect:spark) >= 1)
+          narrate "fed"
+        else
+          narrate "starved"
+
+  verb maker committable instances 1
+    recipe mint
+      duration 0
+      effects
+        spawn orb count 1 into hall
+        narrate "minted"
+"#;
+    let mut e = game(&src);
+    // The waiter opens with nothing to grab (min 0); the orb is minted
+    // mid-flight onto the table.
+    common::commit(&mut e, "waiter", &[]).expect("opens");
+    common::commit(&mut e, "maker", &[]).expect("mints");
+    let orb = common::named(&e, "orb");
+    let events = e.advance(10).expect("settles");
+    // The pre-completion top-up pulled the orb before the effects read it.
+    assert!(
+        events.iter().any(|ev| matches!(
+            ev,
+            Event::Bound { slot, entity, .. }
+                if *slot == SlotName::from("snag") && *entity == orb
+        )),
+        "the orb is grabbed at the settle: {events:?}"
+    );
+    assert!(
+        narration(&events).iter().any(|t| t.contains("fed")),
+        "the completion read the pulled card: {:?}",
+        narration(&events)
+    );
+    assert_eq!(count_named(&e, "orb"), 1, "released, not destroyed");
+}

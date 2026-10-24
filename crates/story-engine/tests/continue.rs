@@ -415,3 +415,71 @@ fn max_exhausted_target_misses_and_adoption_spends_a_count() {
     assert!(situations(&e).is_empty());
     assert_eq!(common::recipe_runs(&e, "pulse.tick"), 2, "the cap held");
 }
+
+
+/// The continuation gate reads the pool as the executing recipe left it:
+/// the arms' `when`s are decided before the books walk, so a book that
+/// transmutes the bound evidence cannot silence the gate (spec.md §4.2).
+#[test]
+fn continue_gate_reads_the_pre_book_pool() {
+    let src = r#"
+game "BookGate"
+  seed host
+  turn 1m
+  home hall
+
+zones
+  hall
+
+aspects
+  spark: 0
+  burn: 0
+  coal: 0
+  ash: 0
+
+cards
+  card coal
+    stackable
+    aspects spark 1, coal 1
+    start in hall
+    on complete [burn]
+      rule transmute_coal
+        effects
+          swap subject.coal to cinder
+
+  card cinder
+    stackable
+    aspects ash 1
+
+verbs
+  verb ritual committable instances 1
+    recipe stage
+      duration 5m
+      declares burn
+      slots
+        fuel: 1..1 open aspect:coal
+      effects
+        narrate "stage"
+        continue via ritual.storm
+
+    recipe storm
+      duration 5m
+      when count(interior, aspect:spark) >= 1
+      effects
+        narrate "storm"
+"#;
+    let mut e = game(src);
+    let coal = common::named(&e, "coal");
+    common::commit(&mut e, "ritual", &[("fuel", coal)]).expect("opens");
+    // Stage settles: the [burn] book transmutes the bound coal, but the
+    // gate was decided pre-book — storm adopts and runs.
+    let events = e.advance(5).expect("stage settles");
+    assert!(
+        events.iter().any(|ev| matches!(ev, Event::Continued { .. })),
+        "storm adopts despite the transmuting book: {events:?}"
+    );
+    assert_eq!(narration(&events), vec!["stage".to_string()]);
+    // Storm completes on its own timer.
+    let events = e.advance(5).expect("storm settles");
+    assert_eq!(narration(&events), vec!["storm".to_string()]);
+}

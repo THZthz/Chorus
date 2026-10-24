@@ -4,11 +4,11 @@
 use super::Run;
 use crate::effects::EffectCtx;
 use crate::mint::Fail;
-use crate::{bind_count, Engine, Event};
+use crate::{Engine, Event};
 use std::collections::{BTreeMap, BTreeSet};
 use story_content::ir::EffectNode;
 use story_content::runtime::DiagKind;
-use story_core::{Binding, EntityId, SituationId, ZoneId};
+use story_core::{EntityId, SituationId, ZoneId};
 
 // ---------------------------------------------------------------------------
 // Completion (spec.md §4.2)
@@ -71,6 +71,10 @@ impl Engine {
         };
         let recipe_id = s.recipe.clone();
         let rec = self.recipe_of(&recipe_id);
+        // Greedy top-up just before the completion evaluates (spec.md
+        // §4.4): unfilled greedy slots pull cards that became available
+        // mid-flight, so the completion's own conditions read them.
+        self.top_up_greedy(sit, &rec, ev);
         let mut fctx = EffectCtx {
             sit: Some(sit),
             now: self.state.now,
@@ -87,6 +91,53 @@ impl Engine {
             run,
             true,
         )?;
+        // The continuation gate is decided here, from the pool as the
+        // executing recipe left it — the bound cards still standing —
+        // before the books walk can transmute or burn the evidence an
+        // arm's `when` counts. The transition itself still runs after the
+        // books; each arm's `max` is consulted at adoption (spec.md §4.2).
+        let when_passed: Vec<story_core::RecipeId> = if self.state.ended.is_none() {
+            match fctx.continued.clone() {
+                Some(executed) => {
+                    let arms = continue_arms(&rec.effects);
+                    let mut ids: Vec<story_core::RecipeId> = arms
+                        .into_iter()
+                        .filter_map(|n| match n {
+                            EffectNode::Continue { recipe } => Some(recipe),
+                            _ => None,
+                        })
+                        .collect();
+                    if !ids.is_empty() {
+                        let start = ids.iter().position(|a| *a == executed).unwrap_or(0);
+                        let remaining: Vec<story_core::RecipeId> = ids.drain(start..).collect();
+                        remaining
+                            .into_iter()
+                            .filter(|arm| {
+                                let rec = self.recipe_of(arm);
+                                match &rec.when {
+                                    None => true,
+                                    Some(w) => {
+                                        let ctx = crate::eval::Ctx {
+                                            sit: Some(sit),
+                                            sel_bindings: None,
+                                            subject: None,
+                                            roll: None,
+                                            recipe: Some(rec.id.clone()),
+                                        };
+                                        self.eval_cond_ctx(w, &ctx)
+                                    }
+                                }
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                }
+                None => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
         // Step 2: consuming slots burn their surviving bound cards, in slot
         // declaration order, then bind order.
         for sd in &rec.slots {
@@ -123,30 +174,12 @@ impl Engine {
         }
         // The books stop at the first ending: an ending inside one book closes
         // the run and the situation falls through to its release.
-        if self.state.ended.is_none() {
-            // `continue via`: the recipe's execution has run its effects,
-            // consuming settlement, and books — a `continue` the list
-            // executed (branch semantics are ordinary) picks the walk's
-            // starting arm, and the walk re-checks the arms — a max-exhausted
-            // target missing like a failed `when` — in emission order against
-            // the post-book interior (the linked hand-off order). The first
-            // arm that passes adopts; a miss on every arm completes
+        if self.state.ended.is_none() && !when_passed.is_empty() {
+            // `continue via`: the books have run on the executing
+            // settlement; the transition adopts the first pre-gated arm
+            // whose `max` has room, and completes when none does
             // (spec.md §4.2).
-            if let Some(executed) = fctx.continued.clone() {
-                let arms = continue_arms(&rec.effects);
-                let mut arms: Vec<story_core::RecipeId> = arms
-                    .into_iter()
-                    .filter_map(|n| match n {
-                        EffectNode::Continue { recipe } => Some(recipe),
-                        _ => None,
-                    })
-                    .collect();
-                if !arms.is_empty() {
-                    let start = arms.iter().position(|a| *a == executed).unwrap_or(0);
-                    let remaining: Vec<story_core::RecipeId> = arms.drain(start..).collect();
-                    return self.continue_transition(sit, recipe_id, remaining, ev, run);
-                }
-            }
+            return self.continue_transition(sit, recipe_id, when_passed, ev, run);
         }
         // Steps 4-5: release, interior cleanup, removal, report.
         self.release_and_remove(sit);
@@ -280,7 +313,6 @@ impl Engine {
         ev: &mut Vec<Event>,
         run: &mut Run<'_>,
     ) -> Result<(), Fail> {
-        let interior = self.state.situations[&sit].interior;
         // (1) The executing recipe's consuming slots burned at settlement.
         // (2) Every other binding is released into the interior as unbound
         // storage: the cards stay part of the situation — interior, unlocked,
@@ -288,29 +320,15 @@ impl Engine {
         if let Some(s) = self.state.situations.get_mut(&sit) {
             s.bindings.clear();
         }
-        // (3) The transition's one gate, decided pre-materialization: the
-        // walk's arms re-check their `when`s in order against the released
-        // pool — the situation's interior sums — and a max-exhausted target
-        // is a miss like a failed `when`. The first arm that passes adopts;
-        // a miss on every arm falls through to the normal completion
+        // (3) The arms' `when`s were decided pre-book, from the executing
+        // settlement's pool (spec.md §4.2); the walk here only consults
+        // each arm's `max` at adoption. The first arm with room adopts; a
+        // miss on every arm falls through to the normal completion
         // sequence.
         let mut adopted: Option<story_core::RecipeId> = None;
         for arm in &arms {
             let rec = self.recipe_of(arm);
-            let when_holds = match &rec.when {
-                None => true,
-                Some(w) => {
-                    let ctx = crate::eval::Ctx {
-                        sit: Some(sit),
-                        sel_bindings: None,
-                        subject: None,
-                        roll: None,
-                        recipe: Some(rec.id.clone()),
-                    };
-                    self.eval_cond_ctx(w, &ctx)
-                }
-            };
-            if when_holds && self.max_left(&rec) {
+            if self.max_left(&rec) {
                 adopted = Some(rec.id.clone());
                 break;
             }
@@ -326,52 +344,11 @@ impl Engine {
         let target = self.recipe_of(&target_id);
         // (4) The adopted recipe materializes with no further gate: greedy
         // slots pull from the world per the standard greedy order (the
-        // interior is not bindable, so released storage is never re-bound);
-        // open slots re-open for mid-run `bind`. Greedy is best-effort; no
-        // minimum is validated here — the pre-pull walk was the gate.
-        let pool = self.greedy_pool();
-        for sd in &target.slots {
-            if !sd.greedy {
-                continue;
-            }
-            let Some(max) = sd.max else { continue };
-            let mut taken: Vec<EntityId> = Vec::new();
-            for pick in &pool {
-                if taken.len() >= max as usize {
-                    break;
-                }
-                if taken.contains(pick) || self.is_locked(*pick) {
-                    continue;
-                }
-                let ctx = crate::eval::Ctx::default();
-                if !self.matches_slot(pick, sd, &ctx) {
-                    continue;
-                }
-                taken.push(*pick);
-            }
-            for e in taken {
-                let bound_from = self.state.entities[&e].zone;
-                if let Some(ent) = self.state.entities.get_mut(&e) {
-                    ent.zone = interior;
-                }
-                let seq = bind_count(&self.state, sit);
-                let situation = self.state.situations.get_mut(&sit).expect("live sit");
-                situation
-                    .bindings
-                    .entry(sd.name.clone())
-                    .or_default()
-                    .push(Binding {
-                        entity: e,
-                        bound_from,
-                        seq,
-                    });
-                ev.push(Event::Bound {
-                    sit,
-                    slot: sd.name.clone(),
-                    entity: e,
-                });
-            }
-        }
+        // §4.4 top-up; the interior is not bindable, so released storage
+        // is never re-bound); open slots re-open for mid-run `bind`.
+        // Greedy is best-effort; no minimum is validated here — the
+        // pre-pull walk was the gate.
+        self.top_up_greedy(sit, &target, ev);
         // (5) The situation adopts the target recipe — its verb included
         // (spec.md §4.2) — spends one `max` count (adoption materializes the
         // new recipe), and the timer re-arms.

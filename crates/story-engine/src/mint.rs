@@ -332,6 +332,74 @@ impl Engine {
         Ok(sit_id)
     }
 
+    /// Greedy top-up for one live situation (spec.md §4.4): pull the
+    /// unfilled share of every greedy slot toward max, from the current
+    /// greedy pool, in the standard greedy order — best effort, each pull
+    /// emitting `Bound`. Runs at `continue` adoption (bindings just
+    /// cleared) and just before a completion evaluates, so a completion's
+    /// own conditions read cards that became available mid-flight.
+    pub(crate) fn top_up_greedy(
+        &mut self,
+        sit: SituationId,
+        rec: &RecipeDecl,
+        ev: &mut Vec<Event>,
+    ) {
+        let Some(s) = self.state.situations.get(&sit) else {
+            return;
+        };
+        let interior = s.interior;
+        let pool = self.greedy_pool();
+        for sd in &rec.slots {
+            if !sd.greedy {
+                continue;
+            }
+            let Some(max) = sd.max else { continue };
+            let have = self
+                .state
+                .situations
+                .get(&sit)
+                .and_then(|s| s.bindings.get(&sd.name))
+                .map(|b| b.len())
+                .unwrap_or(0);
+            let mut taken: Vec<EntityId> = Vec::new();
+            for pick in &pool {
+                if have + taken.len() >= max as usize {
+                    break;
+                }
+                if taken.contains(pick) || self.is_locked(*pick) {
+                    continue;
+                }
+                let ctx = crate::eval::Ctx::default();
+                if !self.matches_slot(pick, sd, &ctx) {
+                    continue;
+                }
+                taken.push(*pick);
+            }
+            for e in taken {
+                let bound_from = self.state.entities[&e].zone;
+                if let Some(ent) = self.state.entities.get_mut(&e) {
+                    ent.zone = interior;
+                }
+                let seq = crate::bind_count(&self.state, sit);
+                let situation = self.state.situations.get_mut(&sit).expect("live sit");
+                situation
+                    .bindings
+                    .entry(sd.name.clone())
+                    .or_default()
+                    .push(Binding {
+                        entity: e,
+                        bound_from,
+                        seq,
+                    });
+                ev.push(Event::Bound {
+                    sit,
+                    slot: sd.name.clone(),
+                    entity: e,
+                });
+            }
+        }
+    }
+
     // -- release (completion steps 4-5, spec.md §4.2) -------------------------
 
     /// Release every binding — `take` slots return cards to the zone each was

@@ -350,7 +350,15 @@ fn do_bind(
         println!("  bind takes a situation number (see `state`)");
         return None;
     };
-    let Some(e) = find_entity(engine, card) else {
+    // `card=#<id>` addresses an entity directly (the probe driver's escape
+    // hatch when several copies share a name), matching `commit`.
+    let e = card
+        .strip_prefix('#')
+        .and_then(|n| n.parse::<u64>().ok())
+        .map(story_core::EntityId)
+        .filter(|id| engine.state().entities.contains_key(id))
+        .or_else(|| find_entity(engine, card));
+    let Some(e) = e else {
         println!("  no live card named `{card}`");
         return None;
     };

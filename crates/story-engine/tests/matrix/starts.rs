@@ -244,8 +244,9 @@ verbs
 }
 
 // matrix 16
-/// A false guard opens normally, and a guard hit during a `start` ends
-/// the chain silently instead of refusing.
+/// A false guard opens normally, a guard hit still refuses the player
+/// commit, and a guard on the `start` path is not evaluated: the
+/// situation opens and the content holds it (spec.md §4.3).
 #[test]
 fn matrix_16_guard_refused_neg() {
     let src = r#"
@@ -290,11 +291,17 @@ verbs
     // Guard false: the commit proceeds.
     common::commit_named(&mut e, "vault", &[]).expect("opens");
     e.advance(5).expect("completes");
-    // Guard true on the start path: the chain ends silently.
+    // Guard true: the player commit is still refused, zero state change.
     common::commit_named(&mut e, "sealer", &[]).expect("seals");
+    let before = state_bytes(&e);
+    let refused = common::commit_named(&mut e, "vault", &[]).expect_err("guarded");
+    assert_eq!(refused.kind, DiagKind::GuardRefused);
+    assert_eq!(state_bytes(&e), before);
+    // The same guard on the start path is not evaluated: the situation
+    // opens and the content holds it open.
     let events = common::commit_named(&mut e, "starter", &[]).expect("runs");
-    assert!(chain_ended(&events, "vault"));
-    assert_eq!(situations(&e).len(), 0);
+    assert!(!chain_ended(&events, "vault"));
+    assert_eq!(situations(&e).len(), 1);
 }
 
 // matrix 30

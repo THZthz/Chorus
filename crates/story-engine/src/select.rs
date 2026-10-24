@@ -88,9 +88,17 @@ impl Engine {
                 return Selection::Nothing;
             }
         }
-        for g in &rec.guards {
-            if self.eval_cond_ctx(&g.when, ctx) {
-                return Selection::GuardRefused(g.prose.clone());
+        // Guards gate player-facing commits and autonomous polls. A `start`
+        // opens the situation regardless: the situation's own slots and
+        // interior are necessarily empty at selection time, so any guard
+        // over them would hold vacuously and silently kill the chain — the
+        // content holds the open instead (an open slot for a mid-run bind,
+        // a self-`continue` to re-arm the timer).
+        if source != Source::Start {
+            for g in &rec.guards {
+                if self.eval_cond_ctx(&g.when, ctx) {
+                    return Selection::GuardRefused(g.prose.clone());
+                }
             }
         }
         Selection::Matched(rec.clone())

@@ -29,6 +29,8 @@ impl Analyzer {
         };
         let relevant = self.causal.relevant_verbs(&self.content, &cone);
 
+        let mut h_ws = self.causal.workspace();
+
         // The start node; the invariant must hold there too.
         if let Some(inv) = &query.invariant {
             let start = self.start.clone();
@@ -37,6 +39,18 @@ impl Analyzer {
                 return SolveOutcome::empty();
             }
         }
+        let start_h = if self.heuristic || query.prune {
+            *self.engine.state_mut() = self.start.clone();
+            let raw = self.causal.h_add_with_workspace(
+                &self.start,
+                &self.engine,
+                &goal_facts,
+                &mut h_ws,
+            );
+            i64::from(raw.min(4096))
+        } else {
+            0
+        };
         let mut arena: Vec<ArenaNode> = vec![ArenaNode {
             state: self.start.clone(),
             parent: None,
@@ -45,6 +59,9 @@ impl Analyzer {
             depth: 0,
             sig: Vec::new(),
             dist_to_spine: 0,
+            h: start_h,
+            h_computed: true,
+            order: 0,
         }];
 
         let diverse = matches!(query.objective, SearchObjective::DiverseWays { .. });
@@ -93,7 +110,6 @@ impl Analyzer {
         let mut witnessed_sigs: BTreeSet<Vec<Option<RecipeId>>> = BTreeSet::new();
         let mut dropped = 0usize;
         let replayer = self.replayer();
-        let mut h_ws = self.causal.workspace();
 
         // Explored envelope trackers
         let mut time_min = self.start.now;
@@ -210,6 +226,13 @@ impl Analyzer {
                 if let Some(r) = &rec.recipe {
                     cur_sig.push(Some(r.clone()));
                 }
+                let raw_h = if self.heuristic || query.prune {
+                    *self.engine.state_mut() = state_after.clone();
+                    self.causal.h_add_with_workspace(&state_after, &self.engine, &goal_facts, &mut h_ws)
+                } else {
+                    0
+                };
+                let h = i64::from(raw_h.min(4096));
                 let child_idx = arena.len();
                 arena.push(ArenaNode {
                     state: state_after.clone(),
@@ -219,6 +242,9 @@ impl Analyzer {
                     depth: cur_depth,
                     sig: cur_sig.clone(),
                     dist_to_spine: 0,
+                    h,
+                    h_computed: true,
+                    order: 0,
                 });
                 cur_parent = child_idx;
 
@@ -247,13 +273,6 @@ impl Analyzer {
                 };
                 min_dist.insert(key, 0);
                 visited.insert(key, cost);
-                let raw_h = if self.heuristic || query.prune {
-                    *self.engine.state_mut() = state_after.clone();
-                    self.causal.h_add_with_workspace(&state_after, &self.engine, &goal_facts, &mut h_ws)
-                } else {
-                    0
-                };
-                let h = i64::from(raw_h.min(4096));
                 queue.push(Reverse(Key {
                     parts: priority(
                         &query.objective,
@@ -269,6 +288,48 @@ impl Analyzer {
 
         while let Some(Reverse(k)) = queue.pop() {
             let idx = k.seq;
+            if !arena[idx].h_computed {
+                let raw_h = {
+                    *self.engine.state_mut() = arena[idx].state.clone();
+                    self.causal.h_add_with_workspace(
+                        &arena[idx].state,
+                        &self.engine,
+                        &goal_facts,
+                        &mut h_ws,
+                    )
+                };
+                arena[idx].h_computed = true;
+                if query.prune && !self.causal.host_opaque() && raw_h >= u32::MAX / 4 {
+                    *self.engine.state_mut() = arena[idx].state.clone();
+                    let events = arena[idx]
+                        .record
+                        .as_ref()
+                        .map(|r| r.events.as_slice())
+                        .unwrap_or(&[]);
+                    let ctx = GoalCtx {
+                        engine: &self.engine,
+                        events,
+                    };
+                    if !query.goal.holds(&ctx) {
+                        pruned += 1;
+                        continue;
+                    }
+                }
+                let h = i64::from(raw_h.min(4096));
+                arena[idx].h = h;
+                let order = arena[idx].order;
+                queue.push(Reverse(Key {
+                    parts: priority(
+                        &query.objective,
+                        arena[idx].actions,
+                        arena[idx].depth,
+                        arena[idx].state.now,
+                        h + order,
+                    ),
+                    seq: idx,
+                }));
+                continue;
+            }
             expansions += 1;
             if expansions > query.max_states {
                 truncated = true;
@@ -472,26 +533,15 @@ impl Analyzer {
                         }
                         Vec::new()
                     };
-                    let mut gate_fired = query.prune
+                    let gate_fired = query.prune
                         && !goal_cards.is_empty()
                         && goal_cards.iter().any(|c| {
                             !state_after.entities.values().any(|e| &e.prototype == c)
                                 && !recipe_mintable.contains(c)
-                        });
-                    if !gate_fired
-                        && !scarcity.is_empty()
-                        && scarcity.dead(&state_after, &self.content, query.max_time)
-                    {
-                        gate_fired = true;
-                    }
-                    let mut raw_h = 0u32;
-                    if !gate_fired && (self.heuristic || query.prune) {
-                        *self.engine.state_mut() = state_after.clone();
-                        raw_h = self.causal.h_add_with_workspace(&state_after, &self.engine, &goal_facts, &mut h_ws);
-                        if query.prune && !self.causal.host_opaque() && raw_h >= u32::MAX / 4 {
-                            gate_fired = true;
-                        }
-                    }
+                        })
+                        || (query.prune
+                            && !scarcity.is_empty()
+                            && scarcity.dead(&state_after, &self.content, query.max_time));
                     if gate_fired {
                         *self.engine.state_mut() = state_after.clone();
                         let ctx = GoalCtx {
@@ -503,10 +553,10 @@ impl Analyzer {
                             continue;
                         }
                     }
-                    let h = if self.heuristic || query.prune {
-                        i64::from(raw_h.min(4096))
+                    let (h, h_computed) = if self.heuristic || query.prune {
+                        (arena[idx].h, false)
                     } else {
-                        0
+                        (0, true)
                     };
                     let child = arena.len();
                     arena.push(ArenaNode {
@@ -517,6 +567,9 @@ impl Analyzer {
                         depth,
                         sig,
                         dist_to_spine: child_dist,
+                        h,
+                        h_computed,
+                        order,
                     });
                     queue.push(Reverse(Key {
                         parts: priority(

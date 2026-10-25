@@ -71,4 +71,7 @@ pub(super) struct ArenaNode {
     /// The recipe trace from the start node (the DiverseWays signature).
     pub(super) sig: Vec<Option<RecipeId>>,
     pub(super) dist_to_spine: usize,
+    pub(super) h: i64,
+    pub(super) h_computed: bool,
+    pub(super) order: i64,
 }

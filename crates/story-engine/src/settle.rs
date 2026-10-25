@@ -8,7 +8,7 @@ mod completion;
 mod expiry;
 
 pub(crate) use advance::advance;
-pub(crate) use boot::boot;
+pub(crate) use boot::{boot, boot_tables};
 pub(crate) use checkpoint::checkpoint;
 
 use story_core::State;

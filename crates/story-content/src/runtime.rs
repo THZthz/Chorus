@@ -6,7 +6,7 @@ use crate::Severity;
 use std::fmt;
 
 /// The runtime diagnostic kinds, in the four families of kernel-api.md §7.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DiagKind {
     // Lookup.
     UnknownVerb,
@@ -122,7 +122,7 @@ impl DiagKind {
 /// A runtime diagnostic value: the kind, the message, the context it arose
 /// in, and a severity — boot warnings may proceed, errors must not
 /// (kernel-api.md §1, §7).
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeDiagnostic {
     pub severity: Severity,
     pub kind: DiagKind,

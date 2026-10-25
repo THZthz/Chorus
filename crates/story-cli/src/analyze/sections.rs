@@ -42,6 +42,7 @@ fn explore_config(
         max_time: max_time.or(Some(story_analyze::query::DEFAULT_MAX_TIME)),
         prune,
         allowed_verbs: opts.slice.as_ref().map(|t| t.verbs().clone()),
+        time_budget: opts.time_budget,
         ..Default::default()
     };
     if let Some(inv) = extra_invariant {
@@ -157,7 +158,8 @@ pub(super) fn reach_section(
     prune: bool,
     max_time: Option<Time>,
     extra_invariant: Option<&GoalPredicate>,
-) {
+    continue_traces: &[story_analyze::PlayTrace],
+) -> (bool, Vec<story_analyze::PlayTrace>) {
     let _span = tracing::info_span!("reach").entered();
     outln!(out);
     outln!(out, "== reach: {desc} ==");
@@ -165,6 +167,8 @@ pub(super) fn reach_section(
     query.rng_mode = opts.rng;
     query.max_time = max_time.or(Some(story_analyze::query::DEFAULT_MAX_TIME));
     query.prune = prune;
+    query.time_budget = opts.time_budget;
+    query.seed_traces.extend(continue_traces.iter().cloned());
     if let Some(n) = opts.max_states {
         query.max_states = n;
     }
@@ -199,11 +203,14 @@ pub(super) fn reach_section(
     query.envelope = opts.envelope;
     let outcome = analyzer.solve(&query);
     print_solve(out, &outcome, opts, max_time);
+    (outcome.budget_depleted, outcome.resume_traces)
 }
 
 fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options, max_time: Option<Time>) {
     let status = if !outcome.witnesses.is_empty() {
         format!("REACHABLE — {} witness(es)", outcome.witnesses.len())
+    } else if outcome.budget_depleted {
+        "INCONCLUSIVE — time budget depleted; run with --continue to resume".to_string()
     } else if outcome.pruned > 0 {
         format!(
             "NO WITNESS UNDER PRUNING — {pruned} branch(es) looked impossible and were \
@@ -220,7 +227,9 @@ fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options, max_tim
         out,
         "expansions: {}{}",
         outcome.expansions,
-        if outcome.truncated {
+        if outcome.budget_depleted {
+            " (stopped at time budget)".to_string()
+        } else if outcome.truncated {
             format!(
                 " (truncated at max_states {})",
                 opts.max_states.unwrap_or(DEFAULT_MAX_STATES)
@@ -229,7 +238,12 @@ fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options, max_tim
             String::new()
         }
     );
-    if outcome.truncated {
+    if outcome.budget_depleted {
+        outln!(
+            out,
+            "bounds: time budget depleted — progress saved; run with --continue to resume"
+        );
+    } else if outcome.truncated {
         outln!(
             out,
             "bounds: truncated at max_states {}{} — a no-witness answer is bounds-conditional",
@@ -417,12 +431,17 @@ pub(super) fn classify_section(
     };
     outln!(out, "winning endings: {note}");
     let c = classify(analyzer, &config);
+    let note = if c.graph.budget_depleted {
+        "TRUNCATED — time budget depleted"
+    } else {
+        truncated_note(c.graph.truncated, max_time.is_some())
+    };
     outln!(
         out,
         "explored: {} states, {} edges ({})",
         c.graph.nodes.len(),
         c.graph.edges.len(),
-        truncated_note(c.graph.truncated, max_time.is_some()),
+        note,
     );
     if prune && goal.is_some() {
         outln!(
@@ -489,6 +508,7 @@ pub(super) fn mdp_section(
     config.rng_mode = opts.rng;
     config.max_time = max_time;
     config.prune = prune;
+    config.time_budget = opts.time_budget;
     // --max-states is the expansion bound everywhere: the game graph's node
     // budget here. max_actions/max_depth keep the crate defaults.
     config.max_nodes = opts.max_states.unwrap_or(DEFAULT_MAX_STATES);

@@ -135,6 +135,10 @@ pub struct ReachQuery {
     pub seed_samples: usize,
     /// An external play trace to seed the search with.
     pub seed_trace: Option<crate::trace::PlayTrace>,
+    /// Additional play traces to seed the search with (e.g. for resumption).
+    pub seed_traces: Vec<crate::trace::PlayTrace>,
+    /// Optional wall-clock time budget for the search.
+    pub time_budget: Option<std::time::Duration>,
     /// Neighborhood radius around seed trajectories (default: 1 when seeded, None when unseeded).
     pub tube_radius: Option<usize>,
     /// Whether to record and report the explored envelope coverage.
@@ -164,6 +168,8 @@ impl ReachQuery {
             allowed_verbs: None,
             seed_samples: 0,
             seed_trace: None,
+            seed_traces: Vec::new(),
+            time_budget: None,
             tube_radius: None,
             envelope: false,
             quiescence_pruning: true,

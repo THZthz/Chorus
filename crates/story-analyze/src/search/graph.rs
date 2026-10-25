@@ -59,6 +59,7 @@ pub struct ExploredGraph {
     pub edges: Vec<GraphEdge>,
     pub start: usize,
     pub truncated: bool,
+    pub budget_depleted: bool,
     pub expansions: usize,
     /// The RNG mode the exploration ran under: the witnesses it rebuilds
     /// carry cumulative probability in every mode but `Adversarial` (§6).

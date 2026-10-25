@@ -11,7 +11,7 @@ use story_core::{CardId, DeckId, EndingId, RecipeId};
 
 /// One node of the fact domain. Every variant is a capability question about
 /// reachable states, never a statement about one state.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Fact {
     /// A live instance of the card can exist.
     CardLive(CardId),
@@ -75,7 +75,7 @@ impl std::fmt::Display for Fact {
 }
 
 /// Where a hyperedge was extracted from; the provenance label of the edge.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Site {
     /// A recipe's effect list and its completion book's products.
     Recipe(RecipeId),
@@ -107,7 +107,7 @@ pub enum Site {
 
 /// One hyperedge: a site whose effect list can run when every requirement
 /// fact holds, producing every produced fact.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Hyperedge {
     pub site: Site,
     /// Necessary preconditions of this route: an effect's target liveness,
@@ -121,7 +121,7 @@ pub struct Hyperedge {
 }
 
 /// The verdict of the Tier-1 plausibility pre-check for one goal fact.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Plausibility {
     /// A producer cone grounds the fact from the boot state.
     Plausible,
@@ -136,7 +136,7 @@ pub enum Plausibility {
 
 /// A backward-provenance witness: the fact, the edge that can produce it,
 /// and the provenance of each requirement.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Provenance {
     pub fact: Fact,
     pub site: Site,

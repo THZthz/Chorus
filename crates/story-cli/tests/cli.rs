@@ -750,4 +750,175 @@ fn play_record_and_seed_trace_in_analyze() {
     let _ = std::fs::remove_file(temp_trace);
 }
 
+#[test]
+fn time_budget_stops_analysis_and_continue_resumes() {
+    let (code, out, _) = run(&[
+        "analyze",
+        EMBER,
+        "--reach",
+        "ending:survived",
+        "--time-budget",
+        "5ms",
+    ]);
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("outcome: INCONCLUSIVE — time budget depleted; run with --continue to resume"),
+        "{out}"
+    );
+    assert!(out.contains("time-budget 5ms"), "{out}");
+
+    // Running with --continue resumes from saved progress
+    let (code, out, _) = run(&[
+        "analyze",
+        EMBER,
+        "--reach",
+        "ending:survived",
+        "--time-budget",
+        "15ms",
+        "--continue",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("continue on"), "{out}");
+
+    // Clean up residual checkpoint in temp dir
+    if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with("story_resume_") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+
+#[test]
+fn time_budget_caches_cold_boot_and_causal_graph() {
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--profile",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+
+    // Subsequent run skips causal graph construction
+    let (code, _, err) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--profile",
+    ]);
+    assert_eq!(code, 0);
+    assert!(!err.contains("causal_build"), "cached run should skip causal_build");
+}
+
+#[test]
+fn time_budget_multiple_flags_and_zero_budget() {
+    // When multiple flags are passed, the last one takes precedence.
+    // A 0 budget stops immediately at 0 expansions.
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--time-budget",
+        "10s",
+        "--time-budget",
+        "0s",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("time-budget 0ms"), "{out}");
+    assert!(out.contains("outcome: INCONCLUSIVE — time budget depleted"), "{out}");
+    assert!(out.contains("expansions: 0 (stopped at time budget)"), "{out}");
+
+    // Clean up the checkpoint created by this test
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--continue",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+}
+
+#[test]
+fn time_budget_resumes_multiple_times_and_cleans_up() {
+    // 1st run: stops at budget
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--time-budget",
+        "0s",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: INCONCLUSIVE"), "{out}");
+
+    // 2nd run: resumes with another zero budget
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--time-budget",
+        "0s",
+        "--continue",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("continue on"), "{out}");
+    assert!(out.contains("outcome: INCONCLUSIVE"), "{out}");
+
+    // 3rd run: completes to REACHABLE and removes resume checkpoint
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "ending:lit",
+        "--continue",
+    ]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+}
+
+#[test]
+fn cold_boot_recovers_from_corrupted_and_empty_cache() {
+    // Ensure cache exists
+    let (code, _, _) = run(&["analyze", TINY, "--reach", "ending:lit"]);
+    assert_eq!(code, 0);
+
+    // Corrupt all cache files in temp dir matching story_cache_
+    if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with("story_cache_") {
+                let _ = std::fs::write(entry.path(), b"{\"corrupt\": [");
+            }
+        }
+    }
+
+    // Run again: recovers from corrupted cache and succeeds
+    let (code, out, _) = run(&["analyze", TINY, "--reach", "ending:lit"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+
+    // Empty the cache files
+    if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with("story_cache_") {
+                let _ = std::fs::write(entry.path(), b"");
+            }
+        }
+    }
+
+    // Run again: recovers from empty cache file and succeeds
+    let (code, out, _) = run(&["analyze", TINY, "--reach", "ending:lit"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("outcome: REACHABLE"), "{out}");
+}
+
+
 

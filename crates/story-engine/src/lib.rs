@@ -176,6 +176,19 @@ impl Engine {
         settle::boot(content, registry, seed, legacy_in)
     }
 
+    /// Construct an engine directly with a pre-computed start state,
+    /// skipping boot mints and autonomous t=0 checkpoint.
+    pub fn boot_from_state(
+        content: Arc<Content>,
+        registry: EffectRegistry,
+        seed: u64,
+        state: State,
+    ) -> (Self, Vec<RuntimeDiagnostic>) {
+        let (mut engine, diags) = settle::boot_tables(content, registry, seed, None);
+        engine.state = state;
+        (engine, diags)
+    }
+
     // -- recognition face ---------------------------------------------------
 
     pub fn state(&self) -> &State {

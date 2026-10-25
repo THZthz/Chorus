@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Severity {
     Error,
     Warning,

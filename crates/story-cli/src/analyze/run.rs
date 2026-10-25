@@ -94,9 +94,36 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
     // once, gates the run on error diagnostics, and answers whether
     // heuristic pruning is available (host ops make the causal graph
     // incomplete). The section threads boot privately and silently below.
-    let (boot_analyzer, diags) = {
-        let _span = tracing::info_span!("boot").entered();
-        Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None)
+    // When cached boot artifacts exist in the temporary directory, the cold boot
+    // and causal graph construction are skipped.
+    let cache_key = compute_boot_cache_key(&content, seed, opts.turn);
+    let cache_file = std::env::temp_dir().join(format!("story_cache_{cache_key:016x}.json"));
+    let cached_boot = std::fs::read_to_string(&cache_file)
+        .ok()
+        .and_then(|data| serde_json::from_str::<CachedBoot>(&data).ok());
+    let (boot_analyzer, diags) = if let Some(cached) = cached_boot {
+        let analyzer = Analyzer::from_cached_boot(
+            content.clone(),
+            EffectRegistry::new(),
+            seed,
+            cached.start,
+            Arc::new(cached.causal),
+        );
+        (analyzer, cached.diags)
+    } else {
+        let (analyzer, diags) = {
+            let _span = tracing::info_span!("boot").entered();
+            Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None)
+        };
+        let cached = CachedBoot {
+            start: analyzer.start().clone(),
+            diags: diags.clone(),
+            causal: (*analyzer.causal()).clone(),
+        };
+        if let Ok(json) = serde_json::to_string(&cached) {
+            let _ = std::fs::write(&cache_file, json);
+        }
+        (analyzer, diags)
     };
     for d in &diags {
         println!("boot: {d}");
@@ -144,6 +171,12 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
     }
     if let Some(t) = opts.turn {
         settings.push(turn_setting(t, content.game.is_some()));
+    }
+    if let Some(tb) = opts.time_budget {
+        settings.push(format!("time-budget {}ms", tb.as_millis()));
+    }
+    if opts.r#continue {
+        settings.push("continue on".to_string());
     }
     if opts.prune {
         if prune {
@@ -240,6 +273,17 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
     } else {
         None
     };
+    let resume_key = compute_resume_key(content, opts, seed);
+    let resume_file = std::env::temp_dir().join(format!("story_resume_{resume_key:016x}.json"));
+    let mut continue_checkpoint = ResumeCheckpoint::default();
+    if opts.r#continue {
+        if let Ok(data) = std::fs::read_to_string(&resume_file) {
+            if let Ok(cp) = serde_json::from_str::<ResumeCheckpoint>(&data) {
+                continue_checkpoint = cp;
+            }
+        }
+    }
+
     let mut sections: Vec<SectionJob<'_>> = Vec::new();
     if let (Some(target), Some(boundary)) = (&opts.slice, &slice_boundary) {
         let target = target.clone();
@@ -253,11 +297,43 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
     }
     if !reach_goals.is_empty() {
         let goals = &reach_goals;
+        let resume_path_clone = resume_file.clone();
+        let continue_checkpoint_clone = continue_checkpoint.clone();
         sections.push(Box::new(move || {
             let mut analyzer = boot_quiet(template, content, seed, start_state);
             let mut out = String::new();
+            let mut depleted = false;
+            let mut checkpoint = ResumeCheckpoint::default();
             for (desc, goal) in goals {
-                reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts, prune, max_time, extra_inv);
+                let traces_for_goal = continue_checkpoint_clone
+                    .goals
+                    .get(desc)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
+                let (dep, resumes) = reach_section(
+                    &mut out,
+                    &mut analyzer,
+                    desc,
+                    goal.clone(),
+                    opts,
+                    prune,
+                    max_time,
+                    extra_inv,
+                    traces_for_goal,
+                );
+                if dep {
+                    depleted = true;
+                    if !resumes.is_empty() {
+                        checkpoint.goals.insert(desc.clone(), resumes);
+                    }
+                }
+            }
+            if depleted && !checkpoint.goals.is_empty() {
+                if let Ok(json) = serde_json::to_string(&checkpoint) {
+                    let _ = std::fs::write(&resume_path_clone, json);
+                }
+            } else if !depleted && resume_path_clone.exists() {
+                let _ = std::fs::remove_file(&resume_path_clone);
             }
             out
         }));
@@ -526,4 +602,33 @@ fn decl_blocks(content: &Content) -> Vec<String> {
         out.push(s);
     }
     out
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedBoot {
+    start: State,
+    diags: Vec<story_content::runtime::RuntimeDiagnostic>,
+    causal: story_analyze::causal::CausalGraph,
+}
+
+fn compute_boot_cache_key(content: &Content, seed: u64, turn: Option<Time>) -> u64 {
+    let mut h = story_core::fingerprint::fingerprint(content);
+    h ^= seed.wrapping_mul(0x517c_c1b7_2722_0a95);
+    if let Some(t) = turn {
+        h ^= (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+    h
+}
+
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+struct ResumeCheckpoint {
+    goals: std::collections::BTreeMap<String, Vec<story_analyze::PlayTrace>>,
+}
+
+fn compute_resume_key(content: &Content, opts: &Options, seed: u64) -> u64 {
+    let mut h = compute_boot_cache_key(content, seed, opts.turn);
+    for r in &opts.reaches {
+        h ^= story_core::fingerprint::fingerprint(&format!("{r:?}"));
+    }
+    h
 }

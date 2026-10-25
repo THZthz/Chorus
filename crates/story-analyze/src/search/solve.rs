@@ -144,6 +144,12 @@ impl Analyzer {
                 Err(_) => dropped += 1,
             }
         }
+        for trace in &query.seed_traces {
+            match trace.execute_with_seed(self.content.clone(), self.registry.clone(), self.seed) {
+                Ok(w) => seed_paths.push(w),
+                Err(_) => dropped += 1,
+            }
+        }
         if query.seed_samples > 0 {
             let sampler = crate::sample::RolloutSampler::new(
                 &self.content,
@@ -286,8 +292,20 @@ impl Analyzer {
             }
         }
 
+        let start_wall = std::time::Instant::now();
+        let mut budget_depleted = false;
+        let mut last_popped_idx = None;
+
         while let Some(Reverse(k)) = queue.pop() {
             let idx = k.seq;
+            last_popped_idx = Some(idx);
+            if let Some(budget) = query.time_budget {
+                if start_wall.elapsed() >= budget {
+                    truncated = true;
+                    budget_depleted = true;
+                    break;
+                }
+            }
             if !arena[idx].h_computed {
                 let raw_h = {
                     *self.engine.state_mut() = arena[idx].state.clone();
@@ -650,9 +668,45 @@ impl Analyzer {
             None
         };
 
+        let mut resume_traces = Vec::new();
+        if budget_depleted {
+            let mut frontier_indices = Vec::new();
+            if let Some(idx) = last_popped_idx {
+                frontier_indices.push(idx);
+            }
+            while let Some(Reverse(item)) = queue.pop() {
+                frontier_indices.push(item.seq);
+                if frontier_indices.len() >= 50 {
+                    break;
+                }
+            }
+            frontier_indices.dedup();
+            for f_idx in frontier_indices {
+                if f_idx < arena.len() {
+                    let records = path(&arena, f_idx);
+                    let w = WitnessPath {
+                        start: self.start.clone(),
+                        records,
+                        actions: arena[f_idx].actions,
+                        depth: arena[f_idx].depth,
+                        probability: None,
+                    };
+                    let trace = crate::trace::PlayTrace::from_witness(
+                        &w,
+                        self.engine.turn(),
+                        self.seed,
+                        self.legacy_in.clone(),
+                    );
+                    resume_traces.push(trace);
+                }
+            }
+        }
+
         SolveOutcome {
             witnesses,
             truncated,
+            budget_depleted,
+            resume_traces,
             expansions,
             pruned,
             witnesses_dropped_by_the_oracle: dropped,
@@ -752,6 +806,8 @@ impl Analyzer {
 pub struct SolveOutcome {
     pub witnesses: Vec<WitnessPath>,
     pub truncated: bool,
+    pub budget_depleted: bool,
+    pub resume_traces: Vec<crate::trace::PlayTrace>,
     pub expansions: usize,
     /// Branches skipped by the heuristic feasibility gate (`prune`): states
     /// whose goal facts cannot be grounded even in the delete relaxation.
@@ -766,6 +822,8 @@ impl SolveOutcome {
         SolveOutcome {
             witnesses: Vec::new(),
             truncated: false,
+            budget_depleted: false,
+            resume_traces: Vec::new(),
             expansions: 0,
             pruned: 0,
             witnesses_dropped_by_the_oracle: 0,

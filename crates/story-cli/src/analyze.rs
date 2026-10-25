@@ -74,6 +74,8 @@ struct Options {
     seed_trace: Option<String>,
     radius: Option<usize>,
     envelope: bool,
+    time_budget: Option<std::time::Duration>,
+    r#continue: bool,
     /// Section concurrency cap. The explorations are allocation-heavy
     /// (~1 GB per full state space on emberwatch), so more concurrent
     /// sections trade wall time for memory pressure.

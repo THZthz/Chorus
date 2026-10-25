@@ -27,11 +27,39 @@ use build::Builder;
 // The graph
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Default)]
+pub mod map_as_vec {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::BTreeMap;
+
+    pub fn serialize<K, V, S>(map: &BTreeMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        K: Serialize + Ord,
+        V: Serialize,
+        S: Serializer,
+    {
+        let entries: Vec<(&K, &V)> = map.iter().collect();
+        entries.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, K, V, D>(deserializer: D) -> Result<BTreeMap<K, V>, D::Error>
+    where
+        K: Deserialize<'de> + Ord,
+        V: Deserialize<'de>,
+        D: Deserializer<'de>,
+    {
+        let entries: Vec<(K, V)> = Vec::deserialize(deserializer)?;
+        Ok(entries.into_iter().collect())
+    }
+}
+
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct CausalGraph {
     edges: Vec<Hyperedge>,
+    #[serde(with = "map_as_vec")]
     producers: BTreeMap<Fact, Vec<usize>>,
+    #[serde(with = "map_as_vec")]
     consumers: BTreeMap<Fact, Vec<usize>>,
+    #[serde(with = "map_as_vec")]
     card_declared_aspects: BTreeMap<CardId, Vec<story_content::ir::AspectKey>>,
     zone_facts: Vec<(CardId, ZoneName)>,
     host_opaque: bool,

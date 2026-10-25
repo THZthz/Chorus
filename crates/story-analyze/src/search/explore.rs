@@ -30,6 +30,8 @@ impl Analyzer {
             allowed_verbs: config.allowed_verbs.clone(),
             seed_samples: 0,
             seed_trace: None,
+            seed_traces: Vec::new(),
+            time_budget: config.time_budget,
             tube_radius: None,
             envelope: false,
             quiescence_pruning: config.quiescence_pruning,
@@ -89,9 +91,18 @@ impl Analyzer {
         let mut queue = std::collections::VecDeque::new();
         queue.push_back(start);
         let mut truncated = false;
+        let mut budget_depleted = false;
         let mut expansions = 0usize;
+        let start_time = std::time::Instant::now();
 
         while let Some(idx) = queue.pop_front() {
+            if let Some(budget) = config.time_budget {
+                if start_time.elapsed() >= budget {
+                    truncated = true;
+                    budget_depleted = true;
+                    break;
+                }
+            }
             expansions += 1;
             if expansions > config.max_states {
                 truncated = true;
@@ -224,6 +235,7 @@ impl Analyzer {
             edges,
             start,
             truncated,
+            budget_depleted,
             expansions,
             rng_mode: config.rng_mode,
             parents,
@@ -254,6 +266,8 @@ pub struct ExploreConfig {
     pub allowed_verbs: Option<BTreeSet<story_core::VerbId>>,
     /// Suppress advance steps when the state is completely quiescent.
     pub quiescence_pruning: bool,
+    /// Wall-clock time budget for exploration.
+    pub time_budget: Option<std::time::Duration>,
 }
 
 impl Default for ExploreConfig {
@@ -268,6 +282,7 @@ impl Default for ExploreConfig {
             prune: false,
             allowed_verbs: None,
             quiescence_pruning: true,
+            time_budget: None,
         }
     }
 }

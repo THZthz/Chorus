@@ -14,8 +14,9 @@ use super::CausalGraph;
 // relaxation heuristic and dead-mechanism pruning.
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct IndexedCausal {
+    #[serde(with = "crate::causal::map_as_vec")]
     pub fact_to_id: BTreeMap<Fact, u32>,
     pub edge_produces: Vec<Vec<u32>>,
     pub edge_recipe_max: Vec<Option<RecipeId>>,
@@ -24,10 +25,14 @@ pub(crate) struct IndexedCausal {
     pub card_live_bridges: Vec<Vec<u32>>,
     pub base_unsatisfied: Vec<usize>,
     pub zero_req_edges: Vec<u32>,
+    #[serde(with = "crate::causal::map_as_vec")]
     pub card_live_to_id: BTreeMap<CardId, u32>,
+    #[serde(with = "crate::causal::map_as_vec")]
     pub card_aspect_to_id: BTreeMap<CardId, BTreeMap<AspectKey, u32>>,
     pub zone_fact_ids: Vec<Option<u32>>,
+    #[serde(with = "crate::causal::map_as_vec")]
     pub legacy_to_id: BTreeMap<LegacyKey, u32>,
+    #[serde(with = "crate::causal::map_as_vec")]
     pub recipe_open_to_id: BTreeMap<RecipeId, u32>,
     pub default_aspects: Vec<AspectKey>,
     pub openable_recipes: Vec<(RecipeId, Option<u32>, u32)>,

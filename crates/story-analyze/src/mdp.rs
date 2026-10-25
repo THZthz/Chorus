@@ -44,6 +44,8 @@ pub struct MdpConfig {
     pub allowed_verbs: Option<BTreeSet<story_core::VerbId>>,
     /// Suppress advance steps when the state is completely quiescent.
     pub quiescence_pruning: bool,
+    /// Wall-clock time budget for MDP solve.
+    pub time_budget: Option<std::time::Duration>,
 }
 
 impl MdpConfig {
@@ -60,6 +62,7 @@ impl MdpConfig {
             prune: false,
             allowed_verbs: None,
             quiescence_pruning: true,
+            time_budget: None,
         }
     }
 }
@@ -129,6 +132,8 @@ pub fn solve(analyzer: &Analyzer, config: &MdpConfig) -> MdpOutcome {
         count: 0,
         limit: config.max_nodes,
         pruned: 0,
+        start_time: std::time::Instant::now(),
+        time_budget: config.time_budget,
     };
     let vals = {
         let goal_facts = crate::causal::goal_facts(&config.goal);
@@ -183,6 +188,8 @@ struct NodeCounter {
     count: usize,
     limit: usize,
     pruned: usize,
+    start_time: std::time::Instant,
+    time_budget: Option<std::time::Duration>,
 }
 
 /// The recursion context of one induction, bundling the eval parameters.
@@ -211,6 +218,7 @@ fn eval(ctx: &mut Ctx<'_>, state: &State, actions: usize, depth: usize) -> Optio
     if ctx.counter.count >= ctx.counter.limit
         || actions > ctx.config.max_actions
         || depth > ctx.config.max_depth
+        || ctx.counter.time_budget.is_some_and(|b| ctx.counter.start_time.elapsed() >= b)
     {
         return None;
     }

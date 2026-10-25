@@ -14,7 +14,7 @@ use story_content::Content;
 use story_core::rng::splitmix64;
 use story_core::{CardId, DeckId, EntityId, State, Zone, ZoneId, ZoneKind};
 
-pub(crate) fn boot(
+pub(crate) fn boot_tables(
     content: Arc<Content>,
     registry: crate::EffectRegistry,
     seed: u64,
@@ -126,7 +126,7 @@ pub(crate) fn boot(
 
     let verb_recipes = Arc::new(crate::select::build_verb_recipes(&content));
 
-    let mut engine = Engine {
+    let engine = Engine {
         registry,
         state,
         seed,
@@ -139,6 +139,17 @@ pub(crate) fn boot(
         content,
         verb_recipes,
     };
+
+    (engine, diags)
+}
+
+pub(crate) fn boot(
+    content: Arc<Content>,
+    registry: crate::EffectRegistry,
+    seed: u64,
+    legacy_in: Option<BTreeMap<String, i64>>,
+) -> (Engine, Vec<RuntimeDiagnostic>) {
+    let (mut engine, mut diags) = boot_tables(content, registry, seed, legacy_in);
 
     // Arm boot instances from the cards' own declarations (mint aliasing
     // never applies at boot), lifetimes armed at t=0. Aspects, kind, and the

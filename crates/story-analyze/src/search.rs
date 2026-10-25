@@ -90,6 +90,30 @@ impl Analyzer {
         )
     }
 
+    /// Reconstitute an analyzer from cached cold boot and causal graph artifacts,
+    /// skipping the boot mints/checkpoint simulation and causal graph construction.
+    pub fn from_cached_boot(
+        content: Arc<Content>,
+        registry: EffectRegistry,
+        seed: u64,
+        start: State,
+        causal: Arc<CausalGraph>,
+    ) -> Analyzer {
+        let (engine, _) = Engine::boot_from_state(content.clone(), registry.clone(), seed, start.clone());
+        let symmetry = Arc::new(SymmetryCache::new(&content));
+        Analyzer {
+            content,
+            registry,
+            seed,
+            legacy_in: None,
+            causal,
+            symmetry,
+            engine,
+            start,
+            heuristic: true,
+        }
+    }
+
     /// Analyze from a different start state (e.g. a depleted late-game
     /// state for point-of-no-return classification, §10).
     pub fn with_start_state(mut self, state: State) -> Analyzer {

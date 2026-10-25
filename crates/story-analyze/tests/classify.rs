@@ -181,6 +181,7 @@ fn sccs_and_self_edges_are_reported() {
         rng_mode: story_analyze::RngMode::Deterministic,
         start: 0,
         truncated: false,
+        budget_depleted: false,
         expansions: 4,
         nodes: vec![node(&state), node(&s1), node(&s2), node(&s3)],
         edges: vec![

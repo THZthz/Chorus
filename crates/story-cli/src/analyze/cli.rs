@@ -64,6 +64,9 @@ MODIFIERS:
     --seed-trace <file>  seed reachability search with an external play trace
     --radius <k>         neighborhood radius around seeds (default 1 when seeded)
     --envelope           display the explored envelope coverage report
+    --time-budget <time> wall-clock budget (e.g. 500ms, 10s, 1m); stops analysis
+                         and saves progress when depleted
+    --continue           resume analysis from saved progress
     --profile            accumulate span wall times and print the table to
                          stderr when the run ends
     --jobs <n>           section concurrency cap (default 1); a full
@@ -98,6 +101,8 @@ pub(super) fn parse_args(args: &[String]) -> Result<Options, String> {
         seed_trace: None,
         radius: None,
         envelope: false,
+        time_budget: None,
+        r#continue: false,
         jobs: 1,
     };
     let mut i = 0usize;
@@ -253,6 +258,14 @@ pub(super) fn parse_args(args: &[String]) -> Result<Options, String> {
             "--envelope" => {
                 no_inline(inline, "--envelope")?;
                 opts.envelope = true;
+            }
+            "--time-budget" => {
+                let v = take_value(inline, args, &mut i, "--time-budget")?;
+                opts.time_budget = Some(parse_wall_duration("--time-budget", &v)?);
+            }
+            "--continue" => {
+                no_inline(inline, "--continue")?;
+                opts.r#continue = true;
             }
             other if other.starts_with("--") => return Err(format!("unknown option `{other}`")),
             other => {
@@ -520,4 +533,38 @@ fn parse_time(flag: &str, s: &str) -> Result<Time, String> {
     parse_duration(s).ok_or_else(|| {
         format!("{flag} needs minutes, <n>m, <n>h, or <n>h<m>m; got `{s}`")
     })
+}
+
+pub(super) fn parse_wall_duration(flag: &str, s: &str) -> Result<std::time::Duration, String> {
+    let t = s.trim();
+    if let Some(ms) = t.strip_suffix("ms") {
+        let n: u64 = ms
+            .parse()
+            .map_err(|_| format!("{flag} needs positive milliseconds; got `{s}`"))?;
+        return Ok(std::time::Duration::from_millis(n));
+    }
+    if let Some(secs) = t.strip_suffix('s') {
+        let n: u64 = secs
+            .parse()
+            .map_err(|_| format!("{flag} needs positive seconds; got `{s}`"))?;
+        return Ok(std::time::Duration::from_secs(n));
+    }
+    if let Some(mins) = t.strip_suffix('m') {
+        let n: u64 = mins
+            .parse()
+            .map_err(|_| format!("{flag} needs positive minutes; got `{s}`"))?;
+        return Ok(std::time::Duration::from_secs(n * 60));
+    }
+    if let Some(hours) = t.strip_suffix('h') {
+        let n: u64 = hours
+            .parse()
+            .map_err(|_| format!("{flag} needs positive hours; got `{s}`"))?;
+        return Ok(std::time::Duration::from_secs(n * 3600));
+    }
+    if let Ok(n) = t.parse::<u64>() {
+        return Ok(std::time::Duration::from_secs(n));
+    }
+    Err(format!(
+        "{flag} needs a duration (e.g. 500ms, 5s, 1m, 1h, or bare seconds); got `{s}`"
+    ))
 }

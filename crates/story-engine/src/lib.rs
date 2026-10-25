@@ -159,6 +159,7 @@ pub struct Engine {
     pub(crate) turn: i64,
     /// Per-deck deal permutations, seeded at boot; `State` carries cursors.
     pub(crate) deck_orders: BTreeMap<DeckId, Vec<CardId>>,
+    pub(crate) verb_recipes: Arc<BTreeMap<VerbId, select::VerbRecipes>>,
 }
 
 impl Engine {
@@ -209,6 +210,7 @@ impl Engine {
             home: self.home,
             turn: self.turn,
             deck_orders: self.deck_orders.clone(),
+            verb_recipes: self.verb_recipes.clone(),
         }
     }
 

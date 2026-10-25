@@ -288,7 +288,6 @@ impl TransitionGenerator {
     fn commit_steps(&self, state: &State, state_classes: &[Vec<EntityId>]) -> Vec<PlayerStep> {
         let content = &self.content;
         let mut steps = Vec::new();
-        let mut seen: BTreeSet<(VerbId, BindingSet)> = BTreeSet::new();
         let bindable = Self::bindable_entities(state);
         let mut query_cache: BTreeMap<(usize, usize), Vec<EntityId>> = BTreeMap::new();
         let greedy_pool = self.engine.greedy_pool();
@@ -309,6 +308,7 @@ impl TransitionGenerator {
             let Some(recipe_ids) = self.craftable_recipes.get(verb_id) else {
                 continue;
             };
+            let mut seen_bindings: BTreeSet<BindingSet> = BTreeSet::new();
             for rec_id in recipe_ids {
                 let Some(rec) = content.recipe(rec_id.as_str()) else {
                     continue;
@@ -324,8 +324,7 @@ impl TransitionGenerator {
                     &mut query_cache,
                     &greedy_pool,
                 ) {
-                    let key = (verb.id.clone(), bindings.clone());
-                    if !seen.insert(key) {
+                    if seen_bindings.contains(&bindings) {
                         continue;
                     }
                     if self
@@ -336,10 +335,13 @@ impl TransitionGenerator {
                         })
                         .is_ok()
                     {
+                        seen_bindings.insert(bindings.clone());
                         steps.push(PlayerStep::Commit {
                             verb: verb.id.clone(),
                             bindings,
                         });
+                    } else {
+                        seen_bindings.insert(bindings);
                     }
                 }
             }

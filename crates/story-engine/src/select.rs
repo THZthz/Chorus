@@ -5,8 +5,11 @@
 
 use crate::eval::Ctx;
 use crate::Engine;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use story_content::ir::{RecipeDecl, VerbDecl};
-use story_core::{EntityId, RecipeId, SituationId, SlotName};
+use story_content::Content;
+use story_core::{EntityId, RecipeId, SituationId, SlotName, VerbId};
 
 /// The source of an instance open; it fixes the eligibility row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,11 +24,68 @@ pub(crate) enum Source {
 
 /// The outcome of one recipe scan.
 pub(crate) enum Selection {
-    Matched(RecipeDecl),
+    Matched(Arc<RecipeDecl>),
     /// No eligible recipe, or every `when` false.
     Nothing,
     /// The winner's guard refused; the scan stops here.
     GuardRefused(String),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RecipeMatchInfo {
+    pub recipe: Arc<RecipeDecl>,
+    pub required_slots: BTreeSet<SlotName>,
+    pub declared_slots: BTreeSet<SlotName>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct VerbRecipes {
+    pub craftable: Vec<RecipeMatchInfo>,
+    pub poll: Vec<RecipeMatchInfo>,
+    pub all: Vec<RecipeMatchInfo>,
+}
+
+pub(crate) fn build_verb_recipes(content: &Content) -> BTreeMap<VerbId, VerbRecipes> {
+    let mut out = BTreeMap::new();
+    for verb in content.verbs.values() {
+        let mut all = Vec::with_capacity(verb.recipe_order.len());
+        for name in &verb.recipe_order {
+            if let Some(r) = content.recipe(&format!("{}.{}", verb.id, name)) {
+                let required_slots = r
+                    .slots
+                    .iter()
+                    .filter(|s| s.min >= 1)
+                    .map(|s| s.name.clone())
+                    .collect();
+                let declared_slots = r.slots.iter().map(|s| s.name.clone()).collect();
+                all.push(RecipeMatchInfo {
+                    recipe: Arc::new(r.clone()),
+                    required_slots,
+                    declared_slots,
+                });
+            }
+        }
+        all.sort_by_key(|info| (info.recipe.priority, info.recipe.decl_index));
+        let poll = all
+            .iter()
+            .filter(|info| !info.recipe.chain_only)
+            .cloned()
+            .collect();
+        let craftable = all
+            .iter()
+            .filter(|info| info.recipe.craftable && !info.recipe.chain_only)
+            .cloned()
+            .collect();
+        out.insert(
+            verb.id.clone(),
+            VerbRecipes {
+                craftable,
+                poll,
+                all,
+            },
+        );
+    }
+    out
 }
 
 impl Engine {
@@ -46,22 +106,55 @@ impl Engine {
             roll: None,
             recipe: None,
         };
-        let mut candidates: Vec<&RecipeDecl> = verb
-            .recipe_order
-            .iter()
-            .filter_map(|name| self.content.recipe(&format!("{}.{}", verb.id, name)))
-            .collect();
-        candidates.sort_by_key(|r| (r.priority, r.decl_index));
+        let mut query_cache: BTreeMap<(usize, EntityId), bool> = BTreeMap::new();
         if let Some(via) = via {
-            let Some(rec) = candidates.into_iter().find(|r| &r.id == via) else {
+            let Some(rec) = self.content.recipe(via.as_str()) else {
                 return Selection::Nothing;
             };
-            return self.adjudicate(rec, source, bindings, &ctx);
+            return self.adjudicate(rec, source, bindings, &ctx, &mut query_cache, None);
         }
-        for rec in candidates {
-            match self.adjudicate(rec, source, bindings, &ctx) {
+
+        let Some(vr) = self.verb_recipes.get(&verb.id) else {
+            return Selection::Nothing;
+        };
+
+        let candidates = match source {
+            Source::Commit => &vr.craftable,
+            Source::Poll => &vr.poll,
+            Source::Start => &vr.all,
+        };
+
+        let greedy_pool = match source {
+            Source::Start | Source::Poll => Some(self.greedy_pool()),
+            Source::Commit => None,
+        };
+
+        let bound_slots: Option<BTreeSet<&SlotName>> = if source == Source::Commit {
+            bindings.map(|binds| binds.iter().map(|(s, _)| s).collect())
+        } else {
+            None
+        };
+
+        for info in candidates {
+            if let Some(bound) = &bound_slots {
+                if !bound.iter().all(|s| info.declared_slots.contains(*s)) {
+                    continue;
+                }
+                if !info.required_slots.iter().all(|s| bound.contains(s)) {
+                    continue;
+                }
+            }
+            match self.adjudicate(
+                &info.recipe,
+                source,
+                bindings,
+                &ctx,
+                &mut query_cache,
+                greedy_pool.as_deref(),
+            ) {
                 Selection::Nothing => continue,
-                other => return other,
+                Selection::GuardRefused(p) => return Selection::GuardRefused(p),
+                Selection::Matched(_) => return Selection::Matched(info.recipe.clone()),
             }
         }
         Selection::Nothing
@@ -76,11 +169,13 @@ impl Engine {
         source: Source,
         bindings: Option<&[(SlotName, EntityId)]>,
         ctx: &Ctx,
+        query_cache: &mut BTreeMap<(usize, EntityId), bool>,
+        greedy_pool: Option<&[EntityId]>,
     ) -> Selection {
         if !self.eligible(rec, source) || !self.max_left(rec) {
             return Selection::Nothing;
         }
-        if !self.candidacy(rec, source, bindings, ctx) {
+        if !self.candidacy(rec, source, bindings, ctx, query_cache, greedy_pool) {
             return Selection::Nothing;
         }
         if let Some(w) = &rec.when {
@@ -101,7 +196,7 @@ impl Engine {
                 }
             }
         }
-        Selection::Matched(rec.clone())
+        Selection::Matched(Arc::new(rec.clone()))
     }
 
     /// Eligibility table: craftable/chain-only x PlayerCommit/Start/Poll
@@ -135,16 +230,26 @@ impl Engine {
         source: Source,
         bindings: Option<&[(SlotName, EntityId)]>,
         ctx: &Ctx,
+        query_cache: &mut BTreeMap<(usize, EntityId), bool>,
+        greedy_pool: Option<&[EntityId]>,
     ) -> bool {
         match source {
             Source::Commit => {
                 let Some(binds) = bindings else { return false };
                 for (s, e) in binds {
-                    if !rec.slots.iter().any(|sd| &sd.name == s) {
+                    let Some(sd) = rec.slots.iter().find(|sd| &sd.name == s) else {
                         return false;
-                    }
-                    let sd = rec.slots.iter().find(|sd| &sd.name == s).unwrap();
-                    if !self.matches_slot(&e, sd, ctx) {
+                    };
+                    let key = (sd.query.as_ptr() as usize, *e);
+                    let matched = match query_cache.get(&key) {
+                        Some(&m) => m,
+                        None => {
+                            let m = self.matches_slot(e, sd, ctx);
+                            query_cache.insert(key, m);
+                            m
+                        }
+                    };
+                    if !matched {
                         return false;
                     }
                 }
@@ -162,14 +267,37 @@ impl Engine {
                 true
             }
             Source::Start | Source::Poll => {
-                let pool = self.greedy_pool();
+                let local_pool;
+                let pool = match greedy_pool {
+                    Some(p) => p,
+                    None => {
+                        local_pool = self.greedy_pool();
+                        &local_pool
+                    }
+                };
                 rec.slots.iter().all(|sd| {
-                    sd.min == 0
-                        || pool
-                            .iter()
-                            .filter(|e| self.matches_slot(e, sd, ctx))
-                            .count()
-                            >= sd.min as usize
+                    if sd.min == 0 {
+                        return true;
+                    }
+                    let mut count = 0;
+                    for e in pool {
+                        let key = (sd.query.as_ptr() as usize, *e);
+                        let matched = match query_cache.get(&key) {
+                            Some(&m) => m,
+                            None => {
+                                let m = self.matches_slot(e, sd, ctx);
+                                query_cache.insert(key, m);
+                                m
+                            }
+                        };
+                        if matched {
+                            count += 1;
+                            if count >= sd.min as usize {
+                                return true;
+                            }
+                        }
+                    }
+                    false
                 })
             }
         }

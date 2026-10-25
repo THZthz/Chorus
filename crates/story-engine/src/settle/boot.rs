@@ -124,6 +124,8 @@ pub(crate) fn boot(
         }
     }
 
+    let verb_recipes = Arc::new(crate::select::build_verb_recipes(&content));
+
     let mut engine = Engine {
         registry,
         state,
@@ -135,6 +137,7 @@ pub(crate) fn boot(
         turn,
         deck_orders,
         content,
+        verb_recipes,
     };
 
     // Arm boot instances from the cards' own declarations (mint aliasing

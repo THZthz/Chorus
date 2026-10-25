@@ -5,10 +5,13 @@
 //! through a real kernel engine. Branching modes fork chance points through
 //! the forking settlement face (`stochastic`); this module consumes it.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
-use story_content::ir::{EffectNode, Expr, RecipeDecl, SlotDecl, VerbMode};
+use story_content::ir::{
+    const_eval, ArithOp, AspectKey, CmpOp, EffectNode, Expr, LogicOp, RecipeDecl, SlotDecl,
+    VerbMode,
+};
 use story_content::Content;
 use story_core::{EntityId, RecipeId, SlotName, State, Time, VerbId};
 use story_engine::{CommitAction, Engine, Event};
@@ -157,6 +160,7 @@ pub struct TransitionGenerator {
     symmetry: Arc<SymmetryCache>,
     committable_verbs: Vec<VerbId>,
     craftable_recipes: BTreeMap<VerbId, Vec<RecipeId>>,
+    recipe_required_aspects: BTreeMap<RecipeId, Vec<AspectKey>>,
 }
 
 impl TransitionGenerator {
@@ -180,6 +184,7 @@ impl TransitionGenerator {
 
         let mut committable_verbs = Vec::new();
         let mut craftable_recipes = BTreeMap::new();
+        let mut recipe_required_aspects = BTreeMap::new();
         let mut verbs: Vec<&story_content::ir::VerbDecl> = content.verbs.values().collect();
         verbs.sort_by_key(|v| v.decl_index);
 
@@ -195,6 +200,15 @@ impl TransitionGenerator {
                 .filter(|r| r.craftable && !r.chain_only)
                 .collect();
             recipes.sort_by_key(|r| (r.priority, r.decl_index));
+            for r in &recipes {
+                if let Some(w) = &r.when {
+                    let mut reqs = BTreeSet::new();
+                    extract_required_aspects(w, &content, &mut reqs);
+                    if !reqs.is_empty() {
+                        recipe_required_aspects.insert(r.id.clone(), reqs.into_iter().collect());
+                    }
+                }
+            }
             craftable_recipes.insert(
                 verb.id.clone(),
                 recipes.into_iter().map(|r| r.id.clone()).collect(),
@@ -209,6 +223,7 @@ impl TransitionGenerator {
             symmetry,
             committable_verbs,
             craftable_recipes,
+            recipe_required_aspects,
         }
     }
 
@@ -292,6 +307,12 @@ impl TransitionGenerator {
         let mut query_cache: BTreeMap<(usize, usize), Vec<EntityId>> = BTreeMap::new();
         let greedy_pool = self.engine.greedy_pool();
 
+        let present_aspects: HashSet<&AspectKey> = state
+            .entities
+            .values()
+            .flat_map(|e| e.aspects.iter().filter(|(_, &v)| v > 0).map(|(k, _)| k))
+            .collect();
+
         for verb_id in &self.committable_verbs {
             if let Some(allowed) = &self.config.allowed_verbs {
                 if !allowed.contains(verb_id) {
@@ -310,6 +331,11 @@ impl TransitionGenerator {
             };
             let mut seen_bindings: BTreeSet<BindingSet> = BTreeSet::new();
             for rec_id in recipe_ids {
+                if let Some(reqs) = self.recipe_required_aspects.get(rec_id) {
+                    if reqs.iter().any(|a| !present_aspects.contains(a)) {
+                        continue;
+                    }
+                }
                 let Some(rec) = content.recipe(rec_id.as_str()) else {
                     continue;
                 };
@@ -833,5 +859,87 @@ fn walk_conds(nodes: &[EffectNode], cond: &mut impl FnMut(&Expr)) {
             walk_conds(then, cond);
             walk_conds(els, cond);
         }
+    }
+}
+
+fn extract_single_aspect_key<'a>(expr: &'a Expr) -> Option<&'a str> {
+    let mut stack = vec![expr];
+    let mut expected_key: Option<&'a str> = None;
+
+    while let Some(e) = stack.pop() {
+        match e {
+            Expr::Aspect { key, .. } | Expr::NamePath { key, .. } => {
+                match expected_key {
+                    None => expected_key = Some(key.as_str()),
+                    Some(k) if k == key.as_str() => {}
+                    _ => return None,
+                }
+            }
+            Expr::Arith {
+                op: ArithOp::Add,
+                left,
+                right,
+            } => {
+                stack.push(right);
+                stack.push(left);
+            }
+            _ => return None,
+        }
+    }
+
+    expected_key
+}
+
+fn extract_required_aspects(
+    expr: &Expr,
+    content: &Content,
+    reqs: &mut BTreeSet<AspectKey>,
+) {
+    match expr {
+        Expr::Logic {
+            op: LogicOp::And,
+            left,
+            right,
+        } => {
+            extract_required_aspects(left, content, reqs);
+            extract_required_aspects(right, content, reqs);
+        }
+        Expr::Logic {
+            op: LogicOp::Or,
+            left,
+            right,
+        } => {
+            let mut left_reqs = BTreeSet::new();
+            extract_required_aspects(left, content, &mut left_reqs);
+            let mut right_reqs = BTreeSet::new();
+            extract_required_aspects(right, content, &mut right_reqs);
+            reqs.extend(left_reqs.intersection(&right_reqs).cloned());
+        }
+        Expr::Cmp { op, left, right } => {
+            let (target_expr, min_val) = match op {
+                CmpOp::Ge => (Some(left.as_ref()), const_eval(right)),
+                CmpOp::Gt => (
+                    Some(left.as_ref()),
+                    const_eval(right).and_then(|v| v.checked_add(1)),
+                ),
+                CmpOp::Le => (Some(right.as_ref()), const_eval(left)),
+                CmpOp::Lt => (
+                    Some(right.as_ref()),
+                    const_eval(left).and_then(|v| v.checked_add(1)),
+                ),
+                _ => (None, None),
+            };
+            if let (Some(target), Some(min)) = (target_expr, min_val) {
+                if min >= 1 {
+                    if let Some(key) = extract_single_aspect_key(target) {
+                        let default = content.aspects.get(key).map_or(0, |d| d.default);
+                        if default <= 0 {
+                            reqs.insert(key.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
     }
 }

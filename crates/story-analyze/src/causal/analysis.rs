@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use story_content::ir::{CmpOp, QueryTerm};
+use story_content::ir::{AspectKey, CmpOp, LegacyKey, QueryTerm, Scope, VerbMode, ZoneName};
 use story_content::Content;
 use story_core::{CardId, RecipeId, VerbId};
 
@@ -24,6 +24,13 @@ pub(crate) struct IndexedCausal {
     pub card_live_bridges: Vec<Vec<u32>>,
     pub base_unsatisfied: Vec<usize>,
     pub zero_req_edges: Vec<u32>,
+    pub card_live_to_id: BTreeMap<CardId, u32>,
+    pub card_aspect_to_id: BTreeMap<CardId, BTreeMap<AspectKey, u32>>,
+    pub zone_fact_ids: Vec<Option<u32>>,
+    pub legacy_to_id: BTreeMap<LegacyKey, u32>,
+    pub recipe_open_to_id: BTreeMap<RecipeId, u32>,
+    pub default_aspects: Vec<AspectKey>,
+    pub openable_recipes: Vec<(RecipeId, Option<u32>, u32)>,
 }
 
 const MAX_BUCKETS: usize = 2048;
@@ -126,6 +133,7 @@ impl IndexedCausal {
         edges: &[Hyperedge],
         content: &Content,
         card_declared_aspects: &BTreeMap<CardId, Vec<story_content::ir::AspectKey>>,
+        zone_facts: &[(CardId, ZoneName)],
     ) -> Self {
         fn get_or_insert_id(fact_to_id: &mut BTreeMap<Fact, u32>, f: &Fact) -> u32 {
             let next = fact_to_id.len() as u32;
@@ -136,6 +144,20 @@ impl IndexedCausal {
 
         for card_id in content.cards.keys() {
             get_or_insert_id(&mut fact_to_id, &Fact::CardLive(card_id.clone()));
+        }
+
+        for (card, zone) in zone_facts {
+            get_or_insert_id(&mut fact_to_id, &Fact::CardInZone(card.clone(), zone.clone()));
+        }
+
+        for legacy in content.legacies.keys() {
+            get_or_insert_id(&mut fact_to_id, &Fact::LegacyCanChange(legacy.clone()));
+        }
+
+        for verb in content.verbs.values() {
+            for rec in verb.recipes.values() {
+                get_or_insert_id(&mut fact_to_id, &Fact::RecipeCanOpen(rec.id.clone()));
+            }
         }
 
         let mut edge_requires = Vec::with_capacity(edges.len());
@@ -231,6 +253,56 @@ impl IndexedCausal {
             list.dedup();
         }
 
+        let mut card_live_to_id = BTreeMap::new();
+        let mut card_aspect_to_id: BTreeMap<CardId, BTreeMap<AspectKey, u32>> = BTreeMap::new();
+        let mut legacy_to_id = BTreeMap::new();
+        let mut recipe_open_to_id = BTreeMap::new();
+
+        for (f, &fid) in &fact_to_id {
+            match f {
+                Fact::CardLive(c) => {
+                    card_live_to_id.insert(c.clone(), fid);
+                }
+                Fact::CardHasAspect(c, k) => {
+                    card_aspect_to_id
+                        .entry(c.clone())
+                        .or_default()
+                        .insert(k.clone(), fid);
+                }
+                Fact::LegacyCanChange(l) => {
+                    legacy_to_id.insert(l.clone(), fid);
+                }
+                Fact::RecipeCanOpen(r) => {
+                    recipe_open_to_id.insert(r.clone(), fid);
+                }
+                _ => {}
+            }
+        }
+
+        let zone_fact_ids: Vec<Option<u32>> = zone_facts
+            .iter()
+            .map(|(c, z)| fact_to_id.get(&Fact::CardInZone(c.clone(), z.clone())).copied())
+            .collect();
+
+        let default_aspects: Vec<AspectKey> = content
+            .aspects
+            .iter()
+            .filter(|(_, decl)| decl.default >= 1)
+            .map(|(k, _)| k.clone())
+            .collect();
+
+        let mut openable_recipes = Vec::new();
+        for verb in content.verbs.values() {
+            if !matches!(verb.mode, VerbMode::Committable | VerbMode::Autonomous) {
+                continue;
+            }
+            for rec in verb.recipes.values() {
+                if let Some(&fid) = recipe_open_to_id.get(&rec.id) {
+                    openable_recipes.push((rec.id.clone(), rec.max, fid));
+                }
+            }
+        }
+
         Self {
             fact_to_id,
             edge_produces,
@@ -240,6 +312,13 @@ impl IndexedCausal {
             card_live_bridges,
             base_unsatisfied,
             zero_req_edges,
+            card_live_to_id,
+            card_aspect_to_id,
+            zone_fact_ids,
+            legacy_to_id,
+            recipe_open_to_id,
+            default_aspects,
+            openable_recipes,
         }
     }
 }
@@ -284,14 +363,111 @@ impl CausalGraph {
         let gen = ws.current_generation;
         ws.pq.clear();
 
-        let grounded = self.grounded_state_facts(state, engine);
-        for fact in &grounded {
-            if let Some(&fid) = idx.fact_to_id.get(fact) {
-                let u = fid as usize;
-                ws.fact_gen[u] = gen;
-                ws.dist[u] = 0;
-                ws.finalized[u] = false;
-                ws.pq.push(0, fid);
+        let content = engine.content();
+        {
+            let _span = tracing::info_span!("grounded_state_facts").entered();
+
+            for ent in state.entities.values() {
+                if let Some(&fid) = idx.card_live_to_id.get(&ent.prototype) {
+                    let u = fid as usize;
+                    if ws.fact_gen[u] != gen {
+                        ws.fact_gen[u] = gen;
+                        ws.dist[u] = 0;
+                        ws.finalized[u] = false;
+                        ws.pq.push(0, fid);
+                    }
+                }
+                if let Some(card_aspects) = idx.card_aspect_to_id.get(&ent.prototype) {
+                    for (key, _) in &ent.aspects {
+                        if let Some(&fid) = card_aspects.get(key) {
+                            let u = fid as usize;
+                            if ws.fact_gen[u] != gen {
+                                ws.fact_gen[u] = gen;
+                                ws.dist[u] = 0;
+                                ws.finalized[u] = false;
+                                ws.pq.push(0, fid);
+                            }
+                        }
+                    }
+                    for key in &idx.default_aspects {
+                        if !ent.aspects.contains_key(key) {
+                            if let Some(&fid) = card_aspects.get(key) {
+                                let u = fid as usize;
+                                if ws.fact_gen[u] != gen {
+                                    ws.fact_gen[u] = gen;
+                                    ws.dist[u] = 0;
+                                    ws.finalized[u] = false;
+                                    ws.pq.push(0, fid);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (i, (card, zone)) in self.zone_facts.iter().enumerate() {
+                if let Some(fid) = idx.zone_fact_ids[i] {
+                    let scope = Scope::Zone(zone.clone());
+                    if engine.scope_entities(&scope).iter().any(|e| {
+                        state
+                            .entities
+                            .get(e)
+                            .is_some_and(|ent| &ent.prototype == card)
+                    }) {
+                        let u = fid as usize;
+                        if ws.fact_gen[u] != gen {
+                            ws.fact_gen[u] = gen;
+                            ws.dist[u] = 0;
+                            ws.finalized[u] = false;
+                            ws.pq.push(0, fid);
+                        }
+                    }
+                }
+            }
+
+            for (l, &val) in &state.legacy {
+                let default = content
+                    .legacies
+                    .get(l.as_str())
+                    .map(|d| d.default)
+                    .unwrap_or(0);
+                if val != default || val >= 1 {
+                    if let Some(&fid) = idx.legacy_to_id.get(l) {
+                        let u = fid as usize;
+                        if ws.fact_gen[u] != gen {
+                            ws.fact_gen[u] = gen;
+                            ws.dist[u] = 0;
+                            ws.finalized[u] = false;
+                            ws.pq.push(0, fid);
+                        }
+                    }
+                }
+            }
+
+            for sit in state.situations.values() {
+                if let Some(&fid) = idx.recipe_open_to_id.get(&sit.recipe) {
+                    let u = fid as usize;
+                    if ws.fact_gen[u] != gen {
+                        ws.fact_gen[u] = gen;
+                        ws.dist[u] = 0;
+                        ws.finalized[u] = false;
+                        ws.pq.push(0, fid);
+                    }
+                }
+            }
+
+            for (rec_id, max, fid) in &idx.openable_recipes {
+                let exhausted =
+                    max.is_some_and(|m| state.recipe_runs.get(rec_id).copied().unwrap_or(0) >= m);
+                if !exhausted {
+                    let u = *fid as usize;
+                    if ws.fact_gen[u] != gen {
+                        ws.fact_gen[u] = gen;
+                        ws.dist[u] = 0;
+                        ws.finalized[u] = false;
+                        ws.pq.push(0, *fid);
+                    }
+                }
             }
         }
 
@@ -310,17 +486,13 @@ impl CausalGraph {
 
         if ungrounded_goals == 0
             && goals.iter().all(|g| {
-                grounded.contains(g)
-                    || idx
-                        .fact_to_id
-                        .get(g)
-                        .is_some_and(|&id| ws.fact_gen[id as usize] == gen && ws.dist[id as usize] == 0)
+                idx.fact_to_id
+                    .get(g)
+                    .is_some_and(|&id| ws.fact_gen[id as usize] == gen && ws.dist[id as usize] == 0)
             })
         {
             return 0;
         }
-
-        let content = engine.content();
 
         for &ei_u32 in &idx.zero_req_edges {
             let ei = ei_u32 as usize;
@@ -455,8 +627,6 @@ impl CausalGraph {
                     } else {
                         u32::MAX / 4
                     }
-                } else if grounded.contains(g) {
-                    0
                 } else {
                     u32::MAX / 4
                 }

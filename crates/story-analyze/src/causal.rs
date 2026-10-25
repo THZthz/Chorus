@@ -73,7 +73,12 @@ impl CausalGraph {
             }
         });
         graph.grounded = graph.grounded_set();
-        graph.indexed = analysis::IndexedCausal::new(&graph.edges, content, &graph.card_declared_aspects);
+        graph.indexed = analysis::IndexedCausal::new(
+            &graph.edges,
+            content,
+            &graph.card_declared_aspects,
+            &graph.zone_facts,
+        );
         graph
     }
 

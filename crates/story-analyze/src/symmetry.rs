@@ -133,14 +133,49 @@ pub fn symmetry_classes(state: &State, content: &Content) -> Vec<Vec<EntityId>> 
 /// every state's classification reuses it.
 #[derive(Clone, Debug)]
 pub struct SymmetryCache {
-    surfaces: Vec<BTreeSet<CardId>>,
+    card_surfaces: BTreeMap<CardId, Vec<u32>>,
 }
 
 impl SymmetryCache {
     pub fn new(content: &Content) -> SymmetryCache {
+        let _span = tracing::info_span!("symmetry_build").entered();
         let oracle = MatchOracle::new(content);
         let surfaces = candidacy_surfaces(content, &oracle);
-        SymmetryCache { surfaces }
+        let mut card_surfaces: BTreeMap<CardId, Vec<u32>> = BTreeMap::new();
+        for (idx, surface) in surfaces.into_iter().enumerate() {
+            let idx = idx as u32;
+            for card in surface {
+                card_surfaces.entry(card).or_default().push(idx);
+            }
+        }
+        SymmetryCache { card_surfaces }
+    }
+
+    /// Whether two card names can both match some targeting surface (slot
+    /// filters, `Target::Query`/`BareQuery` resolution, destructive targets):
+    /// some surface's can-match set contains both. Unknown prototypes share
+    /// candidacy with everything (conservative splitting).
+    pub fn shares_candidacy(&self, content: &Content, a: &CardId, b: &CardId) -> bool {
+        if a == b {
+            return true;
+        }
+        let known = |c: &CardId| content.card(c).is_some();
+        if !known(a) || !known(b) {
+            return true;
+        }
+        let (Some(sa), Some(sb)) = (self.card_surfaces.get(a), self.card_surfaces.get(b)) else {
+            return false;
+        };
+        let mut i = 0;
+        let mut j = 0;
+        while i < sa.len() && j < sb.len() {
+            match sa[i].cmp(&sb[j]) {
+                std::cmp::Ordering::Equal => return true,
+                std::cmp::Ordering::Less => i += 1,
+                std::cmp::Ordering::Greater => j += 1,
+            }
+        }
+        false
     }
 }
 
@@ -151,7 +186,7 @@ pub fn symmetry_classes_with(
     content: &Content,
     cache: &SymmetryCache,
 ) -> Vec<Vec<EntityId>> {
-    let surfaces = &cache.surfaces;
+    let _span = tracing::info_span!("symmetry_classes").entered();
 
     // Ascending id = mint order. Signatures are built once and compared in
     // place — the grouping never clones one.
@@ -195,9 +230,8 @@ pub fn symmetry_classes_with(
                 k > prev
                     && k < e
                     && sigs[kidx(k)] != *sig
-                    && shares_candidacy(
+                    && cache.shares_candidacy(
                         content,
-                        surfaces,
                         &sigs[kidx(k)].prototype,
                         &sig.prototype,
                     )
@@ -215,28 +249,14 @@ pub fn symmetry_classes_with(
     classes
 }
 
-/// Whether two card names can both match some targeting surface (slot
-/// filters, `Target::Query`/`BareQuery` resolution, destructive targets):
-/// some surface's can-match set contains both. Unknown prototypes share
-/// candidacy with everything (conservative splitting).
-fn shares_candidacy(
-    content: &Content,
-    surfaces: &[BTreeSet<CardId>],
-    a: &CardId,
-    b: &CardId,
-) -> bool {
-    let known = |c: &CardId| content.card(c).is_some();
-    if !known(a) || !known(b) {
-        return true;
-    }
-    surfaces.iter().any(|s| s.contains(a) && s.contains(b))
-}
-
 /// The can-match set of every targeting surface in the content.
 fn candidacy_surfaces(content: &Content, oracle: &MatchOracle) -> Vec<BTreeSet<CardId>> {
     let mut surfaces = Vec::new();
     let mut add = |terms: &[QueryTerm]| {
-        surfaces.push(oracle.can_match_cards(content, terms).into_iter().collect());
+        let cards = oracle.can_match_cards(content, terms);
+        if cards.len() >= 2 {
+            surfaces.push(cards.into_iter().collect());
+        }
     };
     for verb in content.verbs.values() {
         for rec in verb.recipes.values() {

@@ -23,7 +23,10 @@ impl Analyzer {
         let _span = tracing::info_span!("solve").entered();
         let mut gen = self.generator(query);
         let goal_facts = causal::goal_facts(&query.goal);
-        let cone = self.causal.backward_cone(&goal_facts);
+        let cone = {
+            let _span = tracing::info_span!("backward_cone").entered();
+            self.causal.backward_cone(&goal_facts)
+        };
         let relevant = self.causal.relevant_verbs(&self.content, &cone);
 
         // The start node; the invariant must hold there too.
@@ -90,6 +93,7 @@ impl Analyzer {
         let mut witnessed_sigs: BTreeSet<Vec<Option<RecipeId>>> = BTreeSet::new();
         let mut dropped = 0usize;
         let replayer = self.replayer();
+        let mut h_ws = self.causal.workspace();
 
         // Explored envelope trackers
         let mut time_min = self.start.now;
@@ -241,11 +245,11 @@ impl Analyzer {
                         vec![cur_depth as i64]
                     }
                 };
-                min_dist.insert(key.clone(), 0);
+                min_dist.insert(key, 0);
                 visited.insert(key, cost);
                 let raw_h = if self.heuristic || query.prune {
                     *self.engine.state_mut() = state_after.clone();
-                    self.causal.h_add(&state_after, &self.engine, &goal_facts)
+                    self.causal.h_add_with_workspace(&state_after, &self.engine, &goal_facts, &mut h_ws)
                 } else {
                     0
                 };
@@ -364,7 +368,11 @@ impl Analyzer {
             if node_state.ended.is_some() {
                 continue; // terminal states have no outgoing transitions (T7)
             }
-            for step in gen.steps(&node_state) {
+            let steps = {
+                let _span = tracing::info_span!("gen_steps").entered();
+                gen.steps(&node_state)
+            };
+            for step in steps {
                 // Dead-mechanism deprioritization (§4 output 3): steps of
                 // irrelevant verbs generate after relevant ones; insertion
                 // order is the priority queue's final tie-break, so
@@ -398,8 +406,10 @@ impl Analyzer {
                             continue;
                         }
                     }
-                    let key =
-                        CanonicalStateKey::of_with(&state_after, &self.content, &self.symmetry);
+                    let key = {
+                        let _span = tracing::info_span!("canonical_key").entered();
+                        CanonicalStateKey::of_with(&state_after, &self.content, &self.symmetry)
+                    };
                     let actions = arena[idx].actions + record.actions();
                     let depth = arena[idx].depth + record.depth();
 
@@ -427,7 +437,7 @@ impl Analyzer {
                         if let Some(r) = &record.recipe {
                             s.push(Some(r.clone()));
                         }
-                        if !sig_visited.insert((key.clone(), s.clone())) {
+                        if !sig_visited.insert((key, s.clone())) {
                             continue;
                         }
                         s
@@ -454,9 +464,9 @@ impl Analyzer {
                             continue;
                         }
                         if closer_to_spine {
-                            min_dist.insert(key.clone(), child_dist);
+                            min_dist.insert(key, child_dist);
                         }
-                        let best = visited.entry(key.clone()).or_insert_with(|| cost.clone());
+                        let best = visited.entry(key).or_insert_with(|| cost.clone());
                         for (b, c) in best.iter_mut().zip(&cost) {
                             *b = (*b).min(*c);
                         }
@@ -477,7 +487,7 @@ impl Analyzer {
                     let mut raw_h = 0u32;
                     if !gate_fired && (self.heuristic || query.prune) {
                         *self.engine.state_mut() = state_after.clone();
-                        raw_h = self.causal.h_add(&state_after, &self.engine, &goal_facts);
+                        raw_h = self.causal.h_add_with_workspace(&state_after, &self.engine, &goal_facts, &mut h_ws);
                         if query.prune && !self.causal.host_opaque() && raw_h >= u32::MAX / 4 {
                             gate_fired = true;
                         }

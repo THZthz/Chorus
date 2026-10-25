@@ -235,6 +235,11 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
     let content = &active_content;
     let start_state = &start_state;
     let extra_inv = extra_invariant.as_ref();
+    let template = if opts.slice.is_none() {
+        Some(&boot_analyzer)
+    } else {
+        None
+    };
     let mut sections: Vec<SectionJob<'_>> = Vec::new();
     if let (Some(target), Some(boundary)) = (&opts.slice, &slice_boundary) {
         let target = target.clone();
@@ -249,7 +254,7 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
     if !reach_goals.is_empty() {
         let goals = &reach_goals;
         sections.push(Box::new(move || {
-            let mut analyzer = boot_quiet(content, seed, start_state);
+            let mut analyzer = boot_quiet(template, content, seed, start_state);
             let mut out = String::new();
             for (desc, goal) in goals {
                 reach_section(&mut out, &mut analyzer, desc, goal.clone(), opts, prune, max_time, extra_inv);
@@ -260,7 +265,7 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
     if opts.classify {
         let goal = shared_goal.clone();
         sections.push(Box::new(move || {
-            let mut analyzer = boot_quiet(content, seed, start_state);
+            let mut analyzer = boot_quiet(template, content, seed, start_state);
             let mut out = String::new();
             classify_section(&mut out, &mut analyzer, goal.as_ref().map(|(_, g)| g), opts, prune, max_time, extra_inv);
             out
@@ -270,7 +275,7 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
         let desc = desc.clone();
         let goal = goal.clone();
         sections.push(Box::new(move || {
-            let analyzer = boot_quiet(content, seed, start_state);
+            let analyzer = boot_quiet(template, content, seed, start_state);
             let mut out = String::new();
             mdp_section(&mut out, &analyzer, &desc, goal, opts, prune, max_time, extra_inv);
             out
@@ -281,7 +286,7 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
         let goal = goal.clone();
         let objectives = objectives.clone();
         sections.push(Box::new(move || {
-            let analyzer = boot_quiet(content, seed, start_state);
+            let analyzer = boot_quiet(template, content, seed, start_state);
             let mut out = String::new();
             pareto_section(&mut out, &analyzer, &desc, goal, &objectives, opts, prune, max_time, extra_inv);
             out
@@ -289,7 +294,7 @@ pub(super) fn run_analyses(opts: &Options) -> Result<(), Failure> {
     }
     if opts.audit {
         sections.push(Box::new(move || {
-            let mut analyzer = boot_quiet(content, seed, start_state);
+            let mut analyzer = boot_quiet(template, content, seed, start_state);
             let mut out = String::new();
             audit_section(&mut out, &mut analyzer, opts, prune, max_time, extra_inv);
             out
@@ -343,9 +348,13 @@ fn run_sections(jobs: usize, sections: Vec<SectionJob<'_>>) -> Vec<String> {
 
 /// A private analyzer for a section thread: the sequential boot above
 /// already reported the diagnostics, so this one is silent.
-fn boot_quiet(content: &Arc<Content>, seed: u64, start: &State) -> Analyzer {
-    let (analyzer, _) = Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None);
-    analyzer.with_start_state(start.clone())
+fn boot_quiet(template: Option<&Analyzer>, content: &Arc<Content>, seed: u64, start: &State) -> Analyzer {
+    if let Some(t) = template {
+        t.clone().with_start_state(start.clone())
+    } else {
+        let (analyzer, _) = Analyzer::boot(content.clone(), EffectRegistry::new(), seed, None);
+        analyzer.with_start_state(start.clone())
+    }
 }
 
 /// Every `ending:<ID>` goal must name a declared ending: a typo'd id would

@@ -338,19 +338,23 @@ impl Engine {
         if self.state.ended.is_some() {
             return Err(DiagKind::StoryEnded.refused("the story has ended"));
         }
-        let verb = self.verb(&action.verb)?.clone();
+        let content = self.content.clone();
+        let verb = content
+            .verbs
+            .get(action.verb.as_str())
+            .ok_or_else(|| DiagKind::UnknownVerb.refused(format!("unknown verb `{}`", action.verb)))?;
         if verb.mode != VerbMode::Committable {
             return Err(DiagKind::VerbAutonomous.in_context(
                 verb.id.to_string(),
                 "only committable verbs accept player commits",
             ));
         }
-        if self.verb_full(&verb) {
+        if self.verb_full(verb) {
             return Err(DiagKind::InstanceCapReached
                 .in_context(verb.id.to_string(), "the verb's instance cap is full"));
         }
-        self.validate_commit_bindings(&verb, &action.bindings)?;
-        let rec = match self.select(Source::Commit, &verb, None, Some(&action.bindings), None) {
+        self.validate_commit_bindings(verb, &action.bindings)?;
+        let rec = match self.select(Source::Commit, verb, None, Some(&action.bindings), None) {
             select::Selection::Matched(rec) => rec,
             select::Selection::GuardRefused(prose) => {
                 return Err(DiagKind::GuardRefused.in_context(verb.id.to_string(), prose));
@@ -368,7 +372,7 @@ impl Engine {
         // bindings, so a shortfall here is unreachable; it returns a
         // diagnostic all the same — never a panic.
         let sit = match self.materialize(
-            &verb,
+            verb,
             &rec,
             SituationSource::Commit,
             &action.bindings,
@@ -531,10 +535,9 @@ impl Engine {
             .ok_or_else(|| DiagKind::UnknownVerb.refused(format!("unknown verb `{id}`")))
     }
 
-    pub(crate) fn recipe_of(&self, id: &RecipeId) -> RecipeDecl {
+    pub(crate) fn recipe_of(&self, id: &RecipeId) -> &RecipeDecl {
         self.content
             .recipe(id.as_str())
-            .cloned()
             .unwrap_or_else(|| kernel_invariant("UnknownRecipe", format!("unknown recipe `{id}`")))
     }
 

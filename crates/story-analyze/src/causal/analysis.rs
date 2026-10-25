@@ -4,15 +4,178 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use story_content::ir::{CmpOp, QueryTerm};
 use story_content::Content;
-use story_core::{CardId, VerbId};
+use story_core::{CardId, RecipeId, VerbId};
 
-use super::fact::{Fact, Site};
-use super::{template_of, CausalGraph};
+use super::fact::{Fact, Hyperedge, Site};
+use super::CausalGraph;
 
 // ---------------------------------------------------------------------------
 // Search support (story-analyze spec §4 outputs 3 and 4): the delete-
 // relaxation heuristic and dead-mechanism pruning.
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Default)]
+pub(crate) struct IndexedCausal {
+    pub fact_to_id: BTreeMap<Fact, u32>,
+    pub edge_produces: Vec<Vec<u32>>,
+    pub edge_recipe_max: Vec<Option<RecipeId>>,
+    pub consumers: Vec<Vec<u32>>,
+    pub aspect_bridge: Vec<Option<u32>>,
+    pub card_live_bridges: Vec<Vec<u32>>,
+    pub base_unsatisfied: Vec<usize>,
+    pub zero_req_edges: Vec<u32>,
+}
+
+pub(crate) struct HAddWorkspace {
+    dist: Vec<u32>,
+    finalized: Vec<bool>,
+    unsatisfied: Vec<usize>,
+    req_sum: Vec<u32>,
+    fact_gen: Vec<u32>,
+    edge_gen: Vec<u32>,
+    current_generation: u32,
+    pq: std::collections::BinaryHeap<std::cmp::Reverse<(u32, u32)>>,
+}
+
+impl HAddWorkspace {
+    pub fn new(idx: &IndexedCausal) -> Self {
+        let num_facts = idx.fact_to_id.len();
+        let num_edges = idx.base_unsatisfied.len();
+        Self {
+            dist: vec![u32::MAX; num_facts],
+            finalized: vec![false; num_facts],
+            unsatisfied: idx.base_unsatisfied.clone(),
+            req_sum: vec![0; num_edges],
+            fact_gen: vec![0; num_facts],
+            edge_gen: vec![0; num_edges],
+            current_generation: 1,
+            pq: std::collections::BinaryHeap::new(),
+        }
+    }
+}
+
+impl IndexedCausal {
+    pub fn new(
+        edges: &[Hyperedge],
+        content: &Content,
+        card_declared_aspects: &BTreeMap<CardId, Vec<story_content::ir::AspectKey>>,
+    ) -> Self {
+        fn get_or_insert_id(fact_to_id: &mut BTreeMap<Fact, u32>, f: &Fact) -> u32 {
+            let next = fact_to_id.len() as u32;
+            *fact_to_id.entry(f.clone()).or_insert(next)
+        }
+
+        let mut fact_to_id = BTreeMap::new();
+
+        for card_id in content.cards.keys() {
+            get_or_insert_id(&mut fact_to_id, &Fact::CardLive(card_id.clone()));
+        }
+
+        let mut edge_requires = Vec::with_capacity(edges.len());
+        let mut edge_produces = Vec::with_capacity(edges.len());
+        let mut edge_recipe_max = Vec::with_capacity(edges.len());
+        let mut base_unsatisfied = Vec::with_capacity(edges.len());
+        let mut zero_req_edges = Vec::new();
+
+        for (ei, edge) in edges.iter().enumerate() {
+            let is_boot_or_deck =
+                matches!(edge.site, Site::Boot(_) | Site::BootState | Site::Deck(_));
+
+            let recipe_max = match &edge.site {
+                Site::Recipe(r) | Site::RecipeAbort(r) => {
+                    if content.recipe(r.as_str()).and_then(|d| d.max).is_some() {
+                        Some(r.clone())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            edge_recipe_max.push(recipe_max);
+
+            let req_ids: Vec<u32> = edge
+                .requires
+                .iter()
+                .map(|r| get_or_insert_id(&mut fact_to_id, r))
+                .collect();
+            let prod_ids: Vec<u32> = edge
+                .produces
+                .iter()
+                .map(|p| get_or_insert_id(&mut fact_to_id, p))
+                .collect();
+
+            if is_boot_or_deck {
+                base_unsatisfied.push(usize::MAX);
+            } else {
+                base_unsatisfied.push(req_ids.len());
+                if req_ids.is_empty() {
+                    zero_req_edges.push(ei as u32);
+                }
+            }
+            edge_requires.push(req_ids);
+            edge_produces.push(prod_ids);
+        }
+
+        let mut aspect_bridge = vec![None; fact_to_id.len()];
+        let mut card_live_bridges = vec![Vec::new(); fact_to_id.len()];
+
+        let current_facts: Vec<(Fact, u32)> =
+            fact_to_id.iter().map(|(f, &id)| (f.clone(), id)).collect();
+        for (f, id) in current_facts {
+            if let Fact::AspectCanIncrease {
+                card: Some(c),
+                key,
+                ..
+            } = f
+            {
+                let bridged = Fact::CardHasAspect(c, key);
+                let target_id = get_or_insert_id(&mut fact_to_id, &bridged);
+                if id as usize >= aspect_bridge.len() {
+                    aspect_bridge.resize(id as usize + 1, None);
+                }
+                aspect_bridge[id as usize] = Some(target_id);
+            } else if let Fact::CardLive(c) = f {
+                if let Some(aspects) = card_declared_aspects.get(&c) {
+                    let mut targets = Vec::new();
+                    for key in aspects {
+                        let bridged = Fact::CardHasAspect(c.clone(), key.clone());
+                        targets.push(get_or_insert_id(&mut fact_to_id, &bridged));
+                    }
+                    if !targets.is_empty() {
+                        if id as usize >= card_live_bridges.len() {
+                            card_live_bridges.resize(id as usize + 1, Vec::new());
+                        }
+                        card_live_bridges[id as usize] = targets;
+                    }
+                }
+            }
+        }
+        aspect_bridge.resize(fact_to_id.len(), None);
+        card_live_bridges.resize(fact_to_id.len(), Vec::new());
+
+        let mut consumers = vec![Vec::new(); fact_to_id.len()];
+        for (ei, reqs) in edge_requires.iter().enumerate() {
+            for &r in reqs {
+                consumers[r as usize].push(ei as u32);
+            }
+        }
+        for list in &mut consumers {
+            list.sort_unstable();
+            list.dedup();
+        }
+
+        Self {
+            fact_to_id,
+            edge_produces,
+            edge_recipe_max,
+            consumers,
+            aspect_bridge,
+            card_live_bridges,
+            base_unsatisfied,
+            zero_req_edges,
+        }
+    }
+}
 
 impl CausalGraph {
     /// The `h_add` value of the goal's facts at a state (§4 output 4): the
@@ -27,112 +190,210 @@ impl CausalGraph {
         engine: &story_engine::Engine,
         goals: &BTreeSet<Fact>,
     ) -> u32 {
-        // Base costs: facts that hold in the state cost nothing.
-        let mut cost: BTreeMap<Fact, u32> = BTreeMap::new();
-        for fact in self.grounded_state_facts(state, engine) {
-            cost.insert(fact, 0);
+        let mut ws = self.workspace();
+        self.h_add_with_workspace(state, engine, goals, &mut ws)
+    }
+
+    pub(crate) fn workspace(&self) -> HAddWorkspace {
+        HAddWorkspace::new(&self.indexed)
+    }
+
+    pub(crate) fn h_add_with_workspace(
+        &self,
+        state: &story_core::State,
+        engine: &story_engine::Engine,
+        goals: &BTreeSet<Fact>,
+        ws: &mut HAddWorkspace,
+    ) -> u32 {
+        let _span = tracing::info_span!("h_add").entered();
+        let idx = &self.indexed;
+
+        ws.current_generation = ws.current_generation.wrapping_add(1);
+        if ws.current_generation == 0 {
+            ws.fact_gen.fill(0);
+            ws.edge_gen.fill(0);
+            ws.current_generation = 1;
         }
-        // Fixpoint relaxation (the hypergraph is small; plain sweeps are
-        // exact and allocation-free). An edge requiring an aspect read is
-        // grounded by the aspect's increase capability or by a live mint
-        // whose template declares the aspect at >= 1.
-        fn increase<'a>(
-            cost: &'a BTreeMap<Fact, u32>,
-            content: &Content,
-            r: &Fact,
-        ) -> Option<&'a u32> {
-            let direct = cost.get(r);
-            let bridged = match r {
-                Fact::CardHasAspect(card, key) => {
-                    let inc = cost
-                        .get(&Fact::AspectCanIncrease {
-                            card: Some(card.clone()),
-                            key: key.clone(),
-                            unclamped: false,
-                        })
-                        .or_else(|| {
-                            cost.get(&Fact::AspectCanIncrease {
-                                card: Some(card.clone()),
-                                key: key.clone(),
-                                unclamped: true,
-                            })
-                        });
-                    let decl_has = template_of(content, card)
-                        .and_then(|d| d.aspects.get(key))
-                        .copied()
-                        .unwrap_or(0)
-                        >= 1;
-                    let live = if decl_has {
-                        cost.get(&Fact::CardLive(card.clone()))
-                    } else {
-                        None
-                    };
-                    match (inc, live) {
-                        (Some(a), Some(b)) => Some(if a <= b { a } else { b }),
-                        (Some(a), None) => Some(a),
-                        (None, Some(b)) => Some(b),
-                        (None, None) => None,
-                    }
-                }
-                _ => None,
-            };
-            match (direct, bridged) {
-                (Some(a), Some(b)) => Some(if a <= b { a } else { b }),
-                (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
+        let gen = ws.current_generation;
+        ws.pq.clear();
+
+        let grounded = self.grounded_state_facts(state, engine);
+        for fact in &grounded {
+            if let Some(&fid) = idx.fact_to_id.get(fact) {
+                let u = fid as usize;
+                ws.fact_gen[u] = gen;
+                ws.dist[u] = 0;
+                ws.finalized[u] = false;
+                ws.pq.push(std::cmp::Reverse((0, fid)));
             }
         }
+
+        let mut goal_ids: Vec<(u32, bool)> = Vec::with_capacity(goals.len());
+        let mut ungrounded_goals = 0usize;
+        for g in goals {
+            if let Some(&gid) = idx.fact_to_id.get(g) {
+                let u = gid as usize;
+                let already = ws.fact_gen[u] == gen && ws.dist[u] == 0;
+                if !already {
+                    ungrounded_goals += 1;
+                }
+                goal_ids.push((gid, already));
+            }
+        }
+
+        if ungrounded_goals == 0
+            && goals.iter().all(|g| {
+                grounded.contains(g)
+                    || idx
+                        .fact_to_id
+                        .get(g)
+                        .is_some_and(|&id| ws.fact_gen[id as usize] == gen && ws.dist[id as usize] == 0)
+            })
+        {
+            return 0;
+        }
+
         let content = engine.content();
-        let mut rounds = 0;
-        loop {
-            let mut changed = false;
-            rounds += 1;
-            for edge in &self.edges {
-                // Boot and bare deck edges have empty requirements for Tier-1
-                // static grounding; mid-search `state` already grounds live
-                // entities directly, and runtime draws ride their site edge.
-                if matches!(edge.site, Site::Boot(_) | Site::BootState | Site::Deck(_)) {
+
+        for &ei_u32 in &idx.zero_req_edges {
+            let ei = ei_u32 as usize;
+            if let Some(r) = &idx.edge_recipe_max[ei] {
+                let exhausted = content
+                    .recipe(r.as_str())
+                    .and_then(|d| d.max)
+                    .is_some_and(|m| state.recipe_runs.get(r).copied().unwrap_or(0) >= m)
+                    && !state.situations.values().any(|s| &s.recipe == r);
+                if exhausted {
                     continue;
                 }
-                if let Site::Recipe(r) | Site::RecipeAbort(r) = &edge.site {
-                    let exhausted = content
-                        .recipe(r.as_str())
-                        .and_then(|d| d.max)
-                        .is_some_and(|m| state.recipe_runs.get(r).copied().unwrap_or(0) >= m)
-                        && !state.situations.values().any(|s| &s.recipe == r);
-                    if exhausted {
-                        continue;
-                    }
-                }
-                let mut sum = 1u32;
-                let mut ready = true;
-                for r in &edge.requires {
-                    match increase(&cost, content, r) {
-                        Some(c) => sum = sum.saturating_add(*c),
-                        None => {
-                            ready = false;
-                            break;
-                        }
-                    }
-                }
-                if ready {
-                    for p in &edge.produces {
-                        let next = sum.min(*cost.get(p).unwrap_or(&u32::MAX));
-                        if next < *cost.get(p).unwrap_or(&u32::MAX) {
-                            cost.insert(p.clone(), next);
-                            changed = true;
-                        }
-                    }
-                }
             }
-            if !changed || rounds > 64 {
-                break;
+            for &p in &idx.edge_produces[ei] {
+                let next_cost = 1;
+                let pv = p as usize;
+                let cur_dist = if ws.fact_gen[pv] == gen {
+                    ws.dist[pv]
+                } else {
+                    u32::MAX
+                };
+                if cur_dist > next_cost {
+                    ws.fact_gen[pv] = gen;
+                    ws.dist[pv] = next_cost;
+                    ws.finalized[pv] = false;
+                    ws.pq.push(std::cmp::Reverse((next_cost, p)));
+                }
             }
         }
+
+        while let Some(std::cmp::Reverse((cost, fid))) = ws.pq.pop() {
+            let u = fid as usize;
+            if ws.fact_gen[u] == gen && ws.finalized[u] {
+                continue;
+            }
+            ws.fact_gen[u] = gen;
+            ws.finalized[u] = true;
+
+            for (gid, satisfied) in &mut goal_ids {
+                if *gid == fid && !*satisfied {
+                    *satisfied = true;
+                    ungrounded_goals -= 1;
+                }
+            }
+            if ungrounded_goals == 0 {
+                break;
+            }
+
+            // Aspect bridging:
+            // 1) AspectCanIncrease -> CardHasAspect
+            if let Some(bridged) = idx.aspect_bridge[u] {
+                let v = bridged as usize;
+                let cur_dist = if ws.fact_gen[v] == gen {
+                    ws.dist[v]
+                } else {
+                    u32::MAX
+                };
+                if cur_dist > cost {
+                    ws.fact_gen[v] = gen;
+                    ws.dist[v] = cost;
+                    ws.finalized[v] = false;
+                    ws.pq.push(std::cmp::Reverse((cost, bridged)));
+                }
+            }
+
+            // 2) CardLive -> CardHasAspect for declared aspects >= 1
+            for &bridged in &idx.card_live_bridges[u] {
+                let v = bridged as usize;
+                let cur_dist = if ws.fact_gen[v] == gen {
+                    ws.dist[v]
+                } else {
+                    u32::MAX
+                };
+                if cur_dist > cost {
+                    ws.fact_gen[v] = gen;
+                    ws.dist[v] = cost;
+                    ws.finalized[v] = false;
+                    ws.pq.push(std::cmp::Reverse((cost, bridged)));
+                }
+            }
+
+            // Notify consumers
+            for &ei_u32 in &idx.consumers[u] {
+                let ei = ei_u32 as usize;
+                if ws.edge_gen[ei] != gen {
+                    ws.edge_gen[ei] = gen;
+                    ws.unsatisfied[ei] = idx.base_unsatisfied[ei];
+                    ws.req_sum[ei] = 0;
+                }
+                if ws.unsatisfied[ei] == 0 || ws.unsatisfied[ei] == usize::MAX {
+                    continue;
+                }
+                ws.req_sum[ei] = ws.req_sum[ei].saturating_add(cost);
+                ws.unsatisfied[ei] -= 1;
+                if ws.unsatisfied[ei] == 0 {
+                    if let Some(r) = &idx.edge_recipe_max[ei] {
+                        let exhausted = content
+                            .recipe(r.as_str())
+                            .and_then(|d| d.max)
+                            .is_some_and(|m| state.recipe_runs.get(r).copied().unwrap_or(0) >= m)
+                            && !state.situations.values().any(|s| &s.recipe == r);
+                        if exhausted {
+                            continue;
+                        }
+                    }
+                    let edge_cost = ws.req_sum[ei].saturating_add(1);
+                    for &p in &idx.edge_produces[ei] {
+                        let pv = p as usize;
+                        let cur_dist = if ws.fact_gen[pv] == gen {
+                            ws.dist[pv]
+                        } else {
+                            u32::MAX
+                        };
+                        if cur_dist > edge_cost {
+                            ws.fact_gen[pv] = gen;
+                            ws.dist[pv] = edge_cost;
+                            ws.finalized[pv] = false;
+                            ws.pq.push(std::cmp::Reverse((edge_cost, p)));
+                        }
+                    }
+                }
+            }
+        }
+
         goals
             .iter()
-            .map(|g| increase(&cost, content, g).copied().unwrap_or(u32::MAX / 4))
+            .map(|g| {
+                if let Some(&fid) = idx.fact_to_id.get(g) {
+                    let u = fid as usize;
+                    if ws.fact_gen[u] == gen && ws.dist[u] < u32::MAX {
+                        ws.dist[u]
+                    } else {
+                        u32::MAX / 4
+                    }
+                } else if grounded.contains(g) {
+                    0
+                } else {
+                    u32::MAX / 4
+                }
+            })
             .fold(0u32, |a, b| a.saturating_add(b))
     }
 
@@ -142,6 +403,7 @@ impl CausalGraph {
         state: &story_core::State,
         engine: &story_engine::Engine,
     ) -> BTreeSet<Fact> {
+        let _span = tracing::info_span!("grounded_state_facts").entered();
         use story_content::ir::{Scope, VerbMode};
         let content = engine.content();
         let mut out = BTreeSet::new();
@@ -222,19 +484,25 @@ impl CausalGraph {
         // cone keeps the strict fact-to-fact closure; relevant_verbs does
         // its own bridging where verb-level routing is the point.
         let mut cone = goals.clone();
-        loop {
-            let mut changed = false;
-            for edge in &self.edges {
-                if edge.produces.iter().any(|p| cone.contains(p)) {
-                    for r in &edge.requires {
-                        changed |= cone.insert(r.clone());
+        let mut queue: Vec<Fact> = goals.iter().cloned().collect();
+        let mut visited_edges = vec![false; self.edges.len()];
+
+        while let Some(fact) = queue.pop() {
+            if let Some(edge_indices) = self.producers.get(&fact) {
+                for &ei in edge_indices {
+                    if visited_edges[ei] {
+                        continue;
+                    }
+                    visited_edges[ei] = true;
+                    for r in &self.edges[ei].requires {
+                        if cone.insert(r.clone()) {
+                            queue.push(r.clone());
+                        }
                     }
                 }
             }
-            if !changed {
-                return cone;
-            }
         }
+        cone
     }
 
     /// The verbs whose transitive effects can influence a fact of the cone
@@ -243,42 +511,9 @@ impl CausalGraph {
     /// qualify — time itself drives them, and their endings are active
     /// threats.
     pub fn relevant_verbs(&self, content: &Content, cone: &BTreeSet<Fact>) -> BTreeSet<VerbId> {
+        let _span = tracing::info_span!("relevant_verbs").entered();
         let mut relevant = BTreeSet::new();
-        // The forward influence closure: facts a verb's recipes produce,
-        // transitively enabled edge by edge.
-        let influence = |seeds: &BTreeSet<Fact>| -> BTreeSet<Fact> {
-            let mut set = seeds.clone();
-            loop {
-                let mut changed = false;
-                for f in set.clone() {
-                    if let Fact::AspectCanIncrease {
-                        card: Some(card),
-                        key,
-                        ..
-                    } = f
-                    {
-                        changed |= set.insert(Fact::CardHasAspect(card, key));
-                    }
-                }
-                for edge in &self.edges {
-                    // The boot edges ground the state's affordances for
-                    // every verb alike — they say nothing about this
-                    // verb's own influence, so they stay out of the
-                    // closure.
-                    if matches!(edge.site, Site::BootState | Site::Boot(_)) {
-                        continue;
-                    }
-                    if edge.requires.iter().all(|r| set.contains(r)) {
-                        for p in &edge.produces {
-                            changed |= set.insert(p.clone());
-                        }
-                    }
-                }
-                if !changed {
-                    return set;
-                }
-            }
-        };
+
         let mut targets: BTreeSet<Fact> = cone.clone();
         // Active threats: every ending the content can reach is an
         // influence target (an ending-bearing autonomous recipe must never
@@ -290,16 +525,43 @@ impl CausalGraph {
                 }
             }
         }
+
+        // Collect non-boot edges and build index for forward chaining.
+        let non_boot_edges: Vec<&Hyperedge> = self
+            .edges
+            .iter()
+            .filter(|e| !matches!(e.site, Site::BootState | Site::Boot(_)))
+            .collect();
+
+        let mut req_to_edge_indices: BTreeMap<&Fact, Vec<usize>> = BTreeMap::new();
+        let base_unsatisfied: Vec<usize> = non_boot_edges
+            .iter()
+            .enumerate()
+            .map(|(i, edge)| {
+                for r in &edge.requires {
+                    req_to_edge_indices.entry(r).or_default().push(i);
+                }
+                edge.requires.len()
+            })
+            .collect();
+
+        // Index seeds by recipe id.
+        let mut recipe_produces: BTreeMap<&RecipeId, Vec<&Fact>> = BTreeMap::new();
+        for edge in &self.edges {
+            match &edge.site {
+                Site::Recipe(id) | Site::RecipeAbort(id) => {
+                    recipe_produces.entry(id).or_default().extend(&edge.produces);
+                }
+                _ => {}
+            }
+        }
+
         for verb in content.verbs.values() {
             let mut seeds: BTreeSet<Fact> = BTreeSet::new();
             for rec in verb.recipes.values() {
-                for edge in &self.edges {
-                    let hit = match &edge.site {
-                        Site::Recipe(id) | Site::RecipeAbort(id) => id == &rec.id,
-                        _ => false,
-                    };
-                    if hit {
-                        seeds.extend(edge.produces.iter().cloned());
+                if let Some(prods) = recipe_produces.get(&rec.id) {
+                    for &p in prods {
+                        seeds.insert(p.clone());
                     }
                 }
             }
@@ -313,8 +575,50 @@ impl CausalGraph {
                 relevant.insert(verb.id.clone());
                 continue;
             }
-            let closure = influence(&seeds);
-            if closure.iter().any(|f| targets.contains(f)) {
+            if seeds.iter().any(|f| targets.contains(f)) {
+                relevant.insert(verb.id.clone());
+                continue;
+            }
+
+            let mut unsatisfied = base_unsatisfied.clone();
+            let mut set: BTreeSet<Fact> = BTreeSet::new();
+            let mut queue: Vec<Fact> = seeds.into_iter().collect();
+            let mut touches_target = false;
+
+            while let Some(fact) = queue.pop() {
+                if !set.insert(fact.clone()) {
+                    continue;
+                }
+                if targets.contains(&fact) {
+                    touches_target = true;
+                    break;
+                }
+                if let Fact::AspectCanIncrease {
+                    card: Some(card),
+                    key,
+                    ..
+                } = &fact
+                {
+                    let bridged = Fact::CardHasAspect(card.clone(), key.clone());
+                    if !set.contains(&bridged) {
+                        queue.push(bridged);
+                    }
+                }
+                if let Some(edge_indices) = req_to_edge_indices.get(&fact) {
+                    for &ei in edge_indices {
+                        unsatisfied[ei] -= 1;
+                        if unsatisfied[ei] == 0 {
+                            for p in &non_boot_edges[ei].produces {
+                                if !set.contains(p) {
+                                    queue.push(p.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if touches_target {
                 relevant.insert(verb.id.clone());
             }
         }

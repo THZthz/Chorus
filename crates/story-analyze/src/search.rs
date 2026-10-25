@@ -37,12 +37,13 @@ pub use solve::SolveOutcome;
 /// heuristics, and dead-mechanism pruning; Tier 2 (the transition generator
 /// plus the search) for everything state-dependent. One booted engine backs
 /// both tiers; the search swaps states in through `Engine::state_mut`.
+#[derive(Clone)]
 pub struct Analyzer {
     content: Arc<Content>,
     registry: EffectRegistry,
     seed: u64,
     legacy_in: Option<BTreeMap<String, i64>>,
-    causal: CausalGraph,
+    causal: Arc<CausalGraph>,
     /// The content-derived symmetry cache (match oracle plus candidacy
     /// surfaces), built once at boot: canonical keys and the symmetry
     /// classifier read it per state, and rebuilding it per state would walk
@@ -70,7 +71,7 @@ impl Analyzer {
     ) -> (Analyzer, Vec<RuntimeDiagnostic>) {
         let (engine, warnings) =
             Engine::boot(content.clone(), registry.clone(), seed, legacy_in.clone());
-        let causal = CausalGraph::build(&content);
+        let causal = Arc::new(CausalGraph::build(&content));
         let symmetry = Arc::new(SymmetryCache::new(&content));
         let start = engine.state().clone();
         (

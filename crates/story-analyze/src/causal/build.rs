@@ -56,6 +56,7 @@ pub(super) struct Builder<'a> {
     content: &'a Content,
     oracle: MatchOracle,
     edges: Vec<Hyperedge>,
+    minters: BTreeMap<CardId, BTreeSet<RecipeId>>,
 }
 
 impl<'a> Builder<'a> {
@@ -64,35 +65,68 @@ impl<'a> Builder<'a> {
             oracle: MatchOracle::new(content),
             content,
             edges: Vec::new(),
+            minters: BTreeMap::new(),
         }
     }
 
     pub(super) fn finish(self) -> CausalGraph {
         let mut producers: BTreeMap<Fact, Vec<usize>> = BTreeMap::new();
+        let mut consumers: BTreeMap<Fact, Vec<usize>> = BTreeMap::new();
         let mut zones: BTreeSet<(CardId, ZoneName)> = BTreeSet::new();
         for (i, edge) in self.edges.iter().enumerate() {
             for r in &edge.requires {
                 if let Fact::CardInZone(c, z) = r {
                     zones.insert((c.clone(), z.clone()));
                 }
+                if let Some(list) = consumers.get_mut(r) {
+                    list.push(i);
+                } else {
+                    consumers.insert(r.clone(), vec![i]);
+                }
             }
             for p in &edge.produces {
                 if let Fact::CardInZone(c, z) = p {
                     zones.insert((c.clone(), z.clone()));
                 }
-                producers.entry(p.clone()).or_default().push(i);
+                if let Some(list) = producers.get_mut(p) {
+                    list.push(i);
+                } else {
+                    producers.insert(p.clone(), vec![i]);
+                }
             }
         }
         for list in producers.values_mut() {
             list.sort_unstable();
             list.dedup();
         }
+        for list in consumers.values_mut() {
+            list.sort_unstable();
+            list.dedup();
+        }
+        let mut card_declared_aspects: BTreeMap<CardId, Vec<story_content::ir::AspectKey>> =
+            BTreeMap::new();
+        for (card_id, _) in &self.content.cards {
+            if let Some(template) = super::template_of(self.content, card_id) {
+                let aspects: Vec<_> = template
+                    .aspects
+                    .iter()
+                    .filter(|(_, &val)| val >= 1)
+                    .map(|(k, _)| k.clone())
+                    .collect();
+                if !aspects.is_empty() {
+                    card_declared_aspects.insert(card_id.clone(), aspects);
+                }
+            }
+        }
         CausalGraph {
             edges: self.edges,
             producers,
+            consumers,
+            card_declared_aspects,
             zone_facts: zones.into_iter().collect(),
             host_opaque: false,
             grounded: BTreeSet::new(),
+            indexed: Default::default(),
         }
     }
 
@@ -178,6 +212,14 @@ impl<'a> Builder<'a> {
                 };
                 let mut ex = Extraction::default();
                 self.walk_list(&rec.effects, ctx, &mut ex);
+                for fact in &ex.produces {
+                    if let Fact::CardLive(card) = fact {
+                        self.minters
+                            .entry(card.clone())
+                            .or_default()
+                            .insert(rec.id.clone());
+                    }
+                }
 
                 let mut requires = ex.requires.clone();
                 requires.insert(Fact::RecipeCanOpen(rec.id.clone()));
@@ -218,87 +260,82 @@ impl<'a> Builder<'a> {
     /// without the carrier carrying the qualifier; the interior-pool pass
     /// needs the carrier's own key, so that route requires it.
     pub(super) fn card_books(&mut self) {
-        // Recipes that can mint each card into an interior, from the recipe
-        // effect lists built above.
-        let minters = self.minters();
         let mut cards: Vec<&CardDecl> = self.content.cards.values().collect();
         cards.sort_by_key(|c| c.decl_index);
+        let has_on_complete = cards.iter().any(|c| !c.on_complete.is_empty());
+        if !has_on_complete {
+            return;
+        }
+
+        let binders = self.slot_binders();
+        let mut recipe_declares: BTreeMap<&RecipeId, BTreeSet<&story_content::ir::AspectKey>> = BTreeMap::new();
+        for verb in self.content.verbs.values() {
+            for rec in verb.recipes.values() {
+                if !rec.declares.is_empty() {
+                    recipe_declares.insert(&rec.id, rec.declares.iter().collect());
+                }
+            }
+        }
+
         for decl in cards {
-            let binders = self.binders(&decl.id);
-            let routes: Vec<RecipeId> = binders
+            if decl.on_complete.is_empty() {
+                continue;
+            }
+            let card_binders = binders.get(&decl.id).cloned().unwrap_or_default();
+            let mut routes: Vec<RecipeId> = card_binders
                 .into_iter()
-                .chain(minters.get(&decl.id).into_iter().flatten().cloned())
+                .chain(self.minters.get(&decl.id).into_iter().flatten().cloned())
                 .collect();
+            routes.sort_unstable();
+            routes.dedup();
             for (qualifier, book) in &decl.on_complete {
                 let ctx = SiteCtx {
                     context_free: false,
                     recipe: None,
                     subject: Some(&decl.id),
                 };
-                for route in &routes {
-                    for rule in &book.rules {
-                        let mut requires = BTreeSet::new();
+                let site = Site::CardBook {
+                    card: decl.id.clone(),
+                    qualifier: qualifier.clone(),
+                };
+                let aspect_req = qualifier
+                    .as_ref()
+                    .map(|q| Fact::CardHasAspect(decl.id.clone(), q.clone()));
+                for rule in &book.rules {
+                    let mut ex = Extraction::with_subject(ctx.subject);
+                    self.walk_list(&rule.effects, ctx, &mut ex);
+                    if ex.produces.is_empty() {
+                        continue;
+                    }
+                    let mut base_requires = BTreeSet::new();
+                    self.require_when(&mut base_requires, rule.when.as_ref(), Some(&decl.id));
+
+                    for route in &routes {
+                        let mut requires = base_requires.clone();
                         requires.insert(Fact::RecipeCanComplete(route.clone()));
                         if let Some(q) = qualifier {
-                            let declared = self
-                                .content
-                                .recipe(route.as_str())
-                                .is_some_and(|r| r.declares.iter().any(|d| d == q));
+                            let declared = recipe_declares
+                                .get(route)
+                                .is_some_and(|decls| decls.contains(q));
                             if !declared {
-                                requires.insert(Fact::CardHasAspect(decl.id.clone(), q.clone()));
+                                requires.insert(aspect_req.as_ref().unwrap().clone());
                             }
                         }
-                        self.require_when(&mut requires, rule.when.as_ref(), Some(&decl.id));
-                        let mut ex = Extraction::with_subject(ctx.subject);
-                        self.walk_list(&rule.effects, ctx, &mut ex);
-                        let site = Site::CardBook {
-                            card: decl.id.clone(),
-                            qualifier: qualifier.clone(),
-                        };
-                        self.push(site, requires, ex.produces);
+                        self.push(site.clone(), requires, ex.produces.clone());
                     }
                 }
             }
         }
     }
 
-    /// Recipes whose slots can bind the card (a binding route).
-    fn binders(&self, card: &CardId) -> Vec<RecipeId> {
-        let Some(decl) = self.content.card(card) else {
-            return Vec::new();
-        };
-        let mut out = Vec::new();
-        for verb in self.content.verbs.values() {
-            for rec in verb.recipes.values() {
-                if rec
-                    .slots
-                    .iter()
-                    .any(|sd| self.oracle.can_match(self.content, &sd.query, decl))
-                {
-                    out.push(rec.id.clone());
-                }
-            }
-        }
-        out.sort();
-        out.dedup();
-        out
-    }
-
-    /// Recipes whose effect lists can mint the card (a storage route).
-    fn minters(&self) -> BTreeMap<CardId, Vec<RecipeId>> {
+    /// Inverted index of recipes whose slots can bind each card.
+    fn slot_binders(&self) -> BTreeMap<CardId, Vec<RecipeId>> {
         let mut out: BTreeMap<CardId, BTreeSet<RecipeId>> = BTreeMap::new();
         for verb in self.content.verbs.values() {
             for rec in verb.recipes.values() {
-                let ctx = SiteCtx {
-                    context_free: false,
-                    recipe: Some(rec),
-                    subject: None,
-                };
-                let mut ex = Extraction::default();
-                self.walk_list(&rec.effects, ctx, &mut ex);
-                for fact in &ex.produces {
-                    if let Fact::CardLive(card) = fact {
-                        out.entry(card.clone()).or_default().insert(rec.id.clone());
+                for sd in &rec.slots {
+                    for card in self.oracle.can_match_cards(self.content, &sd.query) {
+                        out.entry(card).or_default().insert(rec.id.clone());
                     }
                 }
             }

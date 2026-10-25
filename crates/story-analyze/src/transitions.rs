@@ -155,6 +155,8 @@ pub struct TransitionGenerator {
     /// (§5.4), plus the query's thresholds.
     crit_moments: BTreeSet<Time>,
     symmetry: Arc<SymmetryCache>,
+    committable_verbs: Vec<VerbId>,
+    craftable_recipes: BTreeMap<VerbId, Vec<RecipeId>>,
 }
 
 impl TransitionGenerator {
@@ -175,12 +177,38 @@ impl TransitionGenerator {
     ) -> TransitionGenerator {
         let mut crit_moments = static_thresholds(&content);
         crit_moments.extend(config.query_thresholds.iter().copied());
+
+        let mut committable_verbs = Vec::new();
+        let mut craftable_recipes = BTreeMap::new();
+        let mut verbs: Vec<&story_content::ir::VerbDecl> = content.verbs.values().collect();
+        verbs.sort_by_key(|v| v.decl_index);
+
+        for verb in verbs {
+            if verb.mode != VerbMode::Committable {
+                continue;
+            }
+            committable_verbs.push(verb.id.clone());
+            let mut recipes: Vec<&RecipeDecl> = verb
+                .recipe_order
+                .iter()
+                .filter_map(|n| content.recipe(&format!("{}.{}", verb.id, n)))
+                .filter(|r| r.craftable && !r.chain_only)
+                .collect();
+            recipes.sort_by_key(|r| (r.priority, r.decl_index));
+            craftable_recipes.insert(
+                verb.id.clone(),
+                recipes.into_iter().map(|r| r.id.clone()).collect(),
+            );
+        }
+
         TransitionGenerator {
             content,
             engine,
             config,
             crit_moments,
             symmetry,
+            committable_verbs,
+            craftable_recipes,
         }
     }
 
@@ -225,51 +253,77 @@ impl TransitionGenerator {
         self.install(state);
         let state_classes = symmetry::symmetry_classes_with(state, self.content.as_ref(), &self.symmetry);
         let mut steps = Vec::new();
-        steps.extend(self.commit_steps(state, &state_classes));
+        {
+            let _span = tracing::info_span!("commit_steps").entered();
+            steps.extend(self.commit_steps(state, &state_classes));
+        }
         if self.config.allow_mid_run_bind {
+            let _span = tracing::info_span!("bind_steps").entered();
             steps.extend(self.bind_steps(&state_classes));
         }
-        steps.extend(self.advance_steps(state));
+        {
+            let _span = tracing::info_span!("advance_steps").entered();
+            steps.extend(self.advance_steps(state));
+        }
         steps
+    }
+
+    fn bindable_entities(state: &State) -> Vec<EntityId> {
+        let mut out = Vec::new();
+        for (&eid, ent) in &state.entities {
+            let Some(z) = state.zones.get(&ent.zone) else {
+                continue;
+            };
+            if !z.bindable || symmetry::is_bound(state, eid) {
+                continue;
+            }
+            out.push(eid);
+        }
+        out
     }
 
     /// Commit steps: every committable verb below its instance cap, every
     /// craftable recipe whose `max` counter is unspent, every canonical
     /// binding set, validated with `preview_commit` and deduplicated.
-    fn commit_steps(&mut self, state: &State, state_classes: &[Vec<EntityId>]) -> Vec<PlayerStep> {
-        let content = self.content.clone();
+    fn commit_steps(&self, state: &State, state_classes: &[Vec<EntityId>]) -> Vec<PlayerStep> {
+        let content = &self.content;
         let mut steps = Vec::new();
         let mut seen: BTreeSet<(VerbId, BindingSet)> = BTreeSet::new();
-        let mut verbs: Vec<&story_content::ir::VerbDecl> = content.verbs.values().collect();
-        verbs.sort_by_key(|v| v.decl_index);
-        for verb in verbs {
+        let bindable = Self::bindable_entities(state);
+        let mut query_cache: BTreeMap<(usize, usize), Vec<EntityId>> = BTreeMap::new();
+        let greedy_pool = self.engine.greedy_pool();
+
+        for verb_id in &self.committable_verbs {
             if let Some(allowed) = &self.config.allowed_verbs {
-                if !allowed.contains(&verb.id) {
+                if !allowed.contains(verb_id) {
                     continue;
                 }
             }
-            if verb.mode != VerbMode::Committable {
+            let Some(verb) = content.verbs.get(verb_id.as_str()) else {
                 continue;
-            }
+            };
             // Instance cap: one refusal of that kind skips the verb.
             if self.verb_full(verb) {
                 continue;
             }
-            let mut recipes: Vec<&RecipeDecl> = verb
-                .recipe_order
-                .iter()
-                .filter_map(|n| content.recipe(&format!("{}.{}", verb.id, n)))
-                .collect();
-            recipes.sort_by_key(|r| (r.priority, r.decl_index));
-            for rec in &recipes {
-                if !rec.craftable || rec.chain_only {
+            let Some(recipe_ids) = self.craftable_recipes.get(verb_id) else {
+                continue;
+            };
+            for rec_id in recipe_ids {
+                let Some(rec) = content.recipe(rec_id.as_str()) else {
                     continue;
-                }
+                };
                 if rec.max.is_some_and(|m| state.recipe_runs.get(&rec.id).copied().unwrap_or(0) >= m)
                 {
                     continue;
                 }
-                for bindings in self.commit_binding_sets(rec, state_classes) {
+                for bindings in self.commit_binding_sets(
+                    rec,
+                    state_classes,
+                    &bindable,
+                    &mut query_cache,
+                    &greedy_pool,
+                ) {
                     let key = (verb.id.clone(), bindings.clone());
                     if !seen.insert(key) {
                         continue;
@@ -293,7 +347,7 @@ impl TransitionGenerator {
         steps
     }
 
-    fn verb_full(&mut self, verb: &story_content::ir::VerbDecl) -> bool {
+    fn verb_full(&self, verb: &story_content::ir::VerbDecl) -> bool {
         match verb.instances {
             story_content::ir::InstanceCap::Any => false,
             story_content::ir::InstanceCap::AtMost(n) => self
@@ -313,20 +367,23 @@ impl TransitionGenerator {
     /// `min` explicit bindings, with one displacement variant per
     /// equivalence class whose representative the greedy pull cannot reach.
     fn commit_binding_sets(
-        &mut self,
+        &self,
         rec: &RecipeDecl,
         state_classes: &[Vec<EntityId>],
+        bindable: &[EntityId],
+        query_cache: &mut BTreeMap<(usize, usize), Vec<EntityId>>,
+        greedy_pool: &[EntityId],
     ) -> Vec<BindingSet> {
         let mut per_slot: Vec<(SlotName, Vec<Vec<EntityId>>)> = Vec::new();
         for sd in &rec.slots {
-            let candidates = self.slot_pool(sd);
+            let candidates = self.slot_pool(sd, bindable, query_cache);
             if candidates.len() < sd.min as usize {
                 // A slot that cannot be filled kills the recipe's candidacy.
                 return Vec::new();
             }
             let slot_classes = symmetry::partition_candidates_by_classes(state_classes, &candidates);
             let choices = if sd.greedy {
-                self.greedy_slot_choices(rec, sd, &slot_classes)
+                Self::greedy_slot_choices(sd, &slot_classes, &candidates, greedy_pool)
             } else {
                 symmetry::slot_choices_from_classes(&slot_classes, sd.min, sd.max)
             };
@@ -346,29 +403,32 @@ impl TransitionGenerator {
     /// zone, filter-matching (the checks `preview_commit` applies). The
     /// candidate set of a commit is wider than the greedy pull's public
     /// pool: any bindable zone qualifies.
-    fn slot_pool(&mut self, sd: &SlotDecl) -> Vec<EntityId> {
-        let state = self.engine.state();
+    fn slot_pool(
+        &self,
+        sd: &SlotDecl,
+        bindable: &[EntityId],
+        query_cache: &mut BTreeMap<(usize, usize), Vec<EntityId>>,
+    ) -> Vec<EntityId> {
+        let key = (sd.query.as_ptr() as usize, sd.query.len());
+        if let Some(cached) = query_cache.get(&key) {
+            return cached.clone();
+        }
         let mut out = Vec::new();
-        for (&eid, ent) in &state.entities {
-            let Some(z) = state.zones.get(&ent.zone) else {
-                continue;
-            };
-            if !z.bindable || symmetry::is_bound(state, eid) {
-                continue;
-            }
+        for &eid in bindable {
             if self.engine.matches(eid, &sd.query) {
                 out.push(eid);
             }
         }
         out.sort_unstable();
+        query_cache.insert(key, out.clone());
         out
     }
 
     fn greedy_slot_choices(
-        &mut self,
-        rec: &RecipeDecl,
         sd: &SlotDecl,
         classes: &[Vec<EntityId>],
+        candidates: &[EntityId],
+        greedy_pool: &[EntityId],
     ) -> Vec<Vec<EntityId>> {
         // Baseline: exactly `min` explicit bindings; the engine's greedy
         // top-up produces the same post-materialization state as
@@ -386,10 +446,16 @@ impl TransitionGenerator {
             return out;
         }
         let pull_depth = sd.max.map(|m| m as usize).unwrap_or(0);
-        let pull = self
-            .engine
-            .slot_candidates(rec.id.clone(), sd.name.clone());
-        let reachable: BTreeSet<EntityId> = pull.into_iter().take(pull_depth).collect();
+        let reachable: BTreeSet<EntityId> = if pull_depth > 0 {
+            greedy_pool
+                .iter()
+                .filter(|e| candidates.binary_search(e).is_ok())
+                .take(pull_depth)
+                .copied()
+                .collect()
+        } else {
+            BTreeSet::new()
+        };
         for class in classes {
             let rep = class[0];
             if !reachable.contains(&rep) {
@@ -402,10 +468,10 @@ impl TransitionGenerator {
     /// Bind steps: every live situation, every `open` slot below `max`, one
     /// canonical representative per equivalence class passing `can_bind`
     /// (§5.1.2, §5.2).
-    fn bind_steps(&mut self, state_classes: &[Vec<EntityId>]) -> Vec<PlayerStep> {
+    fn bind_steps(&self, state_classes: &[Vec<EntityId>]) -> Vec<PlayerStep> {
         let mut steps = Vec::new();
         let state = self.engine.state();
-        let content = self.content.clone();
+        let content = &self.content;
         let sits: Vec<story_core::SituationId> = state.situations.keys().copied().collect();
         for sit in sits {
             let situation = &state.situations[&sit];
@@ -552,6 +618,7 @@ impl TransitionGenerator {
     /// marked advance, at each marked moment's enclosing-grid window
     /// checkpoint; violating records are discarded (§3.2).
     pub fn execute(&mut self, state: &State, step: &PlayerStep) -> Vec<TransitionRecord> {
+        let _span = tracing::info_span!("transition_exec").entered();
         if state.ended.is_some() {
             return Vec::new();
         }

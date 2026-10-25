@@ -410,7 +410,10 @@ impl Engine {
         let Some(sit) = self.state.situations.remove(&sit_id) else {
             return;
         };
-        let rec = self.recipe_of(&sit.recipe);
+        let content = self.content.clone();
+        let rec = content.recipe(sit.recipe.as_str()).unwrap_or_else(|| {
+            crate::kernel_invariant("UnknownRecipe", format!("unknown recipe `{}`", sit.recipe))
+        });
         let interior = sit.interior;
         for sd in &rec.slots {
             if let Some(binds) = sit.bindings.get(&sd.name) {

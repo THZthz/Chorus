@@ -31,29 +31,49 @@ use build::Builder;
 pub struct CausalGraph {
     edges: Vec<Hyperedge>,
     producers: BTreeMap<Fact, Vec<usize>>,
+    consumers: BTreeMap<Fact, Vec<usize>>,
+    card_declared_aspects: BTreeMap<CardId, Vec<story_content::ir::AspectKey>>,
     zone_facts: Vec<(CardId, ZoneName)>,
     host_opaque: bool,
     grounded: BTreeSet<Fact>,
+    pub(crate) indexed: analysis::IndexedCausal,
 }
 
 impl CausalGraph {
     /// Extract the hypergraph from compiled content.
     pub fn build(content: &Content) -> CausalGraph {
+        let _span = tracing::info_span!("causal_build").entered();
         let mut builder = Builder::new(content);
         builder.boot_state();
         builder.boot_cards();
         builder.decks();
-        builder.recipes();
-        builder.card_books();
-        builder.expiry_books();
-        builder.event_books();
-        let mut graph = builder.finish();
+        {
+            let _span = tracing::info_span!("causal_recipes").entered();
+            builder.recipes();
+        }
+        {
+            let _span = tracing::info_span!("causal_card_books").entered();
+            builder.card_books();
+        }
+        {
+            let _span = tracing::info_span!("causal_expiry_books").entered();
+            builder.expiry_books();
+        }
+        {
+            let _span = tracing::info_span!("causal_event_books").entered();
+            builder.event_books();
+        }
+        let mut graph = {
+            let _span = tracing::info_span!("causal_finish").entered();
+            builder.finish()
+        };
         visit_content_effects(content, &mut |n| {
             if matches!(n, EffectNode::Op { .. }) {
                 graph.host_opaque = true;
             }
         });
         graph.grounded = graph.grounded_set();
+        graph.indexed = analysis::IndexedCausal::new(&graph.edges, content, &graph.card_declared_aspects);
         graph
     }
 
@@ -111,6 +131,14 @@ impl CausalGraph {
         out
     }
 
+    /// Indexes of the edges that require the fact.
+    pub fn consumers_of(&self, fact: &Fact) -> &[usize] {
+        self.consumers
+            .get(fact)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
     /// The plausibility pre-check for Tier 2 (story-analyze spec §4 output
     /// 2): reject queries whose required facts are statically impossible
     /// before any search.
@@ -140,29 +168,49 @@ impl CausalGraph {
     /// Raising an aspect grounds the aspect's presence (`producers_of`'s
     /// bridging, mirrored here): a raised value reads >= 1.
     fn grounded_set(&self) -> BTreeSet<Fact> {
+        let _span = tracing::info_span!("causal_grounded").entered();
         let mut grounded: BTreeSet<Fact> = BTreeSet::new();
-        loop {
-            let mut changed = false;
-            for edge in &self.edges {
-                if edge.requires.iter().all(|r| grounded.contains(r)) {
-                    for p in &edge.produces {
-                        changed |= grounded.insert(p.clone());
-                        if let Fact::AspectCanIncrease {
-                            card: Some(card),
-                            key,
-                            ..
-                        } = p
-                        {
-                            changed |=
-                                grounded.insert(Fact::CardHasAspect(card.clone(), key.clone()));
+        let mut unsatisfied: Vec<usize> = self.edges.iter().map(|e| e.requires.len()).collect();
+        let mut queue: Vec<Fact> = Vec::new();
+
+        for edge in &self.edges {
+            if edge.requires.is_empty() {
+                for p in &edge.produces {
+                    queue.push(p.clone());
+                }
+            }
+        }
+
+        while let Some(fact) = queue.pop() {
+            if !grounded.insert(fact.clone()) {
+                continue;
+            }
+            if let Fact::AspectCanIncrease {
+                card: Some(card),
+                key,
+                ..
+            } = &fact
+            {
+                let bridged = Fact::CardHasAspect(card.clone(), key.clone());
+                if !grounded.contains(&bridged) {
+                    queue.push(bridged);
+                }
+            }
+            if let Some(edge_indices) = self.consumers.get(&fact) {
+                for &ei in edge_indices {
+                    unsatisfied[ei] -= 1;
+                    if unsatisfied[ei] == 0 {
+                        for p in &self.edges[ei].produces {
+                            if !grounded.contains(p) {
+                                queue.push(p.clone());
+                            }
                         }
                     }
                 }
             }
-            if !changed {
-                return grounded;
-            }
         }
+
+        grounded
     }
 
     /// Depth-first provenance witness over grounded facts; the in-progress
@@ -206,7 +254,7 @@ impl CausalGraph {
 
 /// The mint template of a card: the aliased card's body when the declaration
 /// carries `mint <card>` (the kernel's `Engine::template`, statically).
-fn template_of<'a>(content: &'a Content, card: &CardId) -> Option<&'a CardDecl> {
+pub(crate) fn template_of<'a>(content: &'a Content, card: &CardId) -> Option<&'a CardDecl> {
     let mut cur = card;
     let mut seen = BTreeSet::new();
     loop {

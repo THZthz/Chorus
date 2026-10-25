@@ -178,7 +178,7 @@ impl Engine {
     /// Greedy candidate order (spec.md §4.4): unbound entities in bindable
     /// zones, by zone class (Table first), then public zones in declaration
     /// order, then mint order (oldest first).
-    pub(crate) fn greedy_pool(&self) -> Vec<EntityId> {
+    pub fn greedy_pool(&self) -> Vec<EntityId> {
         let mut pool: Vec<(u8, u32, EntityId)> = self
             .state
             .entities

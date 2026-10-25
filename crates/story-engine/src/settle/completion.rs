@@ -70,11 +70,14 @@ impl Engine {
             return Ok(());
         };
         let recipe_id = s.recipe.clone();
-        let rec = self.recipe_of(&recipe_id);
+        let content = self.content.clone();
+        let rec = content.recipe(recipe_id.as_str()).unwrap_or_else(|| {
+            crate::kernel_invariant("UnknownRecipe", format!("unknown recipe `{recipe_id}`"))
+        });
         // Greedy top-up just before the completion evaluates (spec.md
         // §4.4): unfilled greedy slots pull cards that became available
         // mid-flight, so the completion's own conditions read them.
-        self.top_up_greedy(sit, &rec, ev);
+        self.top_up_greedy(sit, rec, ev);
         let mut fctx = EffectCtx {
             sit: Some(sit),
             now: self.state.now,
@@ -113,7 +116,9 @@ impl Engine {
                         remaining
                             .into_iter()
                             .filter(|arm| {
-                                let rec = self.recipe_of(arm);
+                                let rec = content.recipe(arm.as_str()).unwrap_or_else(|| {
+                                    crate::kernel_invariant("UnknownRecipe", format!("unknown recipe `{arm}`"))
+                                });
                                 match &rec.when {
                                     None => true,
                                     Some(w) => {
@@ -325,10 +330,13 @@ impl Engine {
         // each arm's `max` at adoption. The first arm with room adopts; a
         // miss on every arm falls through to the normal completion
         // sequence.
+        let content = self.content.clone();
         let mut adopted: Option<story_core::RecipeId> = None;
         for arm in &arms {
-            let rec = self.recipe_of(arm);
-            if self.max_left(&rec) {
+            let rec = content.recipe(arm.as_str()).unwrap_or_else(|| {
+                crate::kernel_invariant("UnknownRecipe", format!("unknown recipe `{arm}`"))
+            });
+            if self.max_left(rec) {
                 adopted = Some(rec.id.clone());
                 break;
             }
@@ -341,14 +349,16 @@ impl Engine {
             });
             return Ok(());
         };
-        let target = self.recipe_of(&target_id);
+        let target = content.recipe(target_id.as_str()).unwrap_or_else(|| {
+            crate::kernel_invariant("UnknownRecipe", format!("unknown recipe `{target_id}`"))
+        });
         // (4) The adopted recipe materializes with no further gate: greedy
         // slots pull from the world per the standard greedy order (the
         // §4.4 top-up; the interior is not bindable, so released storage
         // is never re-bound); open slots re-open for mid-run `bind`.
         // Greedy is best-effort; no minimum is validated here — the
         // pre-pull walk was the gate.
-        self.top_up_greedy(sit, &target, ev);
+        self.top_up_greedy(sit, target, ev);
         // (5) The situation adopts the target recipe — its verb included
         // (spec.md §4.2) — spends one `max` count (adoption materializes the
         // new recipe), and the timer re-arms.
@@ -389,7 +399,11 @@ impl Engine {
         if !self.state.situations.contains_key(&sit) {
             return;
         }
-        let rec = self.recipe_of(&self.state.situations[&sit].recipe);
+        let content = self.content.clone();
+        let sit_recipe = &self.state.situations[&sit].recipe;
+        let rec = content.recipe(sit_recipe.as_str()).unwrap_or_else(|| {
+            crate::kernel_invariant("UnknownRecipe", format!("unknown recipe `{sit_recipe}`"))
+        });
         if let Some(book) = rec.on_complete.clone() {
             let cp = self.state.clone();
             let mut fctx = EffectCtx {

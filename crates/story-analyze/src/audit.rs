@@ -113,6 +113,7 @@ pub fn audit(analyzer: &mut Analyzer, explore: &ExploreConfig) -> AuditReport {
 
 /// Every shadowing finding over recipe pairs and trigger rule pairs.
 pub fn shadowing_findings(content: &Content) -> Vec<Shadowing> {
+    let _span = tracing::info_span!("shadowing_findings").entered();
     let mut out = Vec::new();
     let mut verbs: Vec<&story_content::ir::VerbDecl> = content.verbs.values().collect();
     verbs.sort_by_key(|v| v.decl_index);
@@ -120,7 +121,7 @@ pub fn shadowing_findings(content: &Content) -> Vec<Shadowing> {
         let mut recipes: Vec<&RecipeDecl> = verb
             .recipe_order
             .iter()
-            .filter_map(|n| content.recipe(&format!("{}.{}", verb.id, n)))
+            .filter_map(|n| verb.recipes.get(n))
             .collect();
         recipes.sort_by_key(|r| (r.priority, r.decl_index));
         for (i, r1) in recipes.iter().enumerate() {

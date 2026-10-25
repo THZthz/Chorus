@@ -26,6 +26,73 @@ pub(crate) struct IndexedCausal {
     pub zero_req_edges: Vec<u32>,
 }
 
+const MAX_BUCKETS: usize = 2048;
+const MAX_COST: usize = MAX_BUCKETS - 1;
+
+pub(crate) struct BucketQueue {
+    buckets: Vec<Vec<u32>>,
+    min_bucket: usize,
+    max_bucket: usize,
+    count: usize,
+}
+
+impl BucketQueue {
+    pub fn new() -> Self {
+        Self {
+            buckets: vec![Vec::new(); MAX_BUCKETS],
+            min_bucket: usize::MAX,
+            max_bucket: 0,
+            count: 0,
+        }
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        if self.min_bucket <= self.max_bucket {
+            let start = self.min_bucket;
+            let end = self.max_bucket.min(self.buckets.len() - 1);
+            if start <= end {
+                for b in &mut self.buckets[start..=end] {
+                    b.clear();
+                }
+            }
+        }
+        self.min_bucket = usize::MAX;
+        self.max_bucket = 0;
+        self.count = 0;
+    }
+
+    #[inline]
+    pub fn push(&mut self, cost: u32, fid: u32) {
+        let c = (cost as usize).min(MAX_COST);
+        self.buckets[c].push(fid);
+        if c < self.min_bucket {
+            self.min_bucket = c;
+        }
+        if c > self.max_bucket {
+            self.max_bucket = c;
+        }
+        self.count += 1;
+    }
+
+    #[inline]
+    pub fn pop(&mut self) -> Option<(u32, u32)> {
+        if self.count == 0 {
+            return None;
+        }
+        loop {
+            if let Some(fid) = self.buckets[self.min_bucket].pop() {
+                self.count -= 1;
+                return Some((self.min_bucket as u32, fid));
+            }
+            self.min_bucket += 1;
+            if self.min_bucket > self.max_bucket {
+                return None;
+            }
+        }
+    }
+}
+
 pub(crate) struct HAddWorkspace {
     dist: Vec<u32>,
     finalized: Vec<bool>,
@@ -34,7 +101,7 @@ pub(crate) struct HAddWorkspace {
     fact_gen: Vec<u32>,
     edge_gen: Vec<u32>,
     current_generation: u32,
-    pq: std::collections::BinaryHeap<std::cmp::Reverse<(u32, u32)>>,
+    pq: BucketQueue,
 }
 
 impl HAddWorkspace {
@@ -49,7 +116,7 @@ impl HAddWorkspace {
             fact_gen: vec![0; num_facts],
             edge_gen: vec![0; num_edges],
             current_generation: 1,
-            pq: std::collections::BinaryHeap::new(),
+            pq: BucketQueue::new(),
         }
     }
 }
@@ -224,7 +291,7 @@ impl CausalGraph {
                 ws.fact_gen[u] = gen;
                 ws.dist[u] = 0;
                 ws.finalized[u] = false;
-                ws.pq.push(std::cmp::Reverse((0, fid)));
+                ws.pq.push(0, fid);
             }
         }
 
@@ -279,12 +346,12 @@ impl CausalGraph {
                     ws.fact_gen[pv] = gen;
                     ws.dist[pv] = next_cost;
                     ws.finalized[pv] = false;
-                    ws.pq.push(std::cmp::Reverse((next_cost, p)));
+                    ws.pq.push(next_cost, p);
                 }
             }
         }
 
-        while let Some(std::cmp::Reverse((cost, fid))) = ws.pq.pop() {
+        while let Some((cost, fid)) = ws.pq.pop() {
             let u = fid as usize;
             if ws.fact_gen[u] == gen && ws.finalized[u] {
                 continue;
@@ -315,7 +382,7 @@ impl CausalGraph {
                     ws.fact_gen[v] = gen;
                     ws.dist[v] = cost;
                     ws.finalized[v] = false;
-                    ws.pq.push(std::cmp::Reverse((cost, bridged)));
+                    ws.pq.push(cost, bridged);
                 }
             }
 
@@ -331,7 +398,7 @@ impl CausalGraph {
                     ws.fact_gen[v] = gen;
                     ws.dist[v] = cost;
                     ws.finalized[v] = false;
-                    ws.pq.push(std::cmp::Reverse((cost, bridged)));
+                    ws.pq.push(cost, bridged);
                 }
             }
 
@@ -359,7 +426,7 @@ impl CausalGraph {
                             continue;
                         }
                     }
-                    let edge_cost = ws.req_sum[ei].saturating_add(1);
+                    let edge_cost = ws.req_sum[ei].saturating_add(1).min(MAX_COST as u32);
                     for &p in &idx.edge_produces[ei] {
                         let pv = p as usize;
                         let cur_dist = if ws.fact_gen[pv] == gen {
@@ -371,7 +438,7 @@ impl CausalGraph {
                             ws.fact_gen[pv] = gen;
                             ws.dist[pv] = edge_cost;
                             ws.finalized[pv] = false;
-                            ws.pq.push(std::cmp::Reverse((edge_cost, p)));
+                            ws.pq.push(edge_cost, p);
                         }
                     }
                 }

@@ -920,5 +920,75 @@ fn cold_boot_recovers_from_corrupted_and_empty_cache() {
     assert!(out.contains("outcome: REACHABLE"), "{out}");
 }
 
+// ---------------------------------------------------------------------------
+// play: interactive help, mode toggling, and verbose output
+// ---------------------------------------------------------------------------
+
+#[test]
+fn play_help_prints_subcommand_options_and_exits_zero() {
+    for flag in ["--help", "-h"] {
+        let (code, out, err) = run(&["play", flag]);
+        assert_eq!(code, 0, "{flag}");
+        assert!(err.is_empty(), "{flag}: {err}");
+        assert!(out.contains("story-cli play <file.sw> [options]"), "{flag}: {out}");
+        assert!(out.contains("--verbose, -v"), "{flag}: {out}");
+        assert!(out.contains("INTERACTIVE COMMANDS:"), "{flag}: {out}");
+        assert!(out.contains("GAME LOOP:"), "{flag}: {out}");
+    }
+}
+
+#[test]
+fn play_verbose_flag_and_bare_alias_launch_in_verbose_mode() {
+    let script = "quit\n";
+    let (code, out) = play_with_stdin(&["play", TINY, "--verbose"], script);
+    assert_eq!(code, 0);
+    assert!(out.contains("[verbose]"), "{out}");
+    assert!(out.contains("Initial Board State:"), "{out}");
+    assert!(out.contains("Available Actions:"), "{out}");
+
+    // Non-positional flag before filename
+    let (code2, out2) = play_with_stdin(&["play", "--verbose", TINY], script);
+    assert_eq!(code2, 0);
+    assert!(out2.contains("[verbose]"), "{out2}");
+
+    // Bare alias with -v
+    let (code3, out3) = play_with_stdin(&[TINY, "-v"], script);
+    assert_eq!(code3, 0);
+    assert!(out3.contains("[verbose]"), "{out3}");
+}
+
+#[test]
+fn play_interactive_help_and_subcommand_help() {
+    let script = "help\nhelp commit\nhelp advance\nquit\n";
+    let (code, out) = play_with_stdin(&["play", TINY], script);
+    assert_eq!(code, 0);
+    assert!(out.contains("Game Loop:"), "{out}");
+    assert!(out.contains("commit <verb> [slot=card ...]"), "{out}");
+    assert!(out.contains("advance [n]"), "{out}");
+}
+
+#[test]
+fn play_in_repl_mode_switching_and_verbose_verbs() {
+    let script = "mode verbose\nverbs\nmode normal\nquit\n";
+    let (code, out) = play_with_stdin(&["play", EMBER], script);
+    assert_eq!(code, 0);
+    assert!(out.contains("mode set to verbose"), "{out}");
+    // Verbose verbs display slot criteria
+    assert!(out.contains("fuel: 1..2 consuming (aspect:coal)"), "{out}");
+    assert!(out.contains("morsel: 1..2 consuming (aspect:restore)"), "{out}");
+    assert!(out.contains("mode set to normal"), "{out}");
+}
+
+#[test]
+fn play_verbose_action_feedback() {
+    let script = "commit sup morsel=bread#10\nadvance\nquit\n";
+    let (code, out) = play_with_stdin(&["play", EMBER, "--verbose"], script);
+    assert_eq!(code, 0);
+    assert!(out.contains("[sit 3] sup.eat started (10m, ends at 10m)"), "{out}");
+    assert!(out.contains("morsel <- entity 10"), "{out}");
+    assert!(out.contains("advanced 1 turn(s) (10m) -> clock is now 10m"), "{out}");
+    assert!(out.contains("sup.eat completed"), "{out}");
+}
+
 
 

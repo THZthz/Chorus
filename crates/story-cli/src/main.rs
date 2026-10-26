@@ -10,7 +10,7 @@ mod profile;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use story_content::ir::VerbMode;
+use story_content::ir::{CmpOp, QueryTerm, RecipeDecl, SlotDecl, VerbMode};
 use story_core::{EntityId, SituationId, SlotName, VerbId};
 use story_engine::{CommitAction, EffectRegistry, Engine, Event};
 
@@ -18,15 +18,17 @@ const USAGE: &str = "\
 story-cli — the Chorus² dev driver and design analyzer
 
 USAGE:
-    story-cli play <file.sw> [--seed N] [--record <file.json>]
+    story-cli play <file.sw> [options]
     story-cli analyze <file.sw> [options]
-    story-cli <file.sw> [--seed N]            alias for play
+    story-cli <file.sw> [options]             alias for play
 
 PLAY — the interactive terminal driver; commands at the `>` prompt:
     verbs | commit <verb> [slot=card ...] | bind <sit> <slot> <card> |
-    give <card> [n] | advance [n] | trace <file> | state | undo | quit
+    give <card> [n] | advance [n] | trace <file> | state | undo | mode | quit
+    --verbose, -v print detailed state, slot criteria, and action feedback
     --seed N      host seed when the content declares `seed host` (default 1)
     --record <f>  record forward play trace to JSON file on exit
+    run `story-cli play --help` for the interactive command reference.
 
 ANALYZE — boot the content and run design analyses; reports go to stdout.
     story-cli analyze <file.sw> [options]
@@ -36,6 +38,37 @@ Notes:
     Analyses exit 0 even when the answer is \"unreachable\"; exit 1 on compile
     or boot failure; exit 2 on usage errors.";
 
+const PLAY_USAGE: &str = "\
+story-cli play — interactive story driver
+
+USAGE:
+    story-cli play <file.sw> [options]
+    story-cli <file.sw> [options]
+
+OPTIONS:
+    --verbose, -v   print detailed board state, recipe slot requirements, and action progress
+    --seed N        host seed when the content declares `seed host` (default 1)
+    --record <f>    record forward play trace to JSON file on exit
+    -h, --help      print this help message
+
+INTERACTIVE COMMANDS:
+    state                     show table cards, active situations, and clock
+    verbs                     list available actions and recipes
+    commit <verb> [slot=card] start an action (e.g. commit sup morsel=bread#10)
+    bind <sit> <slot> <card>  bind a card to an open situation slot
+    advance [n]               pass n turns (default 1) to progress situations
+    undo                      revert the last action or advance
+    mode [verbose|normal]     toggle detailed output mode (alias: verbose)
+    give <card> [n]           mint copies of a card onto the table
+    trace <file>              export recorded play trace to JSON
+    quit, q                   exit the session
+
+GAME LOOP:
+    1. Inspect table cards and running situations with `state`.
+    2. Check available actions and slot criteria with `verbs`.
+    3. Start actions with `commit <verb> [slot=card ...]`.
+    4. Pass time with `advance` to complete recipes and trigger effects.";
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
@@ -44,10 +77,14 @@ fn main() {
         Some("analyze") => std::process::exit(analyze::run(&args[1..])),
         Some("help" | "--help" | "-h") => println!("{USAGE}"),
         Some(other) => {
-            // The bare form is an alias for play: a first argument that
-            // names an existing file drives it, anything else is an
-            // unknown subcommand.
-            if std::path::Path::new(other).is_file() {
+            if other == "-v" || other == "--verbose" {
+                if args.iter().skip(1).any(|a| std::path::Path::new(a).is_file()) {
+                    play(&args);
+                } else {
+                    eprintln!("story-cli: missing file for play");
+                    usage_exit(2);
+                }
+            } else if std::path::Path::new(other).is_file() {
                 play(&args);
             } else {
                 eprintln!("story-cli: unknown subcommand or missing file `{other}`");
@@ -66,9 +103,17 @@ fn play(args: &[String]) {
     let mut path: Option<String> = None;
     let mut seed: u64 = 1;
     let mut record_path: Option<String> = None;
+    let mut verbose = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            "--help" | "-h" | "help" => {
+                println!("{PLAY_USAGE}");
+                std::process::exit(0);
+            }
+            "--verbose" | "-v" => {
+                verbose = true;
+            }
             "--seed" => {
                 i += 1;
                 seed = args.get(i).and_then(|s| s.parse().ok()).unwrap_or(1);
@@ -77,12 +122,23 @@ fn play(args: &[String]) {
                 i += 1;
                 record_path = args.get(i).cloned();
             }
-            other => path = Some(other.to_string()),
+            arg if arg.starts_with('-') => {
+                eprintln!("story-cli play: unknown option `{arg}`\n\n{PLAY_USAGE}");
+                std::process::exit(2);
+            }
+            other => {
+                if path.is_none() {
+                    path = Some(other.to_string());
+                } else {
+                    eprintln!("story-cli play: unexpected argument `{other}`\n\n{PLAY_USAGE}");
+                    std::process::exit(2);
+                }
+            }
         }
         i += 1;
     }
     let Some(path) = path else {
-        eprintln!("usage: story-cli play <file.sw> [--seed N]");
+        eprintln!("usage: story-cli play <file.sw> [options]\n\n{PLAY_USAGE}");
         std::process::exit(2);
     };
     let out = story_lang::compile_file(std::path::Path::new(&path));
@@ -117,7 +173,25 @@ fn play(args: &[String]) {
         std::process::exit(1);
     }
     if let Some(game) = engine.content().game.as_ref() {
-        println!("{} — seed {}, turn {}m", game.title, seed, game.turn);
+        if verbose {
+            println!("{} — seed {}, turn {}m [verbose]", game.title, seed, game.turn);
+            println!("Type 'help' for commands, 'mode normal' to reduce verbosity.\n");
+            println!("Initial Board State:");
+            print_state_verbose(&engine);
+            println!("\nAvailable Actions:");
+            print_verbs_verbose(&engine);
+        } else {
+            println!("{} — seed {}, turn {}m", game.title, seed, game.turn);
+            println!("Type 'help' for commands, 'verbs' for actions, 'state' for the board.");
+        }
+    } else if verbose {
+        println!("Type 'help' for commands, 'mode normal' to reduce verbosity.\n");
+        println!("Initial Board State:");
+        print_state_verbose(&engine);
+        println!("\nAvailable Actions:");
+        print_verbs_verbose(&engine);
+    } else {
+        println!("Type 'help' for commands, 'verbs' for actions, 'state' for the board.");
     }
 
     let mut undo: Vec<(story_engine::Snapshot, bool)> = Vec::new();
@@ -136,28 +210,66 @@ fn play(args: &[String]) {
             [] => continue,
             ["quit" | "q"] => break,
             ["help" | "h"] => print_help(),
-            ["verbs"] => print_verbs(&engine),
-            ["state"] => print_state(&engine),
+            ["help" | "h", cmd] => print_help_cmd(cmd),
+            ["mode"] => println!("  mode is {}", if verbose { "verbose" } else { "normal" }),
+            ["mode", "verbose"] => {
+                verbose = true;
+                println!("  mode set to verbose");
+            }
+            ["mode", "normal"] => {
+                verbose = false;
+                println!("  mode set to normal");
+            }
+            ["verbose"] => {
+                verbose = !verbose;
+                println!("  mode set to {}", if verbose { "verbose" } else { "normal" });
+            }
+            ["verbose", "on"] => {
+                verbose = true;
+                println!("  mode set to verbose");
+            }
+            ["verbose", "off"] => {
+                verbose = false;
+                println!("  mode set to normal");
+            }
+            ["normal"] => {
+                verbose = false;
+                println!("  mode set to normal");
+            }
+            ["verbs"] => {
+                if verbose {
+                    print_verbs_verbose(&engine);
+                } else {
+                    print_verbs(&engine);
+                }
+            }
+            ["state"] => {
+                if verbose {
+                    print_state_verbose(&engine);
+                } else {
+                    print_state(&engine);
+                }
+            }
             ["advance"] => {
-                if let Some(step) = do_advance(&mut engine, &mut undo, 1) {
+                if let Some(step) = do_advance(&mut engine, &mut undo, 1, verbose) {
                     trace_steps.push(step);
                 }
             }
             ["advance", n] => match n.parse::<i64>() {
                 Ok(n) if n > 0 => {
-                    if let Some(step) = do_advance(&mut engine, &mut undo, n) {
+                    if let Some(step) = do_advance(&mut engine, &mut undo, n, verbose) {
                         trace_steps.push(step);
                     }
                 }
                 _ => println!("  advance takes a positive turn count"),
             },
             ["commit", verb, rest @ ..] => {
-                if let Some(step) = do_commit(&mut engine, &mut undo, verb, rest) {
+                if let Some(step) = do_commit(&mut engine, &mut undo, verb, rest, verbose) {
                     trace_steps.push(step);
                 }
             }
             ["bind", sit, slot, card] => {
-                if let Some(step) = do_bind(&mut engine, &mut undo, sit, slot, card) {
+                if let Some(step) = do_bind(&mut engine, &mut undo, sit, slot, card, verbose) {
                     trace_steps.push(step);
                 }
             }
@@ -173,6 +285,9 @@ fn play(args: &[String]) {
                             trace_steps.pop();
                         }
                         println!("  undone");
+                        if verbose {
+                            println!("  restored previous state (clock is now {}m)", engine.state().now);
+                        }
                     }
                     Err(d) => println!("  refused: {d}"),
                 },
@@ -207,9 +322,145 @@ fn play(args: &[String]) {
 
 fn print_help() {
     println!(
-        "  verbs | commit <verb> [slot=card ...] | bind <sit> <slot> <card> | \
-         give <card> [n] | advance [n] | trace <file> | state | undo | quit"
+        "Commands:\n  \
+         state                     show table cards, active situations, and clock\n  \
+         verbs                     list available actions and recipes\n  \
+         commit <verb> [slot=card] start an action (e.g. commit sup morsel=bread#10)\n  \
+         bind <sit> <slot> <card>  bind a card to an open situation slot\n  \
+         advance [n]               pass n turns (default 1) to progress situations\n  \
+         undo                      revert the last action or advance\n  \
+         mode [verbose|normal]     toggle detailed output mode (alias: verbose)\n  \
+         give <card> [n]           mint copies of a card onto the table\n  \
+         trace <file>              export recorded play trace to JSON\n  \
+         quit, q                   exit the session\n\n\
+         Game Loop:\n  \
+         1. Inspect table cards and running situations with `state`.\n  \
+         2. Check available actions and slot criteria with `verbs`.\n  \
+         3. Start actions with `commit <verb> [slot=card ...] `.\n  \
+         4. Pass time with `advance` to complete recipes and trigger effects.\n\
+         Type `help <command>` for detailed syntax on any command."
     );
+}
+
+fn print_help_cmd(cmd: &str) {
+    match cmd {
+        "state" => println!(
+            "state\n  Display the current game clock, legacy variables, cards on the table, and active situations.\n  In verbose mode, also shows remaining situation countdowns and open slots."
+        ),
+        "verbs" => println!(
+            "verbs\n  List declared verbs and recipes.\n  In verbose mode, shows slot requirements, card filters (e.g. aspect:coal), and guards."
+        ),
+        "commit" => println!(
+            "commit <verb> [slot=card ...]\n  Start an action with optional slot bindings.\n  Cards can be bound by name (slot=coal) or by entity ID (slot=#4).\n  Example: commit tend fuel=coal#4"
+        ),
+        "bind" => println!(
+            "bind <sit> <slot> <card>\n  Bind a card from the table into an open slot of an active situation.\n  Example: bind 1 fuel coal#5"
+        ),
+        "advance" => println!(
+            "advance [n]\n  Advance the clock by n turns (default: 1 turn).\n  Progresses situation timers, triggers recipe completions, and handles expiry."
+        ),
+        "undo" => println!(
+            "undo\n  Revert the most recent state change (commit, bind, advance, or give)."
+        ),
+        "mode" | "verbose" => println!(
+            "mode [verbose|normal]\n  Toggle or set output detail level.\n  Verbose mode displays slot criteria, situation countdowns, and detailed action hints.\n  Aliases: verbose, normal, verbose on, verbose off."
+        ),
+        "give" => println!(
+            "give <card> [n]\n  Mint n copies of a declared card onto the table (development utility).\n  Example: give coal 2"
+        ),
+        "trace" | "export-trace" => println!(
+            "trace <file.json>\n  Export the sequence of player actions taken during this session to a JSON file."
+        ),
+        "quit" | "q" => println!(
+            "quit\n  Exit the play session."
+        ),
+        other => println!("Unknown command `{other}`. Type `help` for command list."),
+    }
+}
+
+fn format_cmp(op: CmpOp) -> &'static str {
+    match op {
+        CmpOp::Ge => ">=",
+        CmpOp::Le => "<=",
+        CmpOp::Gt => ">",
+        CmpOp::Lt => "<",
+        CmpOp::Eq => "==",
+        CmpOp::Ne => "!=",
+    }
+}
+
+fn format_query_term(term: &QueryTerm) -> String {
+    match term {
+        QueryTerm::Aspect(a) => match a.op {
+            Some(op) => format!("aspect:{}{}{}", a.key, format_cmp(op), a.value),
+            None => format!("aspect:{}", a.key),
+        },
+        QueryTerm::Name(id) => format!("name:{id}"),
+        QueryTerm::Kind(k) => format!("kind:{k}"),
+        QueryTerm::Not(inner) => format!("not({})", format_query_term(inner)),
+        QueryTerm::Pred(_) => "predicate".to_string(),
+    }
+}
+
+fn format_slot(slot: &SlotDecl) -> String {
+    let bounds = match slot.max {
+        Some(max) => format!("{}..{}", slot.min, max),
+        None => format!("{}..", slot.min),
+    };
+    let mut flags = Vec::new();
+    if slot.consuming {
+        flags.push("consuming");
+    }
+    if slot.open {
+        flags.push("open");
+    }
+    if slot.greedy {
+        flags.push("greedy");
+    }
+    let flags_str = if flags.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", flags.join(" "))
+    };
+    let query_str = if slot.query.is_empty() {
+        "any".to_string()
+    } else {
+        slot.query.iter().map(format_query_term).collect::<Vec<_>>().join(" ")
+    };
+    format!("{}: {bounds}{flags_str} ({query_str})", slot.name)
+}
+
+fn find_recipe_decl<'a>(
+    engine: &'a Engine,
+    verb: &VerbId,
+    recipe: &story_core::RecipeId,
+) -> Option<&'a RecipeDecl> {
+    let v = engine.content().verbs.get(verb.as_str())?;
+    v.recipes
+        .get(recipe.as_str())
+        .or_else(|| v.recipes.values().find(|r| r.id == *recipe || r.name == recipe.as_str()))
+}
+
+fn print_commit_hint(engine: &Engine, verb: &str) {
+    if let Some(v) = engine.content().verbs.get(verb) {
+        println!("  available craftable recipes for `{verb}`:");
+        let craftable: Vec<_> = v.recipes.values().filter(|r| r.craftable).collect();
+        if craftable.is_empty() {
+            println!("    (no craftable recipes)");
+        } else {
+            for r in craftable {
+                let dur = format!("{}m", r.duration);
+                if r.slots.is_empty() {
+                    println!("    {} ({dur}): no slots required", r.name);
+                } else {
+                    println!("    {} ({dur}):", r.name);
+                    for s in &r.slots {
+                        println!("      {}", format_slot(s));
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// `give <card> [n]`: mint n copies of a declared card onto the home zone.
@@ -293,6 +544,7 @@ fn do_commit(
     undo: &mut Vec<(story_engine::Snapshot, bool)>,
     verb: &str,
     rest: &[&str],
+    verbose: bool,
 ) -> Option<story_analyze::TraceStep> {
     let mut bindings: Vec<(SlotName, EntityId)> = Vec::new();
     let mut trace_bindings: Vec<(SlotName, String)> = Vec::new();
@@ -301,10 +553,11 @@ fn do_commit(
             println!("  bindings are slot=card, e.g. fuel=coal");
             return None;
         };
-        // `slot=#<id>` addresses an entity directly (the probe driver's
-        // escape hatch when several copies share a name).
+        // Support `#<id>`, `name#<id>`, or `name`
         let e = card
-            .strip_prefix('#')
+            .split_once('#')
+            .map(|(_, id_str)| id_str)
+            .or_else(|| card.strip_prefix('#'))
             .and_then(|n| n.parse::<u64>().ok())
             .map(story_core::EntityId)
             .filter(|id| engine.state().entities.contains_key(id))
@@ -325,7 +578,30 @@ fn do_commit(
         // The undo snapshot is host-held and pushed only for an applied
         // action; a refusal leaves nothing to undo.
         Ok(events) => {
+            let old_st = serde_json::from_slice::<story_core::State>(&snap.state).ok();
             undo.push((snap, true));
+            if verbose {
+                let new_sit = old_st.as_ref().and_then(|st| {
+                    engine.state().situations.values().find(|s| !st.situations.contains_key(&s.id))
+                });
+                if let Some(s) = new_sit {
+                    let dur = s.ends_at.saturating_sub(engine.state().now);
+                    println!(
+                        "  [sit {}] {} started ({}m, ends at {}m)",
+                        s.id, s.recipe, dur, s.ends_at
+                    );
+                } else if events.is_empty() {
+                    println!("  committed {verb}");
+                }
+            } else if events.is_empty() {
+                let new_sit = old_st.as_ref().and_then(|st| {
+                    engine.state().situations.values().find(|s| !st.situations.contains_key(&s.id))
+                });
+                if let Some(s) = new_sit {
+                    let dur = s.ends_at.saturating_sub(engine.state().now);
+                    println!("  [sit {}] {} started ({}m)", s.id, s.recipe, dur);
+                }
+            }
             print_events(&events);
             Some(story_analyze::TraceStep::Commit {
                 verb: VerbId::from(verb),
@@ -334,6 +610,9 @@ fn do_commit(
         }
         Err(d) => {
             println!("  refused: {d}");
+            if verbose {
+                print_commit_hint(engine, verb);
+            }
             None
         }
     }
@@ -345,15 +624,17 @@ fn do_bind(
     sit: &str,
     slot: &str,
     card: &str,
+    verbose: bool,
 ) -> Option<story_analyze::TraceStep> {
     let Ok(sit_id) = sit.parse::<u64>() else {
         println!("  bind takes a situation number (see `state`)");
         return None;
     };
-    // `card=#<id>` addresses an entity directly (the probe driver's escape
-    // hatch when several copies share a name), matching `commit`.
+    // Support `#<id>`, `name#<id>`, or `name`
     let e = card
-        .strip_prefix('#')
+        .split_once('#')
+        .map(|(_, id_str)| id_str)
+        .or_else(|| card.strip_prefix('#'))
         .and_then(|n| n.parse::<u64>().ok())
         .map(story_core::EntityId)
         .filter(|id| engine.state().entities.contains_key(id))
@@ -367,6 +648,12 @@ fn do_bind(
         Ok(events) => {
             undo.push((snap, true));
             print_events(&events);
+            if verbose {
+                if let Some(s) = engine.state().situations.get(&SituationId(sit_id)) {
+                    let cur = s.bindings.get(&SlotName::from(slot)).map(|b| b.len()).unwrap_or(0);
+                    println!("  [sit {sit}] slot `{slot}` now has {cur} card(s) bound");
+                }
+            }
             Some(story_analyze::TraceStep::Bind {
                 situation: SituationId(sit_id),
                 slot: SlotName::from(slot),
@@ -375,6 +662,15 @@ fn do_bind(
         }
         Err(d) => {
             println!("  refused: {d}");
+            if verbose {
+                if let Some(s) = engine.state().situations.get(&SituationId(sit_id)) {
+                    if let Some(r) = find_recipe_decl(engine, &s.verb, &s.recipe) {
+                        if let Some(slot_decl) = r.slots.iter().find(|sd| sd.name.as_str() == slot) {
+                            println!("  slot `{slot}` criteria: {}", format_slot(slot_decl));
+                        }
+                    }
+                }
+            }
             None
         }
     }
@@ -384,6 +680,7 @@ fn do_advance(
     engine: &mut Engine,
     undo: &mut Vec<(story_engine::Snapshot, bool)>,
     turns: i64,
+    verbose: bool,
 ) -> Option<story_analyze::TraceStep> {
     let Some(dt) = engine.turn().checked_mul(turns) else {
         println!(
@@ -395,6 +692,26 @@ fn do_advance(
     match engine.advance(dt) {
         Ok(events) => {
             undo.push((snap, true));
+            if verbose {
+                println!(
+                    "  advanced {turns} turn(s) ({dt}m) -> clock is now {}m",
+                    engine.state().now
+                );
+                if !engine.state().situations.is_empty() {
+                    for s in engine.state().situations.values() {
+                        let rem = s.ends_at.saturating_sub(engine.state().now);
+                        println!(
+                            "  [sit {}] {}: {rem}m remaining (ends at {}m)",
+                            s.id, s.recipe, s.ends_at
+                        );
+                    }
+                }
+            } else if events.is_empty() {
+                println!(
+                    "  advanced {turns} turn(s) (clock: {}m)",
+                    engine.state().now
+                );
+            }
             print_events(&events);
             print_ending(engine);
             Some(story_analyze::TraceStep::Advance { turns })
@@ -490,6 +807,49 @@ fn print_verbs(engine: &Engine) {
     }
 }
 
+fn print_verbs_verbose(engine: &Engine) {
+    let mut verbs: Vec<_> = engine.content().verbs.values().collect();
+    verbs.sort_by_key(|v| v.decl_index);
+    for v in verbs {
+        let mode = match v.mode {
+            VerbMode::Committable => "committable",
+            VerbMode::Autonomous => "autonomous",
+            VerbMode::Uncommittable => "uncommittable",
+        };
+        let instances = match v.instances {
+            story_content::ir::InstanceCap::Any => "any".to_string(),
+            story_content::ir::InstanceCap::AtMost(n) => n.to_string(),
+        };
+        println!("  {} [{}, instances: {}]:", v.id, mode, instances);
+        let mut recipes: Vec<&story_content::ir::RecipeDecl> = v.recipes.values().collect();
+        recipes.sort_by_key(|r| (r.priority, r.decl_index));
+        for r in recipes {
+            let kind = if r.craftable {
+                "craftable"
+            } else if r.chain_only {
+                "chain-only"
+            } else {
+                "auto"
+            };
+            println!(
+                "    {} (priority {}, {}m, {})",
+                r.name, r.priority, r.duration, kind
+            );
+            if !r.guards.is_empty() {
+                for g in &r.guards {
+                    println!("      guard: \"{}\"", g.prose);
+                }
+            }
+            if !r.slots.is_empty() {
+                println!("      slots:");
+                for s in &r.slots {
+                    println!("        {}", format_slot(s));
+                }
+            }
+        }
+    }
+}
+
 fn print_state(engine: &Engine) {
     let st = engine.state();
     println!("  clock: {}m", st.now);
@@ -548,6 +908,91 @@ fn print_state(engine: &Engine) {
             slots.join("; "),
             s.ends_at
         );
+    }
+}
+
+fn print_state_verbose(engine: &Engine) {
+    let st = engine.state();
+    println!("  clock: {}m", st.now);
+    match &st.ended {
+        Some(e) => println!("  ended: {e}"),
+        None => println!("  ended: -"),
+    }
+    let legacy: Vec<String> = st.legacy.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    println!("  legacy: {}", legacy.join(", "));
+    let mut by_zone: BTreeMap<u64, Vec<String>> = BTreeMap::new();
+    for e in st.entities.values() {
+        let aspects: Vec<String> = e.aspects.iter().map(|(k, v)| format!("{k}:{v}")).collect();
+        by_zone.entry(e.zone.0).or_default().push(format!(
+            "{}#{}{}{}",
+            e.name,
+            e.id,
+            e.expires_at
+                .map(|t| {
+                    let rem = t.saturating_sub(st.now);
+                    format!(" (expires in {rem}m at {t}m)")
+                })
+                .unwrap_or_default(),
+            if aspects.is_empty() {
+                String::new()
+            } else {
+                format!(" {{{}}}", aspects.join(", "))
+            }
+        ));
+    }
+    for (z, cards) in by_zone {
+        let kind = st
+            .zones
+            .get(&story_core::ZoneId(z))
+            .map(|zone| match &zone.kind {
+                story_core::ZoneKind::Table => "table",
+                story_core::ZoneKind::Hidden => "hidden",
+                story_core::ZoneKind::SituationInterior(_) => "interior",
+                story_core::ZoneKind::Of(_) => "carrier",
+            })
+            .unwrap_or("?");
+        println!("  zone {z} [{kind}]:");
+        for c in cards {
+            println!("    {c}");
+        }
+    }
+    if st.situations.is_empty() {
+        println!("  active situations: none");
+    } else {
+        println!("  active situations:");
+        for s in st.situations.values() {
+            let rem = s.ends_at.saturating_sub(st.now);
+            println!(
+                "    [sit {}] {}: {rem}m remaining (ends at {}m)",
+                s.id, s.recipe, s.ends_at
+            );
+            for (slot_name, binds) in &s.bindings {
+                let cards: Vec<String> = binds
+                    .iter()
+                    .map(|b| format!("{}#{}", entity_name(engine, b.entity), b.entity))
+                    .collect();
+                println!("      bound {slot_name}: {}", cards.join(", "));
+            }
+            if let Some(r) = find_recipe_decl(engine, &s.verb, &s.recipe) {
+                for slot in &r.slots {
+                    if slot.open {
+                        let cur_count = s.bindings.get(&slot.name).map(|v| v.len()).unwrap_or(0);
+                        let max_str = slot.max.map(|m| m.to_string()).unwrap_or_else(|| "∞".to_string());
+                        if slot.max.map(|m| (cur_count as u32) < m).unwrap_or(true) {
+                            let query_str = if slot.query.is_empty() {
+                                "any".to_string()
+                            } else {
+                                slot.query.iter().map(format_query_term).collect::<Vec<_>>().join(" ")
+                            };
+                            println!(
+                                "      open slot: {} ({}/{} bound, accepts {}) -> bind {} {} <card>",
+                                slot.name, cur_count, max_str, query_str, s.id, slot.name
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

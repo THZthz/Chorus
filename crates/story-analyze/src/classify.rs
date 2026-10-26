@@ -43,11 +43,16 @@ pub struct ClassifyConfig {
 /// Explore (canonical dedup only) and classify.
 pub fn classify(analyzer: &mut Analyzer, config: &ClassifyConfig) -> Classification {
     let graph = analyzer.explore(&config.explore);
-    classify_graph(&graph, &config.winning_endings)
+    classify_graph_owned(graph, &config.winning_endings)
 }
 
 /// Classify an already-explored graph.
 pub fn classify_graph(graph: &ExploredGraph, winning: &BTreeSet<EndingId>) -> Classification {
+    classify_graph_owned(graph.clone(), winning)
+}
+
+/// Classify an already-explored graph, taking ownership to avoid cloning.
+pub fn classify_graph_owned(graph: ExploredGraph, winning: &BTreeSet<EndingId>) -> Classification {
     let _span = tracing::info_span!("classify_closure").entered();
     let n = graph.nodes.len();
     // Adjacency (forward) and reverse adjacency over node ids.
@@ -118,7 +123,7 @@ pub fn classify_graph(graph: &ExploredGraph, winning: &BTreeSet<EndingId>) -> Cl
         point_of_no_return_edges,
         softlock,
         infinite_loops,
-        graph: graph.clone(),
+        graph,
     }
 }
 

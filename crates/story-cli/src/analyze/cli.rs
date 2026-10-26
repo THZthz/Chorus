@@ -67,8 +67,8 @@ MODIFIERS:
     --time-budget <time> wall-clock budget (e.g. 500ms, 10s, 1m); stops analysis
                          and saves progress when depleted
     --continue           resume analysis from saved progress
-    --profile            accumulate span wall times and print the table to
-                         stderr when the run ends
+    --profile            accumulate span wall times, memory churn, and peak
+                         footprint and print the table to stderr when the run ends
     --jobs <n>           section concurrency cap (default 1); a full
                          exploration still holds gigabytes (one emberwatch
                          classify peaks near 6 GB), so raise this only for

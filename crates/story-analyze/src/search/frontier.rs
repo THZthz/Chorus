@@ -14,12 +14,12 @@ pub(super) fn priority(
     depth: usize,
     clock: Time,
     h: i64,
-) -> Vec<i64> {
+) -> [i64; 3] {
     match objective {
-        SearchObjective::FewestActions => vec![actions as i64 + h, clock, depth as i64],
-        SearchObjective::EarliestTime => vec![clock, actions as i64 + h, depth as i64],
+        SearchObjective::FewestActions => [actions as i64 + h, clock, depth as i64],
+        SearchObjective::EarliestTime => [clock, actions as i64 + h, depth as i64],
         SearchObjective::ShortestDepth | SearchObjective::DiverseWays { .. } => {
-            vec![depth as i64 + h, actions as i64, clock]
+            [depth as i64 + h, actions as i64, clock]
         }
     }
 }
@@ -41,7 +41,7 @@ pub(super) fn path(arena: &[ArenaNode], idx: usize) -> Vec<TransitionRecord> {
 
 /// Lexicographic priority key over i64 parts, insertion order last.
 pub(super) struct Key {
-    pub(super) parts: Vec<i64>,
+    pub(super) parts: [i64; 3],
     pub(super) seq: usize,
 }
 
@@ -63,7 +63,7 @@ impl Ord for Key {
 }
 
 pub(super) struct ArenaNode {
-    pub(super) state: State,
+    pub(super) state: Option<State>,
     pub(super) parent: Option<usize>,
     pub(super) record: Option<TransitionRecord>,
     pub(super) actions: usize,
@@ -74,4 +74,15 @@ pub(super) struct ArenaNode {
     pub(super) h: i64,
     pub(super) h_computed: bool,
     pub(super) order: i64,
+}
+
+impl ArenaNode {
+    #[inline]
+    pub(super) fn state(&self) -> &State {
+        if let Some(r) = &self.record {
+            &r.state_after
+        } else {
+            self.state.as_ref().expect("root state")
+        }
+    }
 }

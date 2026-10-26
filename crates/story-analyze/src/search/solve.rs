@@ -52,7 +52,7 @@ impl Analyzer {
             0
         };
         let mut arena: Vec<ArenaNode> = vec![ArenaNode {
-            state: self.start.clone(),
+            state: Some(self.start.clone()),
             parent: None,
             record: None,
             actions: 0,
@@ -75,7 +75,7 @@ impl Analyzer {
         let mut queue: std::collections::BinaryHeap<Reverse<Key>> =
             std::collections::BinaryHeap::new();
         queue.push(Reverse(Key {
-            parts: vec![0, 0, 0],
+            parts: [0, 0, 0],
             seq: 0,
         }));
         let mut expansions = 0usize;
@@ -241,7 +241,7 @@ impl Analyzer {
                 let h = i64::from(raw_h.min(4096));
                 let child_idx = arena.len();
                 arena.push(ArenaNode {
-                    state: state_after.clone(),
+                    state: None,
                     parent: Some(cur_parent),
                     record: Some(rec.clone()),
                     actions: cur_actions,
@@ -308,9 +308,9 @@ impl Analyzer {
             }
             if !arena[idx].h_computed {
                 let raw_h = {
-                    *self.engine.state_mut() = arena[idx].state.clone();
+                    *self.engine.state_mut() = arena[idx].state().clone();
                     self.causal.h_add_with_workspace(
-                        &arena[idx].state,
+                        arena[idx].state(),
                         &self.engine,
                         &goal_facts,
                         &mut h_ws,
@@ -318,7 +318,7 @@ impl Analyzer {
                 };
                 arena[idx].h_computed = true;
                 if query.prune && !self.causal.host_opaque() && raw_h >= u32::MAX / 4 {
-                    *self.engine.state_mut() = arena[idx].state.clone();
+                    *self.engine.state_mut() = arena[idx].state().clone();
                     let events = arena[idx]
                         .record
                         .as_ref()
@@ -341,7 +341,7 @@ impl Analyzer {
                         &query.objective,
                         arena[idx].actions,
                         arena[idx].depth,
-                        arena[idx].state.now,
+                        arena[idx].state().now,
                         h + order,
                     ),
                     seq: idx,
@@ -354,7 +354,7 @@ impl Analyzer {
                 break;
             }
             let node = &arena[idx];
-            let node_state = node.state.clone();
+            let node_state = node.state().clone();
 
             // Goal on pop: with the heuristic off this is the optimal
             // witness for the objective's cost vector (§5.5).
@@ -578,7 +578,7 @@ impl Analyzer {
                     };
                     let child = arena.len();
                     arena.push(ArenaNode {
-                        state: state_after.clone(),
+                        state: None,
                         parent: Some(idx),
                         record: Some(record),
                         actions,
@@ -620,8 +620,9 @@ impl Analyzer {
             let total_causal_landmarks = all_landmarks.len();
             let mut grounded_facts = BTreeSet::new();
             for node in &arena {
-                *self.engine.state_mut() = node.state.clone();
-                for f in self.causal.grounded_state_facts(&node.state, &self.engine) {
+                let st = node.state();
+                *self.engine.state_mut() = st.clone();
+                for f in self.causal.grounded_state_facts(st, &self.engine) {
                     if all_landmarks.contains(&f) {
                         grounded_facts.insert(f);
                     }
@@ -631,7 +632,7 @@ impl Analyzer {
             let mut aspect_ranges: BTreeMap<(CardId, story_content::ir::AspectKey), (i64, i64)> =
                 BTreeMap::new();
             for node in &arena {
-                for ent in node.state.entities.values() {
+                for ent in node.state().entities.values() {
                     for (k, val) in &ent.aspects {
                         let entry = aspect_ranges
                             .entry((ent.prototype.clone(), k.clone()))

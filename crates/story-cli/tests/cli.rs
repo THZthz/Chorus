@@ -1046,7 +1046,6 @@ fn play_filter_unrunnable_recipes_tiny() {
     let script = "\
 verbs
 verbs available
-verbs -a
 filter on
 verbs
 verbs all
@@ -1084,58 +1083,51 @@ quit
     assert!(!parts[2].contains("light"), "{out}");
     assert!(!parts[2].contains("seal"), "{out}");
 
-    // parts[3] is output of `verbs -a`
+    // parts[3] is output of `filter on`
     assert!(
-        parts[3].contains("gamble committable instances 3: flip"),
-        "{out}"
-    );
-    assert!(!parts[3].contains("knock"), "{out}");
-
-    // parts[4] is output of `filter on`
-    assert!(
-        parts[4].contains("recipe filtering is on (only runnable recipes shown)"),
+        parts[3].contains("recipe filtering is on (only runnable recipes shown)"),
         "{out}"
     );
 
-    // parts[5] is output of `verbs` with filter on
+    // parts[4] is output of `verbs` with filter on
+    assert!(
+        parts[4].contains("gamble committable instances 3: flip"),
+        "{out}"
+    );
+    assert!(!parts[4].contains("knock"), "{out}");
+    assert!(!parts[4].contains("seal"), "{out}");
+
+    // parts[5] is output of `verbs all` (overrides filter)
     assert!(
         parts[5].contains("gamble committable instances 3: flip"),
         "{out}"
     );
-    assert!(!parts[5].contains("knock"), "{out}");
-    assert!(!parts[5].contains("seal"), "{out}");
-
-    // parts[6] is output of `verbs all` (overrides filter)
     assert!(
-        parts[6].contains("gamble committable instances 3: flip"),
+        parts[5].contains("tap committable instances 3: knock"),
         "{out}"
     );
     assert!(
-        parts[6].contains("tap committable instances 3: knock"),
-        "{out}"
-    );
-    assert!(
-        parts[6].contains("seal committable instances 1: light"),
+        parts[5].contains("seal committable instances 1: light"),
         "{out}"
     );
 
-    // parts[7] is output of `filter off`
+    // parts[6] is output of `filter off`
     assert!(
-        parts[7].contains("recipe filtering is off (all recipes shown)"),
+        parts[6].contains("recipe filtering is off (all recipes shown)"),
         "{out}"
     );
 
-    // parts[8] is output of `verbs` with filter off
+    // parts[7] is output of `verbs` with filter off
     assert!(
-        parts[8].contains("gamble committable instances 3: flip"),
+        parts[7].contains("gamble committable instances 3: flip"),
         "{out}"
     );
     assert!(
-        parts[8].contains("tap committable instances 3: knock"),
+        parts[7].contains("tap committable instances 3: knock"),
         "{out}"
     );
     assert!(
-        parts[8].contains("seal committable instances 1: light"),
+        parts[7].contains("seal committable instances 1: light"),
         "{out}"
     );
 }

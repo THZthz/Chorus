@@ -60,8 +60,8 @@ INTERACTIVE COMMANDS:
     bind <sit> <slot> <card>  bind a card to an open situation slot
     advance [n]               pass n turns (default 1) to progress situations
     undo                      revert the last action or advance
-    mode [verbose|normal]     toggle detailed output mode (alias: verbose)
-    filter [on|off]           toggle filtering of unrunnable recipes (alias: available)
+    mode [verbose|normal]     toggle detailed output mode
+    filter [on|off]           toggle filtering of unrunnable recipes
     give <card> [n]           mint copies of a card onto the table
     trace <file>              export recorded play trace to JSON
     quit, q                   exit the session
@@ -84,7 +84,6 @@ fn main() {
                 || other == "--verbose"
                 || other == "-a"
                 || other == "--available"
-                || other == "--runnable"
             {
                 if args
                     .iter()
@@ -120,14 +119,14 @@ fn play(args: &[String]) {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--help" | "-h" | "help" => {
+            "--help" | "-h" => {
                 println!("{PLAY_USAGE}");
                 std::process::exit(0);
             }
             "--verbose" | "-v" => {
                 verbose = true;
             }
-            "--available" | "-a" | "--runnable" => {
+            "--available" | "-a" => {
                 filter_runnable = true;
             }
             "--seed" => {
@@ -228,33 +227,20 @@ fn play(args: &[String]) {
         match words.as_slice() {
             [] => continue,
             ["quit" | "q"] => break,
-            ["help" | "h"] => print_help(),
-            ["help" | "h", cmd] => print_help_cmd(cmd),
-            ["mode"] => println!("  mode is {}", if verbose { "verbose" } else { "normal" }),
-            ["mode", "verbose"] => {
-                verbose = true;
-                println!("  mode set to verbose");
-            }
-            ["mode", "normal"] => {
-                verbose = false;
-                println!("  mode set to normal");
-            }
-            ["verbose"] => {
+            ["help"] => print_help(),
+            ["help", cmd] => print_help_cmd(cmd),
+            ["mode"] => {
                 verbose = !verbose;
                 println!(
                     "  mode set to {}",
                     if verbose { "verbose" } else { "normal" }
                 );
             }
-            ["verbose", "on"] => {
+            ["mode", "verbose"] => {
                 verbose = true;
                 println!("  mode set to verbose");
             }
-            ["verbose", "off"] => {
-                verbose = false;
-                println!("  mode set to normal");
-            }
-            ["normal"] => {
+            ["mode", "normal"] => {
                 verbose = false;
                 println!("  mode set to normal");
             }
@@ -269,20 +255,13 @@ fn play(args: &[String]) {
                     }
                 );
             }
-            ["filter", "on"] | ["available", "on"] => {
+            ["filter", "on"] => {
                 filter_runnable = true;
                 println!("  recipe filtering is on (only runnable recipes shown)");
             }
-            ["filter", "off"] | ["available", "off"] => {
+            ["filter", "off"] => {
                 filter_runnable = false;
                 println!("  recipe filtering is off (all recipes shown)");
-            }
-            ["available"] => {
-                if verbose {
-                    print_verbs_verbose(&engine, true);
-                } else {
-                    print_verbs(&engine, true);
-                }
             }
             ["verbs"] => {
                 if verbose {
@@ -291,7 +270,7 @@ fn play(args: &[String]) {
                     print_verbs(&engine, filter_runnable);
                 }
             }
-            ["verbs", "available" | "runnable" | "-a" | "--available" | "-r" | "--runnable"] => {
+            ["verbs", "available"] => {
                 if verbose {
                     print_verbs_verbose(&engine, true);
                 } else {
@@ -358,7 +337,7 @@ fn play(args: &[String]) {
                 },
                 None => println!("  nothing to undo"),
             },
-            ["trace" | "export-trace", out_path] => {
+            ["trace", out_path] => {
                 let mut trace = story_analyze::PlayTrace::new(seed, None);
                 trace.game = engine.content().game.as_ref().map(|g| g.title.clone());
                 trace.steps = trace_steps.clone();
@@ -397,8 +376,8 @@ fn print_help() {
          bind <sit> <slot> <card>  bind a card to an open situation slot\n  \
          advance [n]               pass n turns (default 1) to progress situations\n  \
          undo                      revert the last action or advance\n  \
-         mode [verbose|normal]     toggle detailed output mode (alias: verbose)\n  \
-         filter [on|off]           toggle filtering of unrunnable recipes (alias: available)\n  \
+         mode [verbose|normal]     toggle detailed output mode\n  \
+         filter [on|off]           toggle filtering of unrunnable recipes\n  \
          give <card> [n]           mint copies of a card onto the table\n  \
          trace <file>              export recorded play trace to JSON\n  \
          quit, q                   exit the session\n\n\
@@ -417,10 +396,10 @@ fn print_help_cmd(cmd: &str) {
             "state\n  Display the current game clock, legacy variables, cards on the table, and active situations.\n  In verbose mode, also shows remaining situation countdowns and open slots."
         ),
         "verbs" => println!(
-            "verbs [available|all]\n  List declared verbs and recipes.\n  Use `verbs available` (or `verbs -a`) to filter out recipes that cannot currently be run.\n  Use `verbs all` to show all declared recipes.\n  In verbose mode, also shows slot criteria and guards."
+            "verbs [available|all]\n  List declared verbs and recipes.\n  Use `verbs available` to filter out recipes that cannot currently be run.\n  Use `verbs all` to show all declared recipes.\n  In verbose mode, also shows slot criteria and guards."
         ),
-        "filter" | "available" => println!(
-            "filter [on|off]\n  Toggle filtering of unrunnable recipes for the `verbs` command.\n  When enabled, recipes whose when/guard/slot requirements cannot be met do not appear.\n  Aliases: filter on, filter off, available."
+        "filter" => println!(
+            "filter [on|off]\n  Toggle filtering of unrunnable recipes for the `verbs` command.\n  When enabled, recipes whose when/guard/slot requirements cannot be met do not appear."
         ),
         "commit" => println!(
             "commit <verb> [slot=card ...]\n  Start an action with optional slot bindings.\n  Cards can be bound by name (slot=coal) or by entity ID (slot=#4).\n  Example: commit tend fuel=coal#4"
@@ -434,13 +413,13 @@ fn print_help_cmd(cmd: &str) {
         "undo" => println!(
             "undo\n  Revert the most recent state change (commit, bind, advance, or give)."
         ),
-        "mode" | "verbose" => println!(
-            "mode [verbose|normal]\n  Toggle or set output detail level.\n  Verbose mode displays slot criteria, situation countdowns, and detailed action hints.\n  Aliases: verbose, normal, verbose on, verbose off."
+        "mode" => println!(
+            "mode [verbose|normal]\n  Toggle or set output detail level.\n  Verbose mode displays slot criteria, situation countdowns, and detailed action hints."
         ),
         "give" => println!(
             "give <card> [n]\n  Mint n copies of a declared card onto the table (development utility).\n  Example: give coal 2"
         ),
-        "trace" | "export-trace" => println!(
+        "trace" => println!(
             "trace <file.json>\n  Export the sequence of player actions taken during this session to a JSON file."
         ),
         "quit" | "q" => println!(

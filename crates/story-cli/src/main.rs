@@ -500,7 +500,7 @@ fn is_verb_full(engine: &Engine, verb: &story_content::ir::VerbDecl) -> bool {
     }
 }
 
-fn is_recipe_runnable(
+fn can_recipe_commit(
     engine: &Engine,
     verb: &story_content::ir::VerbDecl,
     recipe: &story_content::ir::RecipeDecl,
@@ -523,12 +523,180 @@ fn is_recipe_runnable(
             return false;
         }
     }
-    if recipe.chain_only {
+    if recipe.chain_only || !recipe.craftable {
         return false;
     }
+
+    if recipe.slots.is_empty() {
+        let action = CommitAction {
+            verb: verb.id.clone(),
+            bindings: Vec::new(),
+        };
+        return engine.preview_commit(&action).as_ref() == Ok(&recipe.id);
+    }
+
+    let mut req_slots: Vec<(&SlotName, usize, Vec<EntityId>)> = Vec::new();
+    let mut opt_slots: Vec<(&SlotName, Vec<EntityId>)> = Vec::new();
+    let mut total_req_min = 0;
+    let mut all_req_cands = BTreeSet::new();
+
+    for s in &recipe.slots {
+        let cands = engine.slot_candidates(recipe.id.clone(), s.name.clone());
+        if s.min > 0 {
+            let min = s.min as usize;
+            if cands.len() < min {
+                return false;
+            }
+            total_req_min += min;
+            all_req_cands.extend(cands.iter().copied());
+            req_slots.push((&s.name, min, cands));
+        } else if !cands.is_empty() {
+            opt_slots.push((&s.name, cands));
+        }
+    }
+
+    if all_req_cands.len() < total_req_min {
+        return false;
+    }
+
+    let mut used = BTreeSet::new();
+    let mut current_bindings = Vec::new();
+
+    search_required_bindings(
+        engine,
+        &verb.id,
+        &recipe.id,
+        &req_slots,
+        0,
+        &opt_slots,
+        &mut used,
+        &mut current_bindings,
+    )
+}
+
+fn search_required_bindings(
+    engine: &Engine,
+    verb_id: &VerbId,
+    recipe_id: &story_core::RecipeId,
+    req_slots: &[(&SlotName, usize, Vec<EntityId>)],
+    slot_idx: usize,
+    opt_slots: &[(&SlotName, Vec<EntityId>)],
+    used: &mut BTreeSet<EntityId>,
+    current_bindings: &mut Vec<(SlotName, EntityId)>,
+) -> bool {
+    if slot_idx == req_slots.len() {
+        let action = CommitAction {
+            verb: verb_id.clone(),
+            bindings: current_bindings.clone(),
+        };
+        if engine.preview_commit(&action).as_ref() == Ok(recipe_id) {
+            return true;
+        }
+
+        for (opt_name, cands) in opt_slots {
+            for &cand in cands {
+                if used.contains(&cand) {
+                    continue;
+                }
+                current_bindings.push(((*opt_name).clone(), cand));
+                let opt_action = CommitAction {
+                    verb: verb_id.clone(),
+                    bindings: current_bindings.clone(),
+                };
+                let matches = engine.preview_commit(&opt_action).as_ref() == Ok(recipe_id);
+                current_bindings.pop();
+                if matches {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    let (slot_name, min, cands) = &req_slots[slot_idx];
+    if *min == 1 {
+        for &cand in cands {
+            if used.contains(&cand) {
+                continue;
+            }
+            used.insert(cand);
+            current_bindings.push(((*slot_name).clone(), cand));
+            if search_required_bindings(
+                engine,
+                verb_id,
+                recipe_id,
+                req_slots,
+                slot_idx + 1,
+                opt_slots,
+                used,
+                current_bindings,
+            ) {
+                return true;
+            }
+            current_bindings.pop();
+            used.remove(&cand);
+        }
+    } else {
+        let avail: Vec<EntityId> = cands.iter().copied().filter(|e| !used.contains(e)).collect();
+        if avail.len() < *min {
+            return false;
+        }
+        let mark = current_bindings.len();
+        for &e in &avail[..*min] {
+            used.insert(e);
+            current_bindings.push(((*slot_name).clone(), e));
+        }
+        let found = search_required_bindings(
+            engine,
+            verb_id,
+            recipe_id,
+            req_slots,
+            slot_idx + 1,
+            opt_slots,
+            used,
+            current_bindings,
+        );
+        for &e in &avail[..*min] {
+            used.remove(&e);
+        }
+        current_bindings.truncate(mark);
+        if found {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn is_recipe_runnable(
+    engine: &Engine,
+    verb: &story_content::ir::VerbDecl,
+    recipe: &story_content::ir::RecipeDecl,
+) -> bool {
     match verb.mode {
         VerbMode::Uncommittable => false,
         VerbMode::Autonomous => {
+            if engine.state().ended.is_some() {
+                return false;
+            }
+            if is_verb_full(engine, verb) {
+                return false;
+            }
+            if recipe.chain_only {
+                return false;
+            }
+            if let Some(m) = recipe.max {
+                if engine
+                    .state()
+                    .recipe_runs
+                    .get(&recipe.id)
+                    .copied()
+                    .unwrap_or(0)
+                    >= m
+                {
+                    return false;
+                }
+            }
             if let Some(w) = &recipe.when {
                 if !engine.eval_cond(w) {
                     return false;
@@ -549,37 +717,7 @@ fn is_recipe_runnable(
             }
             true
         }
-        VerbMode::Committable => {
-            if !recipe.craftable {
-                return false;
-            }
-            if let Some(w) = &recipe.when {
-                if !engine.eval_cond(w) {
-                    return false;
-                }
-            }
-            for g in &recipe.guards {
-                if engine.eval_cond(&g.when) {
-                    return false;
-                }
-            }
-            let mut all_cands = BTreeSet::new();
-            let mut total_min = 0;
-            for s in &recipe.slots {
-                if s.min > 0 {
-                    total_min += s.min as usize;
-                    let cands = engine.slot_candidates(recipe.id.clone(), s.name.clone());
-                    if cands.len() < s.min as usize {
-                        return false;
-                    }
-                    all_cands.extend(cands);
-                }
-            }
-            if all_cands.len() < total_min {
-                return false;
-            }
-            true
-        }
+        VerbMode::Committable => can_recipe_commit(engine, verb, recipe),
     }
 }
 

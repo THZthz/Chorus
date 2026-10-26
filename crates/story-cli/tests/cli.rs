@@ -1152,3 +1152,17 @@ fn play_available_flag_and_emberwatch_filtering() {
     assert!(!out2.contains("salvage"), "{out2}");
     assert!(!out2.contains("distress"), "{out2}");
 }
+
+#[test]
+fn play_filter_cs_sw_if_present() {
+    let cs_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/cs.sw");
+    if !std::path::Path::new(cs_path).is_file() {
+        return;
+    }
+    let script = "filter on\nverbs\nquit\n";
+    let (code, out) = play_with_stdin(&["play", cs_path], script);
+    assert_eq!(code, 0);
+    assert!(out.contains("workintrojob"), "{out}");
+    assert!(out.contains("workhealth_noinjurychance"), "{out}");
+}
+

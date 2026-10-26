@@ -10,11 +10,20 @@ use std::process::{Command, Stdio};
 const BIN: &str = env!("CARGO_BIN_EXE_story-cli");
 const TINY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/tiny.sw");
 const EMBER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/emberwatch.sw");
-const HORIZON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/story-cli/tests/fixtures/horizon.sw");
-const HORIZON_BAD: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/story-cli/tests/fixtures/horizon-bad.sw");
+const HORIZON: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../crates/story-cli/tests/fixtures/horizon.sw"
+);
+const HORIZON_BAD: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../crates/story-cli/tests/fixtures/horizon-bad.sw"
+);
 
 fn run(args: &[&str]) -> (i32, String, String) {
-    let out = Command::new(BIN).args(args).output().expect("run story-cli");
+    let out = Command::new(BIN)
+        .args(args)
+        .output()
+        .expect("run story-cli");
     (
         out.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -61,7 +70,10 @@ fn play_drives_commit_state_and_undo_over_piped_stdin() {
     let (code, out) = play_with_stdin(&["play", TINY], SCRIPT);
     assert_eq!(code, 0);
     // The verb listing with recipe, priority, and duration.
-    assert!(out.contains("tap committable instances 3: knock (priority 100, 10m)"), "{out}");
+    assert!(
+        out.contains("tap committable instances 3: knock (priority 100, 10m)"),
+        "{out}"
+    );
     // The commit settled its roll through the deterministic kernel path.
     assert!(out.contains("Nothing stirs (1)."), "{out}");
     assert!(out.contains("[sit 1] gamble.flip completed"), "{out}");
@@ -89,7 +101,10 @@ fn usage_and_exit_codes() {
     let (code, out, err) = run(&[]);
     assert_eq!(code, 2);
     assert!(out.is_empty());
-    assert!(err.contains("story-cli analyze <file.sw> [options]"), "{err}");
+    assert!(
+        err.contains("story-cli analyze <file.sw> [options]"),
+        "{err}"
+    );
 
     // An unknown first token that names no file: usage, exit 2.
     let (code, _, err) = run(&["bogus"]);
@@ -104,23 +119,26 @@ fn usage_and_exit_codes() {
 
     // analyze usage errors: exit 2, a message on stderr.
     let cases: &[&[&str]] = &[
-        &["analyze"],                                             // no file
-        &["analyze", TINY],                                       // no selector
-        &["analyze", TINY, "--reach", "ending:lit", "--bogus"],   // unknown flag
-        &["analyze", TINY, "--reach"],                            // missing value
-        &["analyze", TINY, "--reach", "bogus:lit"],               // bad goal form
-        &["analyze", TINY, "--reach", "ending:"],                 // empty ending id
-        &["analyze", TINY, "--pareto", "min(clock)"],             // pareto without a goal
-        &["analyze", TINY, "--mdp", "--rng", "adversarial"],      // mdp without any goal
-        &["analyze", TINY, "--audit", "--max-states", "0"],       // nonpositive bound
-        &["analyze", TINY, "--audit", "--max-time", "0"],         // nonpositive horizon
-        &["analyze", TINY, "--audit", "--rng", "wild"],           // bad rng mode
-        &["analyze", TINY, "--audit", "a.sw", "b.sw"],            // two files
+        &["analyze"],                                           // no file
+        &["analyze", TINY],                                     // no selector
+        &["analyze", TINY, "--reach", "ending:lit", "--bogus"], // unknown flag
+        &["analyze", TINY, "--reach"],                          // missing value
+        &["analyze", TINY, "--reach", "bogus:lit"],             // bad goal form
+        &["analyze", TINY, "--reach", "ending:"],               // empty ending id
+        &["analyze", TINY, "--pareto", "min(clock)"],           // pareto without a goal
+        &["analyze", TINY, "--mdp", "--rng", "adversarial"],    // mdp without any goal
+        &["analyze", TINY, "--audit", "--max-states", "0"],     // nonpositive bound
+        &["analyze", TINY, "--audit", "--max-time", "0"],       // nonpositive horizon
+        &["analyze", TINY, "--audit", "--rng", "wild"],         // bad rng mode
+        &["analyze", TINY, "--audit", "a.sw", "b.sw"],          // two files
     ];
     for case in cases {
         let (code, _, err) = run(case);
         assert_eq!(code, 2, "expected usage exit 2 for {case:?}");
-        assert!(err.contains("story-cli analyze:"), "missing error for {case:?}: {err}");
+        assert!(
+            err.contains("story-cli analyze:"),
+            "missing error for {case:?}: {err}"
+        );
     }
 }
 
@@ -134,7 +152,10 @@ fn analyze_help_prints_the_subcommand_options_and_exits_zero() {
         let (code, out, err) = run(&["analyze", flag]);
         assert_eq!(code, 0, "{flag}");
         assert!(err.is_empty(), "{flag}: {err}");
-        assert!(out.contains("story-cli analyze <file.sw> [options]"), "{flag}: {out}");
+        assert!(
+            out.contains("story-cli analyze <file.sw> [options]"),
+            "{flag}: {out}"
+        );
         assert!(out.contains("--reach <goal>"), "{flag}: {out}");
         assert!(out.contains("--mdp [<goal>]"), "{flag}: {out}");
         assert!(out.contains("--max-states <n>"), "{flag}: {out}");
@@ -152,7 +173,10 @@ fn an_undeclared_ending_id_is_a_usage_error_naming_the_declared_endings() {
     assert_eq!(code, 2);
     assert!(out.is_empty());
     assert!(err.contains("unknown ending `nope`"), "{err}");
-    assert!(err.contains("declared endings: despair, gray_dawn, survived"), "{err}");
+    assert!(
+        err.contains("declared endings: despair, gray_dawn, survived"),
+        "{err}"
+    );
 
     // The --mdp goal selector validates against the same declarations.
     let (code, _, err) = run(&["analyze", EMBER, "--mdp", "ending:lit"]);
@@ -241,7 +265,14 @@ fn an_unreachable_goal_exits_zero_and_answers_honestly() {
     );
     assert!(out.contains("expansions:"), "{out}");
     // A card goal that holds at boot resolves with a zero-step witness.
-    let (code, out, _) = run(&["analyze", TINY, "--reach", "card:stone", "--max-states", "100"]);
+    let (code, out, _) = run(&[
+        "analyze",
+        TINY,
+        "--reach",
+        "card:stone",
+        "--max-states",
+        "100",
+    ]);
     assert_eq!(code, 0);
     assert!(out.contains("== reach: card \"stone\" =="), "{out}");
 }
@@ -289,9 +320,15 @@ fn classify_reports_winnability_on_tiny() {
     assert_eq!(code, 0);
     assert!(out.contains("== classify =="), "{out}");
     assert!(out.contains("winning endings: \"lit\""), "{out}");
-    assert!(out.contains("winnable states: 5 (the start is winnable)"), "{out}");
+    assert!(
+        out.contains("winnable states: 5 (the start is winnable)"),
+        "{out}"
+    );
     assert!(out.contains("softlocked live states: 0"), "{out}");
-    assert!(out.contains("explored: 5 states, 4 edges (within bounds)"), "{out}");
+    assert!(
+        out.contains("explored: 5 states, 4 edges (within bounds)"),
+        "{out}"
+    );
 }
 
 #[test]
@@ -334,7 +371,10 @@ fn mdp_reports_optimal_play_values_on_tiny() {
     assert!(out.contains("V_max     = 7/8"), "{out}");
     assert!(out.contains("V_minimax"), "{out}");
     assert!(out.contains("V_unif"), "{out}");
-    assert!(out.contains("expected actions under the optimal policy:"), "{out}");
+    assert!(
+        out.contains("expected actions under the optimal policy:"),
+        "{out}"
+    );
     assert!(out.contains("(complete)"), "{out}");
 }
 
@@ -382,14 +422,18 @@ fn pareto_reports_the_frontier_and_verified_cuts_on_tiny() {
     ]);
     assert_eq!(code, 0);
     assert!(
-        out.contains(
-            "== pareto: goal ending \"lit\", objectives max(legacy.luck), min(clock) =="
-        ),
+        out.contains("== pareto: goal ending \"lit\", objectives max(legacy.luck), min(clock) =="),
         "{out}"
     );
     assert!(out.contains("frontier: 1 point(s)"), "{out}");
-    assert!(out.contains("mandatory recipes: gamble.flip, seal.light"), "{out}");
-    assert!(out.contains("verified: no alternative path within the bounds"), "{out}");
+    assert!(
+        out.contains("mandatory recipes: gamble.flip, seal.light"),
+        "{out}"
+    );
+    assert!(
+        out.contains("verified: no alternative path within the bounds"),
+        "{out}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -496,8 +540,14 @@ fn audit_reports_the_known_emberwatch_findings() {
     // Three semantic shadowing pairs: the bell's event rules, the log's
     // continue target, and feed ahead of polish.
     assert!(out.contains("shadowing: 3 finding(s)"), "{out}");
-    assert!(out.contains("verb log: \"write\" shadows \"close\""), "{out}");
-    assert!(out.contains("verb tend: \"feed\" shadows \"polish\""), "{out}");
+    assert!(
+        out.contains("verb log: \"write\" shadows \"close\""),
+        "{out}"
+    );
+    assert!(
+        out.contains("verb tend: \"feed\" shadows \"polish\""),
+        "{out}"
+    );
     // The authored-dead recipes: the handbook (dawns_seen is only written
     // past the last dawn) and routine (polish wins the equal-priority scan).
     assert!(out.contains("recipe tend.handbook"), "{out}");
@@ -569,12 +619,7 @@ fn the_turn_override_reaches_the_boot_header() {
 
 #[test]
 fn analyze_slice_verb_reports_interface_boundaries() {
-    let (code, out, _) = run(&[
-        "analyze",
-        EMBER,
-        "--slice",
-        "verb:tend",
-    ]);
+    let (code, out, _) = run(&["analyze", EMBER, "--slice", "verb:tend"]);
     assert_eq!(code, 0);
     assert!(out.contains("== slice: verb \"tend\" =="), "{out}");
     assert!(out.contains("guarantees (outputs to outside):"), "{out}");
@@ -606,12 +651,7 @@ fn analyze_slice_with_assume_and_reach() {
 
 #[test]
 fn analyze_slice_arc_reports_internal_and_output_facts() {
-    let (code, out, _) = run(&[
-        "analyze",
-        TINY,
-        "--slice",
-        "arc:gamble,seal",
-    ]);
+    let (code, out, _) = run(&["analyze", TINY, "--slice", "arc:gamble,seal"]);
     assert_eq!(code, 0);
     assert!(out.contains("== slice: arc [gamble, seal] =="), "{out}");
     assert!(out.contains("internal:"), "{out}");
@@ -676,14 +716,12 @@ fn analyze_slice_with_comma_condition_assumption() {
 
 #[test]
 fn analyze_slice_unknown_verb_fails() {
-    let (code, _, err) = run(&[
-        "analyze",
-        EMBER,
-        "--slice",
-        "verb:nonexistent",
-    ]);
+    let (code, _, err) = run(&["analyze", EMBER, "--slice", "verb:nonexistent"]);
     assert_eq!(code, 2);
-    assert!(err.contains("unknown verb `nonexistent` in --slice"), "{err}");
+    assert!(
+        err.contains("unknown verb `nonexistent` in --slice"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -697,7 +735,10 @@ fn analyze_assume_unknown_card_fails() {
         "card:nonexistent",
     ]);
     assert_eq!(code, 2);
-    assert!(err.contains("unknown card `nonexistent` in --assume"), "{err}");
+    assert!(
+        err.contains("unknown card `nonexistent` in --assume"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -783,7 +824,11 @@ fn time_budget_stops_analysis_and_continue_resumes() {
     // Clean up residual checkpoint in temp dir
     if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
         for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().starts_with("story_resume_") {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("story_resume_")
+            {
                 let _ = std::fs::remove_file(entry.path());
             }
         }
@@ -792,26 +837,17 @@ fn time_budget_stops_analysis_and_continue_resumes() {
 
 #[test]
 fn time_budget_caches_cold_boot_and_causal_graph() {
-    let (code, out, _) = run(&[
-        "analyze",
-        TINY,
-        "--reach",
-        "ending:lit",
-        "--profile",
-    ]);
+    let (code, out, _) = run(&["analyze", TINY, "--reach", "ending:lit", "--profile"]);
     assert_eq!(code, 0);
     assert!(out.contains("outcome: REACHABLE"), "{out}");
 
     // Subsequent run skips causal graph construction
-    let (code, _, err) = run(&[
-        "analyze",
-        TINY,
-        "--reach",
-        "ending:lit",
-        "--profile",
-    ]);
+    let (code, _, err) = run(&["analyze", TINY, "--reach", "ending:lit", "--profile"]);
     assert_eq!(code, 0);
-    assert!(!err.contains("causal_build"), "cached run should skip causal_build");
+    assert!(
+        !err.contains("causal_build"),
+        "cached run should skip causal_build"
+    );
 }
 
 #[test]
@@ -830,17 +866,17 @@ fn time_budget_multiple_flags_and_zero_budget() {
     ]);
     assert_eq!(code, 0);
     assert!(out.contains("time-budget 0ms"), "{out}");
-    assert!(out.contains("outcome: INCONCLUSIVE — time budget depleted"), "{out}");
-    assert!(out.contains("expansions: 0 (stopped at time budget)"), "{out}");
+    assert!(
+        out.contains("outcome: INCONCLUSIVE — time budget depleted"),
+        "{out}"
+    );
+    assert!(
+        out.contains("expansions: 0 (stopped at time budget)"),
+        "{out}"
+    );
 
     // Clean up the checkpoint created by this test
-    let (code, out, _) = run(&[
-        "analyze",
-        TINY,
-        "--reach",
-        "ending:lit",
-        "--continue",
-    ]);
+    let (code, out, _) = run(&["analyze", TINY, "--reach", "ending:lit", "--continue"]);
     assert_eq!(code, 0);
     assert!(out.contains("outcome: REACHABLE"), "{out}");
 }
@@ -874,13 +910,7 @@ fn time_budget_resumes_multiple_times_and_cleans_up() {
     assert!(out.contains("outcome: INCONCLUSIVE"), "{out}");
 
     // 3rd run: completes to REACHABLE and removes resume checkpoint
-    let (code, out, _) = run(&[
-        "analyze",
-        TINY,
-        "--reach",
-        "ending:lit",
-        "--continue",
-    ]);
+    let (code, out, _) = run(&["analyze", TINY, "--reach", "ending:lit", "--continue"]);
     assert_eq!(code, 0);
     assert!(out.contains("outcome: REACHABLE"), "{out}");
 }
@@ -894,7 +924,11 @@ fn cold_boot_recovers_from_corrupted_and_empty_cache() {
     // Corrupt all cache files in temp dir matching story_cache_
     if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
         for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().starts_with("story_cache_") {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("story_cache_")
+            {
                 let _ = std::fs::write(entry.path(), b"{\"corrupt\": [");
             }
         }
@@ -908,7 +942,11 @@ fn cold_boot_recovers_from_corrupted_and_empty_cache() {
     // Empty the cache files
     if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
         for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().starts_with("story_cache_") {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("story_cache_")
+            {
                 let _ = std::fs::write(entry.path(), b"");
             }
         }
@@ -930,8 +968,12 @@ fn play_help_prints_subcommand_options_and_exits_zero() {
         let (code, out, err) = run(&["play", flag]);
         assert_eq!(code, 0, "{flag}");
         assert!(err.is_empty(), "{flag}: {err}");
-        assert!(out.contains("story-cli play <file.sw> [options]"), "{flag}: {out}");
+        assert!(
+            out.contains("story-cli play <file.sw> [options]"),
+            "{flag}: {out}"
+        );
         assert!(out.contains("--verbose, -v"), "{flag}: {out}");
+        assert!(out.contains("--available, -a"), "{flag}: {out}");
         assert!(out.contains("INTERACTIVE COMMANDS:"), "{flag}: {out}");
         assert!(out.contains("GAME LOOP:"), "{flag}: {out}");
     }
@@ -975,7 +1017,10 @@ fn play_in_repl_mode_switching_and_verbose_verbs() {
     assert!(out.contains("mode set to verbose"), "{out}");
     // Verbose verbs display slot criteria
     assert!(out.contains("fuel: 1..2 consuming (aspect:coal)"), "{out}");
-    assert!(out.contains("morsel: 1..2 consuming (aspect:restore)"), "{out}");
+    assert!(
+        out.contains("morsel: 1..2 consuming (aspect:restore)"),
+        "{out}"
+    );
     assert!(out.contains("mode set to normal"), "{out}");
 }
 
@@ -984,11 +1029,134 @@ fn play_verbose_action_feedback() {
     let script = "commit sup morsel=bread#10\nadvance\nquit\n";
     let (code, out) = play_with_stdin(&["play", EMBER, "--verbose"], script);
     assert_eq!(code, 0);
-    assert!(out.contains("[sit 3] sup.eat started (10m, ends at 10m)"), "{out}");
+    assert!(
+        out.contains("[sit 3] sup.eat started (10m, ends at 10m)"),
+        "{out}"
+    );
     assert!(out.contains("morsel <- entity 10"), "{out}");
-    assert!(out.contains("advanced 1 turn(s) (10m) -> clock is now 10m"), "{out}");
+    assert!(
+        out.contains("advanced 1 turn(s) (10m) -> clock is now 10m"),
+        "{out}"
+    );
     assert!(out.contains("sup.eat completed"), "{out}");
 }
 
+#[test]
+fn play_filter_unrunnable_recipes_tiny() {
+    let script = "\
+verbs
+verbs available
+verbs -a
+filter on
+verbs
+verbs all
+filter off
+verbs
+quit
+";
+    let (code, out) = play_with_stdin(&["play", TINY], script);
+    assert_eq!(code, 0);
 
+    let parts: Vec<&str> = out.split('>').collect();
+    // parts[0] is startup banner
+    // parts[1] is output of `verbs` (unfiltered)
+    assert!(
+        parts[1].contains("gamble committable instances 3: flip"),
+        "{out}"
+    );
+    assert!(
+        parts[1].contains("tap committable instances 3: knock"),
+        "{out}"
+    );
+    assert!(
+        parts[1].contains("seal committable instances 1: light"),
+        "{out}"
+    );
 
+    // parts[2] is output of `verbs available`
+    // tap.knock (requires 99 matter) and seal.light (chain-only) must not appear
+    assert!(
+        parts[2].contains("gamble committable instances 3: flip"),
+        "{out}"
+    );
+    assert!(!parts[2].contains("knock"), "{out}");
+    assert!(!parts[2].contains("tap"), "{out}");
+    assert!(!parts[2].contains("light"), "{out}");
+    assert!(!parts[2].contains("seal"), "{out}");
+
+    // parts[3] is output of `verbs -a`
+    assert!(
+        parts[3].contains("gamble committable instances 3: flip"),
+        "{out}"
+    );
+    assert!(!parts[3].contains("knock"), "{out}");
+
+    // parts[4] is output of `filter on`
+    assert!(
+        parts[4].contains("recipe filtering is on (only runnable recipes shown)"),
+        "{out}"
+    );
+
+    // parts[5] is output of `verbs` with filter on
+    assert!(
+        parts[5].contains("gamble committable instances 3: flip"),
+        "{out}"
+    );
+    assert!(!parts[5].contains("knock"), "{out}");
+    assert!(!parts[5].contains("seal"), "{out}");
+
+    // parts[6] is output of `verbs all` (overrides filter)
+    assert!(
+        parts[6].contains("gamble committable instances 3: flip"),
+        "{out}"
+    );
+    assert!(
+        parts[6].contains("tap committable instances 3: knock"),
+        "{out}"
+    );
+    assert!(
+        parts[6].contains("seal committable instances 1: light"),
+        "{out}"
+    );
+
+    // parts[7] is output of `filter off`
+    assert!(
+        parts[7].contains("recipe filtering is off (all recipes shown)"),
+        "{out}"
+    );
+
+    // parts[8] is output of `verbs` with filter off
+    assert!(
+        parts[8].contains("gamble committable instances 3: flip"),
+        "{out}"
+    );
+    assert!(
+        parts[8].contains("tap committable instances 3: knock"),
+        "{out}"
+    );
+    assert!(
+        parts[8].contains("seal committable instances 1: light"),
+        "{out}"
+    );
+}
+
+#[test]
+fn play_available_flag_and_emberwatch_filtering() {
+    // When booted with --available, salvage (needs debris) and distress (needs 3 peril) are filtered out
+    let script = "verbs\nquit\n";
+    let (code, out) = play_with_stdin(&["play", EMBER, "--available"], script);
+    assert_eq!(code, 0);
+
+    assert!(out.contains("tend committable instances 1:"), "{out}");
+    assert!(out.contains("sup committable instances 1: eat"), "{out}");
+    assert!(!out.contains("salvage"), "{out}");
+    assert!(!out.contains("distress"), "{out}");
+
+    // Also works with bare alias and -a
+    let (code2, out2) = play_with_stdin(&[EMBER, "-a"], script);
+    assert_eq!(code2, 0);
+    assert!(out2.contains("tend committable instances 1:"), "{out2}");
+    assert!(out2.contains("sup committable instances 1: eat"), "{out2}");
+    assert!(!out2.contains("salvage"), "{out2}");
+    assert!(!out2.contains("distress"), "{out2}");
+}

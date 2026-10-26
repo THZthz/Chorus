@@ -7,7 +7,7 @@
 mod analyze;
 mod profile;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use story_content::ir::{CmpOp, QueryTerm, RecipeDecl, SlotDecl, VerbMode};
@@ -23,11 +23,12 @@ USAGE:
     story-cli <file.sw> [options]             alias for play
 
 PLAY — the interactive terminal driver; commands at the `>` prompt:
-    verbs | commit <verb> [slot=card ...] | bind <sit> <slot> <card> |
-    give <card> [n] | advance [n] | trace <file> | state | undo | mode | quit
-    --verbose, -v print detailed state, slot criteria, and action feedback
-    --seed N      host seed when the content declares `seed host` (default 1)
-    --record <f>  record forward play trace to JSON file on exit
+    verbs [available|all] | commit <verb> [slot=card ...] | bind <sit> <slot> <card> |
+    give <card> [n] | advance [n] | trace <file> | state | undo | mode | filter | quit
+    --verbose, -v   print detailed state, slot criteria, and action feedback
+    --available, -a filter out recipes that cannot currently be run
+    --seed N        host seed when the content declares `seed host` (default 1)
+    --record <f>    record forward play trace to JSON file on exit
     run `story-cli play --help` for the interactive command reference.
 
 ANALYZE — boot the content and run design analyses; reports go to stdout.
@@ -47,18 +48,20 @@ USAGE:
 
 OPTIONS:
     --verbose, -v   print detailed board state, recipe slot requirements, and action progress
+    --available, -a filter out recipes that cannot currently be run
     --seed N        host seed when the content declares `seed host` (default 1)
     --record <f>    record forward play trace to JSON file on exit
     -h, --help      print this help message
 
 INTERACTIVE COMMANDS:
     state                     show table cards, active situations, and clock
-    verbs                     list available actions and recipes
+    verbs [available|all]     list actions (optionally filter to runnable only)
     commit <verb> [slot=card] start an action (e.g. commit sup morsel=bread#10)
     bind <sit> <slot> <card>  bind a card to an open situation slot
     advance [n]               pass n turns (default 1) to progress situations
     undo                      revert the last action or advance
     mode [verbose|normal]     toggle detailed output mode (alias: verbose)
+    filter [on|off]           toggle filtering of unrunnable recipes (alias: available)
     give <card> [n]           mint copies of a card onto the table
     trace <file>              export recorded play trace to JSON
     quit, q                   exit the session
@@ -77,8 +80,17 @@ fn main() {
         Some("analyze") => std::process::exit(analyze::run(&args[1..])),
         Some("help" | "--help" | "-h") => println!("{USAGE}"),
         Some(other) => {
-            if other == "-v" || other == "--verbose" {
-                if args.iter().skip(1).any(|a| std::path::Path::new(a).is_file()) {
+            if other == "-v"
+                || other == "--verbose"
+                || other == "-a"
+                || other == "--available"
+                || other == "--runnable"
+            {
+                if args
+                    .iter()
+                    .skip(1)
+                    .any(|a| std::path::Path::new(a).is_file())
+                {
                     play(&args);
                 } else {
                     eprintln!("story-cli: missing file for play");
@@ -104,6 +116,7 @@ fn play(args: &[String]) {
     let mut seed: u64 = 1;
     let mut record_path: Option<String> = None;
     let mut verbose = false;
+    let mut filter_runnable = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -113,6 +126,9 @@ fn play(args: &[String]) {
             }
             "--verbose" | "-v" => {
                 verbose = true;
+            }
+            "--available" | "-a" | "--runnable" => {
+                filter_runnable = true;
             }
             "--seed" => {
                 i += 1;
@@ -174,12 +190,15 @@ fn play(args: &[String]) {
     }
     if let Some(game) = engine.content().game.as_ref() {
         if verbose {
-            println!("{} — seed {}, turn {}m [verbose]", game.title, seed, game.turn);
+            println!(
+                "{} — seed {}, turn {}m [verbose]",
+                game.title, seed, game.turn
+            );
             println!("Type 'help' for commands, 'mode normal' to reduce verbosity.\n");
             println!("Initial Board State:");
             print_state_verbose(&engine);
             println!("\nAvailable Actions:");
-            print_verbs_verbose(&engine);
+            print_verbs_verbose(&engine, filter_runnable);
         } else {
             println!("{} — seed {}, turn {}m", game.title, seed, game.turn);
             println!("Type 'help' for commands, 'verbs' for actions, 'state' for the board.");
@@ -189,7 +208,7 @@ fn play(args: &[String]) {
         println!("Initial Board State:");
         print_state_verbose(&engine);
         println!("\nAvailable Actions:");
-        print_verbs_verbose(&engine);
+        print_verbs_verbose(&engine, filter_runnable);
     } else {
         println!("Type 'help' for commands, 'verbs' for actions, 'state' for the board.");
     }
@@ -222,7 +241,10 @@ fn play(args: &[String]) {
             }
             ["verbose"] => {
                 verbose = !verbose;
-                println!("  mode set to {}", if verbose { "verbose" } else { "normal" });
+                println!(
+                    "  mode set to {}",
+                    if verbose { "verbose" } else { "normal" }
+                );
             }
             ["verbose", "on"] => {
                 verbose = true;
@@ -236,11 +258,51 @@ fn play(args: &[String]) {
                 verbose = false;
                 println!("  mode set to normal");
             }
+            ["filter"] => {
+                filter_runnable = !filter_runnable;
+                println!(
+                    "  recipe filtering is {}",
+                    if filter_runnable {
+                        "on (only runnable recipes shown)"
+                    } else {
+                        "off (all recipes shown)"
+                    }
+                );
+            }
+            ["filter", "on"] | ["available", "on"] => {
+                filter_runnable = true;
+                println!("  recipe filtering is on (only runnable recipes shown)");
+            }
+            ["filter", "off"] | ["available", "off"] => {
+                filter_runnable = false;
+                println!("  recipe filtering is off (all recipes shown)");
+            }
+            ["available"] => {
+                if verbose {
+                    print_verbs_verbose(&engine, true);
+                } else {
+                    print_verbs(&engine, true);
+                }
+            }
             ["verbs"] => {
                 if verbose {
-                    print_verbs_verbose(&engine);
+                    print_verbs_verbose(&engine, filter_runnable);
                 } else {
-                    print_verbs(&engine);
+                    print_verbs(&engine, filter_runnable);
+                }
+            }
+            ["verbs", "available" | "runnable" | "-a" | "--available" | "-r" | "--runnable"] => {
+                if verbose {
+                    print_verbs_verbose(&engine, true);
+                } else {
+                    print_verbs(&engine, true);
+                }
+            }
+            ["verbs", "all"] => {
+                if verbose {
+                    print_verbs_verbose(&engine, false);
+                } else {
+                    print_verbs(&engine, false);
                 }
             }
             ["state"] => {
@@ -286,7 +348,10 @@ fn play(args: &[String]) {
                         }
                         println!("  undone");
                         if verbose {
-                            println!("  restored previous state (clock is now {}m)", engine.state().now);
+                            println!(
+                                "  restored previous state (clock is now {}m)",
+                                engine.state().now
+                            );
                         }
                     }
                     Err(d) => println!("  refused: {d}"),
@@ -299,7 +364,10 @@ fn play(args: &[String]) {
                 trace.steps = trace_steps.clone();
                 match trace.to_json() {
                     Ok(json) => match std::fs::write(out_path, json) {
-                        Ok(()) => println!("  exported trace ({} steps) to {out_path}", trace.steps.len()),
+                        Ok(()) => println!(
+                            "  exported trace ({} steps) to {out_path}",
+                            trace.steps.len()
+                        ),
                         Err(e) => println!("  failed to write trace file: {e}"),
                     },
                     Err(e) => println!("  failed to serialize trace: {e}"),
@@ -324,12 +392,13 @@ fn print_help() {
     println!(
         "Commands:\n  \
          state                     show table cards, active situations, and clock\n  \
-         verbs                     list available actions and recipes\n  \
+         verbs [available|all]     list actions (optionally filter to runnable only)\n  \
          commit <verb> [slot=card] start an action (e.g. commit sup morsel=bread#10)\n  \
          bind <sit> <slot> <card>  bind a card to an open situation slot\n  \
          advance [n]               pass n turns (default 1) to progress situations\n  \
          undo                      revert the last action or advance\n  \
          mode [verbose|normal]     toggle detailed output mode (alias: verbose)\n  \
+         filter [on|off]           toggle filtering of unrunnable recipes (alias: available)\n  \
          give <card> [n]           mint copies of a card onto the table\n  \
          trace <file>              export recorded play trace to JSON\n  \
          quit, q                   exit the session\n\n\
@@ -348,7 +417,10 @@ fn print_help_cmd(cmd: &str) {
             "state\n  Display the current game clock, legacy variables, cards on the table, and active situations.\n  In verbose mode, also shows remaining situation countdowns and open slots."
         ),
         "verbs" => println!(
-            "verbs\n  List declared verbs and recipes.\n  In verbose mode, shows slot requirements, card filters (e.g. aspect:coal), and guards."
+            "verbs [available|all]\n  List declared verbs and recipes.\n  Use `verbs available` (or `verbs -a`) to filter out recipes that cannot currently be run.\n  Use `verbs all` to show all declared recipes.\n  In verbose mode, also shows slot criteria and guards."
+        ),
+        "filter" | "available" => println!(
+            "filter [on|off]\n  Toggle filtering of unrunnable recipes for the `verbs` command.\n  When enabled, recipes whose when/guard/slot requirements cannot be met do not appear.\n  Aliases: filter on, filter off, available."
         ),
         "commit" => println!(
             "commit <verb> [slot=card ...]\n  Start an action with optional slot bindings.\n  Cards can be bound by name (slot=coal) or by entity ID (slot=#4).\n  Example: commit tend fuel=coal#4"
@@ -425,9 +497,111 @@ fn format_slot(slot: &SlotDecl) -> String {
     let query_str = if slot.query.is_empty() {
         "any".to_string()
     } else {
-        slot.query.iter().map(format_query_term).collect::<Vec<_>>().join(" ")
+        slot.query
+            .iter()
+            .map(format_query_term)
+            .collect::<Vec<_>>()
+            .join(" ")
     };
     format!("{}: {bounds}{flags_str} ({query_str})", slot.name)
+}
+
+fn is_verb_full(engine: &Engine, verb: &story_content::ir::VerbDecl) -> bool {
+    match verb.instances {
+        story_content::ir::InstanceCap::Any => false,
+        story_content::ir::InstanceCap::AtMost(n) => {
+            engine
+                .state()
+                .situations
+                .values()
+                .filter(|s| s.verb == verb.id)
+                .count()
+                >= n as usize
+        }
+    }
+}
+
+fn is_recipe_runnable(
+    engine: &Engine,
+    verb: &story_content::ir::VerbDecl,
+    recipe: &story_content::ir::RecipeDecl,
+) -> bool {
+    if engine.state().ended.is_some() {
+        return false;
+    }
+    if is_verb_full(engine, verb) {
+        return false;
+    }
+    if let Some(m) = recipe.max {
+        if engine
+            .state()
+            .recipe_runs
+            .get(&recipe.id)
+            .copied()
+            .unwrap_or(0)
+            >= m
+        {
+            return false;
+        }
+    }
+    if recipe.chain_only {
+        return false;
+    }
+    match verb.mode {
+        VerbMode::Uncommittable => false,
+        VerbMode::Autonomous => {
+            if let Some(w) = &recipe.when {
+                if !engine.eval_cond(w) {
+                    return false;
+                }
+            }
+            for g in &recipe.guards {
+                if engine.eval_cond(&g.when) {
+                    return false;
+                }
+            }
+            for s in &recipe.slots {
+                if s.min > 0 {
+                    let cands = engine.slot_candidates(recipe.id.clone(), s.name.clone());
+                    if cands.len() < s.min as usize {
+                        return false;
+                    }
+                }
+            }
+            true
+        }
+        VerbMode::Committable => {
+            if !recipe.craftable {
+                return false;
+            }
+            if let Some(w) = &recipe.when {
+                if !engine.eval_cond(w) {
+                    return false;
+                }
+            }
+            for g in &recipe.guards {
+                if engine.eval_cond(&g.when) {
+                    return false;
+                }
+            }
+            let mut all_cands = BTreeSet::new();
+            let mut total_min = 0;
+            for s in &recipe.slots {
+                if s.min > 0 {
+                    total_min += s.min as usize;
+                    let cands = engine.slot_candidates(recipe.id.clone(), s.name.clone());
+                    if cands.len() < s.min as usize {
+                        return false;
+                    }
+                    all_cands.extend(cands);
+                }
+            }
+            if all_cands.len() < total_min {
+                return false;
+            }
+            true
+        }
+    }
 }
 
 fn find_recipe_decl<'a>(
@@ -436,9 +610,11 @@ fn find_recipe_decl<'a>(
     recipe: &story_core::RecipeId,
 ) -> Option<&'a RecipeDecl> {
     let v = engine.content().verbs.get(verb.as_str())?;
-    v.recipes
-        .get(recipe.as_str())
-        .or_else(|| v.recipes.values().find(|r| r.id == *recipe || r.name == recipe.as_str()))
+    v.recipes.get(recipe.as_str()).or_else(|| {
+        v.recipes
+            .values()
+            .find(|r| r.id == *recipe || r.name == recipe.as_str())
+    })
 }
 
 fn print_commit_hint(engine: &Engine, verb: &str) {
@@ -467,7 +643,12 @@ fn print_commit_hint(engine: &Engine, verb: &str) {
 /// The host route is snapshot surgery (L2: the snapshot is the save) — the
 /// engine's mint pipeline runs through authored effects only, and the probe
 /// driver owns the undo snapshot either way.
-fn do_give(engine: &mut Engine, undo: &mut Vec<(story_engine::Snapshot, bool)>, card: &str, n: i64) {
+fn do_give(
+    engine: &mut Engine,
+    undo: &mut Vec<(story_engine::Snapshot, bool)>,
+    card: &str,
+    n: i64,
+) {
     let Some(decl) = engine
         .content()
         .cards
@@ -582,7 +763,11 @@ fn do_commit(
             undo.push((snap, true));
             if verbose {
                 let new_sit = old_st.as_ref().and_then(|st| {
-                    engine.state().situations.values().find(|s| !st.situations.contains_key(&s.id))
+                    engine
+                        .state()
+                        .situations
+                        .values()
+                        .find(|s| !st.situations.contains_key(&s.id))
                 });
                 if let Some(s) = new_sit {
                     let dur = s.ends_at.saturating_sub(engine.state().now);
@@ -595,7 +780,11 @@ fn do_commit(
                 }
             } else if events.is_empty() {
                 let new_sit = old_st.as_ref().and_then(|st| {
-                    engine.state().situations.values().find(|s| !st.situations.contains_key(&s.id))
+                    engine
+                        .state()
+                        .situations
+                        .values()
+                        .find(|s| !st.situations.contains_key(&s.id))
                 });
                 if let Some(s) = new_sit {
                     let dur = s.ends_at.saturating_sub(engine.state().now);
@@ -650,7 +839,11 @@ fn do_bind(
             print_events(&events);
             if verbose {
                 if let Some(s) = engine.state().situations.get(&SituationId(sit_id)) {
-                    let cur = s.bindings.get(&SlotName::from(slot)).map(|b| b.len()).unwrap_or(0);
+                    let cur = s
+                        .bindings
+                        .get(&SlotName::from(slot))
+                        .map(|b| b.len())
+                        .unwrap_or(0);
                     println!("  [sit {sit}] slot `{slot}` now has {cur} card(s) bound");
                 }
             }
@@ -665,7 +858,8 @@ fn do_bind(
             if verbose {
                 if let Some(s) = engine.state().situations.get(&SituationId(sit_id)) {
                     if let Some(r) = find_recipe_decl(engine, &s.verb, &s.recipe) {
-                        if let Some(slot_decl) = r.slots.iter().find(|sd| sd.name.as_str() == slot) {
+                        if let Some(slot_decl) = r.slots.iter().find(|sd| sd.name.as_str() == slot)
+                        {
                             println!("  slot `{slot}` criteria: {}", format_slot(slot_decl));
                         }
                     }
@@ -766,9 +960,10 @@ fn print_ending(engine: &Engine) {
     }
 }
 
-fn print_verbs(engine: &Engine) {
+fn print_verbs(engine: &Engine, filter_runnable: bool) {
     let mut verbs: Vec<_> = engine.content().verbs.values().collect();
     verbs.sort_by_key(|v| v.decl_index);
+    let mut any_printed = false;
     for v in verbs {
         let mode = match v.mode {
             VerbMode::Committable => "committable",
@@ -781,6 +976,13 @@ fn print_verbs(engine: &Engine) {
         };
         let mut recipes: Vec<&story_content::ir::RecipeDecl> = v.recipes.values().collect();
         recipes.sort_by_key(|r| (r.priority, r.decl_index));
+        if filter_runnable {
+            recipes.retain(|r| is_recipe_runnable(engine, v, r));
+            if recipes.is_empty() {
+                continue;
+            }
+        }
+        any_printed = true;
         let list: Vec<String> = recipes
             .iter()
             .map(|r| {
@@ -805,11 +1007,15 @@ fn print_verbs(engine: &Engine) {
             list.join(", ")
         );
     }
+    if filter_runnable && !any_printed {
+        println!("  no recipes can be run in the current state");
+    }
 }
 
-fn print_verbs_verbose(engine: &Engine) {
+fn print_verbs_verbose(engine: &Engine, filter_runnable: bool) {
     let mut verbs: Vec<_> = engine.content().verbs.values().collect();
     verbs.sort_by_key(|v| v.decl_index);
+    let mut any_printed = false;
     for v in verbs {
         let mode = match v.mode {
             VerbMode::Committable => "committable",
@@ -820,9 +1026,16 @@ fn print_verbs_verbose(engine: &Engine) {
             story_content::ir::InstanceCap::Any => "any".to_string(),
             story_content::ir::InstanceCap::AtMost(n) => n.to_string(),
         };
-        println!("  {} [{}, instances: {}]:", v.id, mode, instances);
         let mut recipes: Vec<&story_content::ir::RecipeDecl> = v.recipes.values().collect();
         recipes.sort_by_key(|r| (r.priority, r.decl_index));
+        if filter_runnable {
+            recipes.retain(|r| is_recipe_runnable(engine, v, r));
+            if recipes.is_empty() {
+                continue;
+            }
+        }
+        any_printed = true;
+        println!("  {} [{}, instances: {}]:", v.id, mode, instances);
         for r in recipes {
             let kind = if r.craftable {
                 "craftable"
@@ -847,6 +1060,9 @@ fn print_verbs_verbose(engine: &Engine) {
                 }
             }
         }
+    }
+    if filter_runnable && !any_printed {
+        println!("  no recipes can be run in the current state");
     }
 }
 
@@ -977,12 +1193,19 @@ fn print_state_verbose(engine: &Engine) {
                 for slot in &r.slots {
                     if slot.open {
                         let cur_count = s.bindings.get(&slot.name).map(|v| v.len()).unwrap_or(0);
-                        let max_str = slot.max.map(|m| m.to_string()).unwrap_or_else(|| "∞".to_string());
+                        let max_str = slot
+                            .max
+                            .map(|m| m.to_string())
+                            .unwrap_or_else(|| "∞".to_string());
                         if slot.max.map(|m| (cur_count as u32) < m).unwrap_or(true) {
                             let query_str = if slot.query.is_empty() {
                                 "any".to_string()
                             } else {
-                                slot.query.iter().map(format_query_term).collect::<Vec<_>>().join(" ")
+                                slot.query
+                                    .iter()
+                                    .map(format_query_term)
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
                             };
                             println!(
                                 "      open slot: {} ({}/{} bound, accepts {}) -> bind {} {} <card>",

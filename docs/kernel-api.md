@@ -19,13 +19,21 @@ pub struct Engine {
 impl Engine {
     pub fn boot(content: Arc<Content>, registry: EffectRegistry, seed: u64,
                 legacy_in: Option<BTreeMap<String, i64>>) -> (Self, Vec<RuntimeDiagnostic>);
+    pub fn boot_from_state(content: Arc<Content>, registry: EffectRegistry,
+                seed: u64, state: State) -> (Self, Vec<RuntimeDiagnostic>);
     pub fn commit(&mut self, action: CommitAction) -> Result<Vec<Event>, RuntimeDiagnostic>;
     pub fn bind(&mut self, sit: SituationId, slot: SlotName, e: EntityId) -> Result<Vec<Event>, RuntimeDiagnostic>;
     pub fn advance(&mut self, dt: Time) -> Result<Vec<Event>, RuntimeDiagnostic>;  // dt = k * turn, k >= 1
-    // recognition face (read-only, for UI):
+    // recognition face (read-only, for UI / presentation):
     pub fn state(&self) -> &State;
     pub fn content(&self) -> &Arc<Content>;
     pub fn turn(&self) -> Time;
+    pub fn zone_ids(&self) -> &BTreeMap<String, ZoneId>;
+    pub fn read(&self, e: EntityId, key: &str) -> i64;
+    pub fn read_aspect(&self, e: EntityId, key: &str) -> i64;
+    pub fn named_entity(&self, card: &str) -> Option<EntityId>;
+    pub fn related_entities(&self, x: EntityId, kind: &str, incoming: bool) -> Vec<EntityId>;
+    pub fn zone_entities(&self, z: ZoneId) -> Vec<EntityId>;
     pub fn preview_commit(&self, action: &CommitAction) -> Result<RecipeId, RuntimeDiagnostic>;
     pub fn can_bind(&self, sit: SituationId, slot: SlotName, e: EntityId) -> Result<(), RuntimeDiagnostic>;
     pub fn slot_candidates(&self, recipe: RecipeId, slot: SlotName) -> Vec<EntityId>;
@@ -132,38 +140,88 @@ The v1 event set is closed (L6: structured events out; the host renders):
 
 ```rust
 pub enum Event {
-    /// Renderable prose.
-    Narration { text: String },
+    /// A situation was opened / materialized.
+    SituationStarted {
+        sit: SituationId,
+        verb: VerbId,
+        recipe: RecipeId,
+    },
+    /// Renderable narrative cue.
+    NarrativeCue { cue_id: String },
     /// A card joined a slot: at materialization, mid-run `bind`, `continue` adoption, and the pre-completion greedy top-up (spec.md §4.4).
-    Bound { sit: SituationId, slot: SlotName, entity: EntityId },
+    Bound {
+        sit: SituationId,
+        slot: SlotName,
+        entity: EntityId,
+        card: CardId,
+    },
     /// An instance finished its completion sequence.
-    SituationCompleted { sit: SituationId, recipe: RecipeId },
+    SituationCompleted {
+        sit: SituationId,
+        recipe: RecipeId,
+        bindings: BTreeMap<SlotName, Vec<CardId>>,
+    },
     /// A situation adopted a `continue via` target instead of completing:
     /// the same instance goes on executing the target recipe with its timer
     /// re-armed (spec.md §4.2).
-    Continued { situation: SituationId, recipe: RecipeId },
-    /// A start chain ended silently: no eligible recipe, or every `when`
-    /// false. (Guards are not evaluated on the start path — select.rs.)
+    Continued { sit: SituationId, recipe: RecipeId },
+    /// A start chain ended silently: no eligible recipe, every `when` false,
+    /// or the winner's guard refused.
     ChainEnded { verb: VerbId },
     /// An open was skipped: instance cap or materialization shortfall.
-    StartSkipped { verb: VerbId, reason: StartSkipReason },
+    StartSkipped {
+        verb: VerbId,
+        reason: StartSkipReason,
+    },
     /// A mint was skipped by uniqueness policy.
     SpawnSkipped { name: String },
     /// A resolution unit failed and rolled back; its situation aborted through
     /// the release path. Advance traffic, deliberately not a RuntimeDiagnostic.
     ResolutionFailed { sit: SituationId, reason: String },
+    /// A rule triggered.
+    RuleFired { rule_id: String },
+    /// An ending condition was reached.
+    Ended { ending: story_core::EndingId },
     /// A logical relation edge was written by an authored `relate` (one per
-    /// written edge, authored orientation). Boot edges emit nothing.
-    Related { from: EntityId, kind: String, to: EntityId },
+    /// written edge, in the authored orientation). Boot edges emit nothing.
+    Related {
+        from: EntityId,
+        kind: String,
+        to: EntityId,
+    },
     /// A logical relation edge was removed by an authored `unrelate` or an
     /// exclusive steal (one per removed edge). A kinded `unrelate a from
     /// b as k` reports the authored orientation; steal victims and kindless
     /// severing report the stored orientation. Destruction drops edges
     /// silently — never an `Unrelated`.
-    Unrelated { from: EntityId, kind: String, to: EntityId },
+    Unrelated {
+        from: EntityId,
+        kind: String,
+        to: EntityId,
+    },
 }
 pub enum StartSkipReason { InstanceCap, MaterializationFailed }
 ```
+
+### 3.1 Presentation Layer Interface (`story-present`)
+
+`story-present` consumes this event stream to translate pure simulation mechanics into player-facing narrative and structured view models:
+
+- **Lifecycle Event Hooks**:
+  - `SituationStarted`: Emits `BeatKind::ActionStart` with interpolated recipe start prose when recipe duration > 0.
+  - `Bound`: Tracks active situation bindings for token evaluation and UI views.
+  - `SituationCompleted`: Preserves a snapshot of final slot bindings (`bindings: BTreeMap<SlotName, Vec<CardId>>`). Tokens like `{fuel}` resolve to card display titles even if consuming slots destroyed the cards during settlement. Emits `BeatKind::ActionComplete` with interpolated completion prose.
+  - `Continued`: Emits `BeatKind::ActionContinue` indicating a chain continuation.
+  - `NarrativeCue`: Resolves cue text against the companion catalog (falling back to the authored cue string) and emits `BeatKind::NarrativeCue`.
+  - `RuleFired`: Emits `BeatKind::RuleTriggered` when rule prose is configured in the catalog cues.
+  - `Ended`: Emits `BeatKind::Ending` with formatted title, tier, and epilogue text.
+- **Presenter Operations**:
+  - `commit`, `advance`, and `bind` on `Presenter` wrap the corresponding `Engine` methods and return `Result<StoryOutput, RuntimeDiagnostic>`, where `StoryOutput` provides both `beats: Vec<StoryBeat>` and `raw_events: Vec<Event>`.
+  - `snapshot` and `restore` preserve Law L2 compliance, synchronizing presentation state across snapshots.
+- **View Models**:
+  - `board_view() -> BoardView`: Zones, grouped cards, active situation countdowns, and ending status.
+  - `verbs_view(filter_runnable: bool) -> Vec<VerbOpportunityView>`: Verbs and recipes with formatted slot bounds and prompts.
+  - `inspect_card(query: &str) -> Option<CardLoreView>`: Card lore, aspects, lifetimes, and relationship edges.
 
 ## 4. The Effect Registry
 
@@ -186,7 +244,7 @@ pub enum EffectNode {
     Set { target: Target, key: AspectKey, op: SetOp, expr: Expr, unclamped: bool },
     Move { target: Target, into: Into },
     Legacy { key: LegacyKey, op: SetOp, expr: Expr },   // always clamps at ≥ 0
-    Narrate { template: String },
+    Cue { id: String },
     Roll { count: Expr, sides: Expr, bonus: Expr, bind: String },
     Draw { deck: DeckId, count: Expr, into: Option<Into> },
     Start { verb: VerbId, via: Option<RecipeId>, count: Expr },
@@ -297,7 +355,7 @@ Each statement is directly assertable by a test:
 - **T20 Symmetric and exclusive maintenance.** A symmetric `relate` stores one canonical row yet reads as `rel` both ways, and `unrelate` clears it; an exclusive directed `relate` removes prior holders (`Unrelated` per victim, map order, before the `Related`); a symmetric exclusive `relate` steals prior partners of either endpoint; non-exclusive kinds accumulate holders.
 - **T21 Event fidelity.** Exactly one `Related` per written and one `Unrelated` per removed logical edge from authored effects and steals; self-pairs, no-op unrelates, and destroy-drops emit nothing.
 
-## 10. M2 Test Matrix
+## 10. Test Matrix
 
 Behavioral coverage contract: at least one positive and one refusal path per mechanism. The acceptance sample `emberwatch.sw` covers the core loop and deliberately stops there; this matrix owns the rest.
 

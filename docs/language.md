@@ -307,6 +307,7 @@ if <condition> <effect-lines> [else <effect-lines>]
 - `spawn` mints from the card's template (or its `mint` alias); `count` default 1; the zone defaults to `interior` in a situation context, else `home`.
 - **Handles.** `spawn <card> ... as <handle>` binds the minted card(s) to `<handle>` for the enclosing effect list only: subsequent effects in that list address the pool via `<handle>`, oldest-first for multi-card pools, and narrate tokens may reference `{<handle>}` (display names) and `{<handle>.<aspect>}` (the oldest card's read). A handle is visible at and after its spawn line, including nested `if` branches and subsequent `effectset` expansions, and nowhere else; a handle target with no enclosing spawn is [E238], an orphan handle-shaped token is [E205] (§7).
 - `set` writes with `=` / `+=` / `-=`, clamped at ≥ 0 unless suffixed `unclamped`; `legacy` writes the same arithmetic and always clamps at ≥ 0.
+- `narrate "<prose>"` emits a narrative cue for the presentation layer: token syntax is validated at compile time, the line lowers to `EffectNode::Cue`, and the engine emits `Event::NarrativeCue` with zero engine-side state mutation. The presentation layer (`story-present`, §7) resolves prose and interpolates tokens at display time.
 - **Effect counts are full integer expressions** — the `count <n>` of `spawn` / `destroy` / `swap` / `draw` / `start` and the trailing `<n>` of `consume` take the §3 grammar (`spawn coin count 1 + total(world, aspect:coal)` is legal), evaluated at effect time; a negative count is the effect failure, and a constant negative is [E246]. The expression ends at end-of-line: a following `into`, `as`, `to`, or `via` clause is no operator.
 - **`roll` takes full integer expressions** in count, sides, and bonus — `roll 1d6 + warden.watch as sight`, `roll total(bound, aspect:dice)d6 as storm`, `roll 0d6 + legacy.favor as grace` are all legal. Operands are validated at effect time: count ≥ 0, sides ≥ 1; a violation is an effect failure (unit rollback). Count 0 applies the bonus only and leaves the rng counter unmoved. The result binds `<name>` for subsequent `if` conditions and `{<name>}` tokens in the same effect list (last wins).
 - `draw`'s count defaults to 1; the target defaults to `interior` when the effect runs in a situation context, else `home`. Exhaustion walks `fallback` → `wrap` → the exhaustion failure (§2.7).
@@ -361,16 +362,28 @@ A call is an effect line — `stoke(2)` or `stoke(1 + total(world, aspect:coal))
 
 ## 7. Prose and Token Interpolation
 
-Every prose string — `narrate`, card `desc`, ending `text`, guard prose — supports uniform `{…}` tokens:
+Prose strings and presentation text — `narrate`, card `desc`, ending `text`, guard prose, and companion catalog copy — are evaluated by the presentation layer (`story-present`) and support uniform `{…}` tokens:
 
-- a slot name renders the slot's bound cards' display names;
-- a unique-card name path (`{beacon.heat}`) renders a value read;
-- a roll binding (`{sight}`) renders the roll result;
-- a spawn handle (`{fresh}`, `{fresh.heat}`) renders its pool's display names, or the oldest card's read (§4.3);
-- `{legacy.<key>}` renders a legacy value;
-- `{related:<kind> (of | to) <card-ref>}` renders the related cards' display names, comma-joined; an empty set renders the empty string. The card-ref may be a unique name, `subject` (in a subject context), or `first(<scope> [<terms>])` over the checkable term forms (`aspect:`/`kind:`/`name:`/negation).
+- `{<slot_name>}` renders the slot's bound cards' display titles (comma-joined);
+- `{<unique-card>.<aspect>}` renders an aspect value read from a unique card;
+- `{subject.<aspect>}` renders an aspect value read from the context subject entity;
+- `{<name>}` matching an active roll binding renders the integer roll result;
+- `{<handle>}` and `{<handle>.<aspect>}` render a spawn handle pool's display names, or the oldest card's aspect read (§4.3);
+- `{legacy.<key>}` renders a legacy accumulator value from `state.legacy`;
+- `{related:<kind> of <card-ref>}` or `{related:<kind> to <card-ref>}` renders the related entities' display names, comma-joined; an empty set renders the empty string. The card-ref may be a unique name, `subject` (in a subject context), or `first(<scope> [<terms>])` over checkable term forms (`aspect:`, `kind:`, `name:`, negation);
+- `{subject}` renders the title of the context subject card.
 
-An unknown token is [E205] — including an unknown relation kind or an unresolvable card-ref inside a `related:` token. One exception: a `kind:` term inside the token's `first(...)` that names an undeclared kind is the query-term checker's [E203]. Every prose string is addressable by a template id (its declaration site plus field, with an occurrence index for repeats within one recipe); a load-time override table keyed by template id substitutes alternate text before interpolation — the localization seam (spec.md §7).
+An unknown token is [E205] at compile time — including an unknown relation kind or an unresolvable card-ref inside a `related:` token. One exception: a `kind:` term inside the token's `first(...)` that names an undeclared kind is the query-term checker's [E203].
+
+### 7.1 Two-Tier Presentation Cascade
+
+At runtime, `story-present` resolves display text through a two-tier cascade:
+
+1. **Companion JSON Catalog (`<game>.narrative.json`)**: External presentation file containing titles, flavor descriptions, recipe start/completion prose, atmospheric slot prompts, and epilogues.
+2. **In-DSL Content Declarations & Metadata (`.sw`)**: Authored `meta` annotations (`meta title`, `meta description`, `meta start`, `meta completion`), card `desc`, verb `title`, and recipe labels.
+3. **Engine Defaults**: Identifiers and technical fallbacks.
+
+This separation keeps the simulation kernel purely mechanical (Law L6) while allowing rich narrative rendering in hosts such as `story-cli`.
 
 ## 8. Idioms
 

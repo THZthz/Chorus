@@ -25,11 +25,12 @@ The first release ships conditional expressions, multi-instance situations, cros
 | `story-content` | compiled content DB and IR types (recipes / slots / effect trees / expressions / registry name tables) + diagnostics | compile IR into a validated content database with diagnostics; read-only queries |
 | `story-lang` | the text DSL (`.sw`) → IR → `story-content` | compile source text into a content database, diagnostics on failure |
 | `story-engine` | the kernel: selection law, settlement, slots, mint pipeline, effect registry, snapshots | boot from content, registry, seed, legacy; commit / bind / advance / state / snapshot / restore |
+| `story-present` | thin presentation and narrative layer over the mechanical engine: token interpolation, two-tier catalog cascade, lifecycle event translation, and view models | `Presenter` facade wrapping `Engine` and `PresentationCatalog`: `commit` / `advance` / `bind` emitting `StoryOutput` (`beats`, `raw_events`), `board_view`, `verbs_view`, `inspect_card` |
 | `story-analyze` | design-time analysis of compiled content: reachability, state-space classification, design audit, Pareto frontiers (§8) | queries over the public kernel faces (§4.10); tool-layer consumer only |
 | `story-cli` | thin dev driver (the `play` REPL) and the design-analysis front end over `story-analyze` (the `analyze` modes and the profile face) | optional, not a product |
-| `cs2sw` | Cultist Simulator core-content converter: tolerant JSON loading, mechanical mapping passes, and a gap report for every construct the language cannot carry | CS core JSON in; a compile-checked `.sw` file plus a gap report out |
+| `cs2sw` | Cultist Simulator core-content converter: tolerant JSON loading, mechanical mapping passes, companion narrative catalog generation, and a gap report for every construct the language cannot carry | CS core JSON in; a compile-checked `.sw` file, `<stem>.narrative.json`, plus a gap report out |
 
-Dependency law: `core ← content ← engine`; `lang → {core, content}`; `analyze → {core, content, engine}` with `lang` optional behind a feature; `cs2sw → {content, lang}` (with `core` and `engine` as test-time dependencies) — a standalone converter outside the play and analyze surface; **the engine never depends on lang or analyze** — the compiler, the runtime, and the analysis tools are separate programs. Diagnostic types live in `story-content` and are shared by every crate.
+Dependency law: `core ← content ← engine`; `lang → {core, content}`; `present → {core, content, engine}`; `analyze → {core, content, engine}` with `lang` optional behind a feature; `cli → {core, content, engine, lang, analyze, present}`; `cs2sw → {content, lang, present}` (with `core` and `engine` as test-time dependencies) — a standalone converter outside the play and analyze surface; **the engine never depends on lang, analyze, or present** — the compiler, the runtime, the presentation layer, and the analysis tools are separate programs. Diagnostic types live in `story-content` and are shared by every crate.
 
 ## 4. Kernel Semantics
 
@@ -139,7 +140,7 @@ Multi-card targets feed per-card effects: a `set` writes every card its target r
 - **unrelate** — `unrelate <target> from <target> [as <kind>]` removes edges: with a kind, that kind's edge between each pair; without, every logical edge between each pair, either direction, once per edge. Exclusive kinds steal on `relate` (each victim emits `Unrelated` before the new `Related`); each removed edge emits `Unrelated`.
 - **signal** — ignites the named event book; the only ignition point.
 - **ending** — sets the ending flag; the run closes per §4.2; further endings in the same advance are no-ops.
-- **narrate** — zero state; the engine evaluates token expressions into a string and emits a narration event; the host renders (L6).
+- **narrate** — zero state; compiles to a narrative cue and emits `Event::NarrativeCue`; presentation and rendering layers evaluate token expressions and resolve prose (L6, §9).
 
 **Atomicity.** Effects apply onto a draft of the state; an effect failure rolls the current resolution unit back to its checkpoint — RNG counter and deck cursors included. Within a unit, everything happens or nothing does. What happens next depends on the entry point: `commit` returns the refusal to the caller; an `advance` unit aborts its situation through the release path and the loop continues (§4.6).
 
@@ -286,7 +287,7 @@ Every seam below is either designed in this spec or permanently excluded; none b
 2. **`effectset` macros — designed.** Compile-time expansion into the closed effect vocabulary, parameters typed like predicate parameters (language.md §6).
 3. **Deck wrap — designed.** The declared cycling relief path lets long-run decks deal forever without kernel knowledge (language.md §2.7).
 4. **Meta annotations — designed.** Any declaration carries free-form key–value data; the compiled content stores it, the kernel never reads it, and tools hang UI, layout, and documentation data without grammar changes (language.md §2.8).
-5. **Localization — designed.** Every prose string flows through the token-interpolation layer and is addressable by a template id: its declaration site plus field, with an occurrence index disambiguating repeats within one recipe. An override table keyed by template id substitutes alternate text at load, before interpolation; no engine change (language.md §7).
+5. **Localization and presentation catalogs — designed.** Every prose string flows through the presentation layer (`story-present`, §9) and is addressable by a template id: its declaration site plus field, with an occurrence index disambiguating repeats within one recipe. A companion catalog (`<game>.narrative.json`) overlays titles, descriptions, slot prompts, cues, and start/completion prose at load time before token interpolation; no engine change (language.md §7).
 6. **Real-time hosting — already expressible.** A host may advance on any cadence it likes — once per wall-second, once per frame: L1 gives the engine no wall clock, so cadence is the host's law alone.
 7. **Hidden information — seam designed; one permanent exclusion.** Hidden zones plus the `anywhere` scope already model information the rendering layer withholds (narrative fog is host policy, L6). Per-character knowledge hands are permanently out: the engine models a single viewpoint per state.
 
@@ -308,3 +309,59 @@ Four analyses build on this machinery:
 The analysis horizon is contractable from content: `meta horizon "6h"` on the `game` header (language.md §2.8) bounds every query by default — the flag `--max-time` overrides it, and the runtime pairing is an authored deadline recipe (`when clock >= 6h` → an epilogue ending, emberwatch's dawn). An analysis horizon in the game meta is the CS-scale enabler: without a natural ending, exhaustive analysis has no envelope.
 
 An optional `story-lang` feature lets queries be written in the `.sw` condition grammar itself.
+
+## 9. Presentation Layer (`story-present`)
+
+`story-present` is a thin presentation and narrative layer over the mechanical simulation kernel, enforcing Kernel Law L6 (Mechanics vs presentation). The engine executes pure mechanics and emits a structured event stream; `story-present` translates these events into player-facing narrative prose, story beats, and high-level view models.
+
+### 9.1 Two-Tier Presentation Cascade
+
+Presentation metadata follows a strict resolution cascade:
+
+```text
+1. Companion JSON Catalog (<game>.narrative.json)
+      ↓ (if missing or field is None)
+2. In-DSL Content Declarations / Metadata (.sw)
+      ↓ (if missing)
+3. Engine Defaults (Identifiers / Fallbacks)
+```
+
+The companion catalog schema (`PresentationCatalog`) organizes narrative copy around core domain entities:
+- `cards`: title and flavor description per card prototype.
+- `verbs`: title, flavor description, and slot prompts.
+- `recipes`: recipe label, start prose, completion prose, and slot prompts (label and description). Keyed by qualified identifier (`<verb>.<recipe>`).
+- `cues`: narrative cue strings and rule descriptions.
+- `endings`: ending title, tier, and epilogue text.
+
+When companion catalogs are omitted, `story-present` falls back to in-DSL `meta` annotations (e.g. `meta title`, `meta description`, `meta start`, `meta completion`), card `desc`, verb `title`, and recipe labels.
+
+### 9.2 Lifecycle Hooks and Event Translation
+
+The presenter translates mechanical events into chronological story beats (`StoryBeat` with `BeatKind`):
+- `Event::SituationStarted`: Emits `BeatKind::ActionStart` with interpolated recipe start prose when recipe duration > 0.
+- `Event::Bound`: Tracks slotted card bindings for active situations.
+- `Event::SituationCompleted`: Carries the final slot bindings snapshot (`bindings: BTreeMap<SlotName, Vec<CardId>>`). This snapshot allows `{slot}` tokens to resolve correctly to display names even when bound cards were consumed or destroyed during settlement. Emits `BeatKind::ActionComplete` with interpolated completion prose.
+- `Event::Continued`: Emits `BeatKind::ActionContinue` indicating the situation adopted a new recipe.
+- `Event::NarrativeCue`: Resolves cue text via the catalog (falling back to the authored cue string) and emits `BeatKind::NarrativeCue`.
+- `Event::RuleFired`: Emits `BeatKind::RuleTriggered` when rule prose is configured in the catalog cues.
+- `Event::Ended`: Emits `BeatKind::Ending` with formatted title, tier, and epilogue text.
+
+### 9.3 Token Interpolation
+
+Stateless token interpolation (`interpolate`) evaluates `{...}` tokens in prose templates against live engine state, content declarations, the catalog, and the active `PresentationContext`:
+- `{slot_name}`: Resolves to comma-separated card display titles from `ctx.bound_cards`.
+- `{target.aspect}`: Reads live aspect values from slotted cards, named entities, or content prototypes. Special case `{subject.aspect}` reads the subject entity's aspect.
+- `{legacy.<key>}`: Reads the value from `state.legacy`.
+- `{related:kind (of | to) target}`: Traverses relational edges and renders display titles of connected entities.
+- `{subject}`: Evaluates context subject card title.
+- `{roll}`: Evaluates the roll value.
+
+### 9.4 Presenter Facade and View Models
+
+`Presenter` wraps `Engine` and maintains Law L2 snapshot compliance:
+- Operations (`commit`, `advance`, `bind`) return `Result<StoryOutput, RuntimeDiagnostic>`, where `StoryOutput` contains both high-level `beats: Vec<StoryBeat>` and `raw_events: Vec<Event>`.
+- `snapshot()` and `restore()` delegate directly to `engine.snapshot()` and `engine.restore()`, syncing active presentation bindings across restores.
+- View models provide host interfaces:
+  - `board_view() -> BoardView`: Zones, grouped cards with titles and counts, active situations with countdowns and slotted card titles, and game over status.
+  - `verbs_view(filter_runnable: bool) -> Vec<VerbOpportunityView>`: Verbs and recipe opportunities with formatted slot requirements and prompts.
+  - `inspect_card(query: &str) -> Option<CardLoreView>`: Deep lore, aspects, lifetimes, and relationship edges.

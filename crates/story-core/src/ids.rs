@@ -54,6 +54,12 @@ macro_rules! name_id {
                 &self.0
             }
         }
+
+        impl std::borrow::Borrow<str> for $name {
+            fn borrow(&self) -> &str {
+                &self.0
+            }
+        }
     };
 }
 

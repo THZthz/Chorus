@@ -10,9 +10,10 @@ mod profile;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use story_content::ir::{CmpOp, QueryTerm, RecipeDecl, SlotDecl, VerbMode};
-use story_core::{EntityId, SituationId, SlotName, VerbId};
+use story_content::ir::{CmpOp, QueryTerm, RecipeDecl, SlotDecl};
+use story_core::{EntityId, SituationId, SlotName, Snapshot, VerbId};
 use story_engine::{CommitAction, EffectRegistry, Engine, Event};
+use story_present::{BeatKind, PresentationCatalog, Presenter};
 
 const USAGE: &str = "\
 story-cli — the Chorus² dev driver and design analyzer
@@ -23,8 +24,9 @@ USAGE:
     story-cli <file.sw> [options]             alias for play
 
 PLAY — the interactive terminal driver; commands at the `>` prompt:
-    verbs [available|all] | commit <verb> [slot=card ...] | bind <sit> <slot> <card> |
-    give <card> [n] | advance [n] | trace <file> | state | undo | mode | filter | quit
+    verbs [available|all] | inspect <card> | commit <verb> [slot=card ...] |
+    bind <sit> <slot> <card> | give <card> [n] | advance [n] | trace <file> |
+    state | undo | mode | filter | quit
     --verbose, -v   print detailed state, slot criteria, and action feedback
     --available, -a filter out recipes that cannot currently be run
     --seed N        host seed when the content declares `seed host` (default 1)
@@ -56,6 +58,7 @@ OPTIONS:
 INTERACTIVE COMMANDS:
     state                     show table cards, active situations, and clock
     verbs [available|all]     list actions (optionally filter to runnable only)
+    inspect <card>            inspect card details, lore, aspects, and relations
     commit <verb> [slot=card] start an action (e.g. commit sup morsel=bread#10)
     bind <sit> <slot> <card>  bind a card to an open situation slot
     advance [n]               pass n turns (default 1) to progress situations
@@ -80,11 +83,7 @@ fn main() {
         Some("analyze") => std::process::exit(analyze::run(&args[1..])),
         Some("help" | "--help" | "-h") => println!("{USAGE}"),
         Some(other) => {
-            if other == "-v"
-                || other == "--verbose"
-                || other == "-a"
-                || other == "--available"
-            {
+            if other == "-v" || other == "--verbose" || other == "-a" || other == "--available" {
                 if args
                     .iter()
                     .skip(1)
@@ -178,7 +177,7 @@ fn play(args: &[String]) {
         Some(story_content::ir::SeedSpec::Fixed(n)) => n,
         _ => seed,
     };
-    let (mut engine, diags) = Engine::boot(Arc::new(content), EffectRegistry::new(), seed, None);
+    let (engine, diags) = Engine::boot(Arc::new(content), EffectRegistry::new(), seed, None);
     for d in &diags {
         println!("boot: {d}");
     }
@@ -187,7 +186,11 @@ fn play(args: &[String]) {
     if diags.iter().any(|d| d.is_error()) {
         std::process::exit(1);
     }
-    if let Some(game) = engine.content().game.as_ref() {
+
+    let catalog = load_companion_catalog(std::path::Path::new(&path));
+    let mut presenter = Presenter::new(engine, catalog);
+
+    if let Some(game) = presenter.content().game.as_ref() {
         if verbose {
             println!(
                 "{} — seed {}, turn {}m [verbose]",
@@ -195,9 +198,9 @@ fn play(args: &[String]) {
             );
             println!("Type 'help' for commands, 'mode normal' to reduce verbosity.\n");
             println!("Initial Board State:");
-            print_state_verbose(&engine);
+            print_state_verbose(&presenter);
             println!("\nAvailable Actions:");
-            print_verbs_verbose(&engine, filter_runnable);
+            print_verbs_verbose(&presenter, filter_runnable);
         } else {
             println!("{} — seed {}, turn {}m", game.title, seed, game.turn);
             println!("Type 'help' for commands, 'verbs' for actions, 'state' for the board.");
@@ -205,14 +208,14 @@ fn play(args: &[String]) {
     } else if verbose {
         println!("Type 'help' for commands, 'mode normal' to reduce verbosity.\n");
         println!("Initial Board State:");
-        print_state_verbose(&engine);
+        print_state_verbose(&presenter);
         println!("\nAvailable Actions:");
-        print_verbs_verbose(&engine, filter_runnable);
+        print_verbs_verbose(&presenter, filter_runnable);
     } else {
         println!("Type 'help' for commands, 'verbs' for actions, 'state' for the board.");
     }
 
-    let mut undo: Vec<(story_engine::Snapshot, bool)> = Vec::new();
+    let mut undo: Vec<(Snapshot, bool)> = Vec::new();
     let mut trace_steps: Vec<story_analyze::TraceStep> = Vec::new();
     let stdin = std::io::stdin();
     loop {
@@ -265,62 +268,67 @@ fn play(args: &[String]) {
             }
             ["verbs"] => {
                 if verbose {
-                    print_verbs_verbose(&engine, filter_runnable);
+                    print_verbs_verbose(&presenter, filter_runnable);
                 } else {
-                    print_verbs(&engine, filter_runnable);
+                    print_verbs(&presenter, filter_runnable);
                 }
             }
             ["verbs", "available"] => {
                 if verbose {
-                    print_verbs_verbose(&engine, true);
+                    print_verbs_verbose(&presenter, true);
                 } else {
-                    print_verbs(&engine, true);
+                    print_verbs(&presenter, true);
                 }
             }
             ["verbs", "all"] => {
                 if verbose {
-                    print_verbs_verbose(&engine, false);
+                    print_verbs_verbose(&presenter, false);
                 } else {
-                    print_verbs(&engine, false);
+                    print_verbs(&presenter, false);
                 }
             }
             ["state"] => {
                 if verbose {
-                    print_state_verbose(&engine);
+                    print_state_verbose(&presenter);
                 } else {
-                    print_state(&engine);
+                    print_state(&presenter);
                 }
             }
+            ["inspect"] => println!("  usage: inspect <card>"),
+            ["inspect", card] => match presenter.inspect_card(card) {
+                Some(lore) => print_inspect(&lore),
+                None => println!("  card not found: `{card}`"),
+            },
             ["advance"] => {
-                if let Some(step) = do_advance(&mut engine, &mut undo, 1, verbose) {
+                if let Some(step) = do_advance(&mut presenter, &mut undo, 1, verbose) {
                     trace_steps.push(step);
                 }
             }
             ["advance", n] => match n.parse::<i64>() {
                 Ok(n) if n > 0 => {
-                    if let Some(step) = do_advance(&mut engine, &mut undo, n, verbose) {
+                    if let Some(step) = do_advance(&mut presenter, &mut undo, n, verbose) {
                         trace_steps.push(step);
                     }
                 }
                 _ => println!("  advance takes a positive turn count"),
             },
             ["commit", verb, rest @ ..] => {
-                if let Some(step) = do_commit(&mut engine, &mut undo, verb, rest, verbose) {
+                if let Some(step) = do_commit(&mut presenter, &mut undo, verb, rest, verbose) {
                     trace_steps.push(step);
                 }
             }
             ["bind", sit, slot, card] => {
-                if let Some(step) = do_bind(&mut engine, &mut undo, sit, slot, card, verbose) {
+                if let Some(step) = do_bind(&mut presenter, &mut undo, sit, slot, card, verbose) {
                     trace_steps.push(step);
                 }
             }
-            ["give", card] => do_give(&mut engine, &mut undo, card, 1),
+            ["give", card] => do_give(&mut presenter, &mut undo, card, 1),
             ["give", card, n] => match n.parse::<i64>() {
-                Ok(n) if n > 0 => do_give(&mut engine, &mut undo, card, n),
+                Ok(n) if n > 0 => do_give(&mut presenter, &mut undo, card, n),
                 _ => println!("  give takes a positive count"),
             },
             ["undo"] => match undo.pop() {
-                Some((snap, was_trace_step)) => match engine.restore(&snap) {
+                Some((snap, was_trace_step)) => match presenter.restore(&snap) {
                     Ok(()) => {
                         if was_trace_step {
                             trace_steps.pop();
@@ -329,7 +337,7 @@ fn play(args: &[String]) {
                         if verbose {
                             println!(
                                 "  restored previous state (clock is now {}m)",
-                                engine.state().now
+                                presenter.state().now
                             );
                         }
                     }
@@ -339,7 +347,7 @@ fn play(args: &[String]) {
             },
             ["trace", out_path] => {
                 let mut trace = story_analyze::PlayTrace::new(seed, None);
-                trace.game = engine.content().game.as_ref().map(|g| g.title.clone());
+                trace.game = presenter.content().game.as_ref().map(|g| g.title.clone());
                 trace.steps = trace_steps.clone();
                 match trace.to_json() {
                     Ok(json) => match std::fs::write(out_path, json) {
@@ -359,11 +367,42 @@ fn play(args: &[String]) {
     }
     if let Some(path) = record_path {
         let mut trace = story_analyze::PlayTrace::new(seed, None);
-        trace.game = engine.content().game.as_ref().map(|g| g.title.clone());
+        trace.game = presenter.content().game.as_ref().map(|g| g.title.clone());
         trace.steps = trace_steps;
         if let Ok(json) = trace.to_json() {
             let _ = std::fs::write(&path, json);
         }
+    }
+}
+
+fn load_companion_catalog(sw_path: &std::path::Path) -> PresentationCatalog {
+    let candidate1 = sw_path.with_extension("narrative.json");
+    let candidate2 = {
+        let mut s = sw_path.as_os_str().to_os_string();
+        s.push(".narrative.json");
+        std::path::PathBuf::from(s)
+    };
+    let target = if candidate1.is_file() {
+        Some(candidate1)
+    } else if candidate2.is_file() {
+        Some(candidate2)
+    } else {
+        None
+    };
+
+    if let Some(cat_path) = target {
+        match PresentationCatalog::from_file(&cat_path) {
+            Ok(catalog) => {
+                println!("loaded companion narrative catalog: {}", cat_path.display());
+                catalog
+            }
+            Err(e) => {
+                eprintln!("failed to load companion narrative catalog: {e}");
+                PresentationCatalog::default()
+            }
+        }
+    } else {
+        PresentationCatalog::default()
     }
 }
 
@@ -372,6 +411,7 @@ fn print_help() {
         "Commands:\n  \
          state                     show table cards, active situations, and clock\n  \
          verbs [available|all]     list actions (optionally filter to runnable only)\n  \
+         inspect <card>            inspect card details, lore, aspects, and relations\n  \
          commit <verb> [slot=card] start an action (e.g. commit sup morsel=bread#10)\n  \
          bind <sit> <slot> <card>  bind a card to an open situation slot\n  \
          advance [n]               pass n turns (default 1) to progress situations\n  \
@@ -397,6 +437,9 @@ fn print_help_cmd(cmd: &str) {
         ),
         "verbs" => println!(
             "verbs [available|all]\n  List declared verbs and recipes.\n  Use `verbs available` to filter out recipes that cannot currently be run.\n  Use `verbs all` to show all declared recipes.\n  In verbose mode, also shows slot criteria and guards."
+        ),
+        "inspect" => println!(
+            "inspect <card>\n  Display card details including presentation title, lore description, aspects, expiry, and relation edges.\n  Supports #<id>, name#<id>, or name.\n  Example: inspect bread#10"
         ),
         "filter" => println!(
             "filter [on|off]\n  Toggle filtering of unrunnable recipes for the `verbs` command.\n  When enabled, recipes whose when/guard/slot requirements cannot be met do not appear."
@@ -485,242 +528,6 @@ fn format_slot(slot: &SlotDecl) -> String {
     format!("{}: {bounds}{flags_str} ({query_str})", slot.name)
 }
 
-fn is_verb_full(engine: &Engine, verb: &story_content::ir::VerbDecl) -> bool {
-    match verb.instances {
-        story_content::ir::InstanceCap::Any => false,
-        story_content::ir::InstanceCap::AtMost(n) => {
-            engine
-                .state()
-                .situations
-                .values()
-                .filter(|s| s.verb == verb.id)
-                .count()
-                >= n as usize
-        }
-    }
-}
-
-fn can_recipe_commit(
-    engine: &Engine,
-    verb: &story_content::ir::VerbDecl,
-    recipe: &story_content::ir::RecipeDecl,
-) -> bool {
-    if engine.state().ended.is_some() {
-        return false;
-    }
-    if is_verb_full(engine, verb) {
-        return false;
-    }
-    if let Some(m) = recipe.max {
-        if engine
-            .state()
-            .recipe_runs
-            .get(&recipe.id)
-            .copied()
-            .unwrap_or(0)
-            >= m
-        {
-            return false;
-        }
-    }
-    if recipe.chain_only || !recipe.craftable {
-        return false;
-    }
-
-    if recipe.slots.is_empty() {
-        let action = CommitAction {
-            verb: verb.id.clone(),
-            bindings: Vec::new(),
-        };
-        return engine.preview_commit(&action).as_ref() == Ok(&recipe.id);
-    }
-
-    let mut req_slots: Vec<(&SlotName, usize, Vec<EntityId>)> = Vec::new();
-    let mut opt_slots: Vec<(&SlotName, Vec<EntityId>)> = Vec::new();
-    let mut total_req_min = 0;
-    let mut all_req_cands = BTreeSet::new();
-
-    for s in &recipe.slots {
-        let cands = engine.slot_candidates(recipe.id.clone(), s.name.clone());
-        if s.min > 0 {
-            let min = s.min as usize;
-            if cands.len() < min {
-                return false;
-            }
-            total_req_min += min;
-            all_req_cands.extend(cands.iter().copied());
-            req_slots.push((&s.name, min, cands));
-        } else if !cands.is_empty() {
-            opt_slots.push((&s.name, cands));
-        }
-    }
-
-    if all_req_cands.len() < total_req_min {
-        return false;
-    }
-
-    let mut used = BTreeSet::new();
-    let mut current_bindings = Vec::new();
-
-    search_required_bindings(
-        engine,
-        &verb.id,
-        &recipe.id,
-        &req_slots,
-        0,
-        &opt_slots,
-        &mut used,
-        &mut current_bindings,
-    )
-}
-
-fn search_required_bindings(
-    engine: &Engine,
-    verb_id: &VerbId,
-    recipe_id: &story_core::RecipeId,
-    req_slots: &[(&SlotName, usize, Vec<EntityId>)],
-    slot_idx: usize,
-    opt_slots: &[(&SlotName, Vec<EntityId>)],
-    used: &mut BTreeSet<EntityId>,
-    current_bindings: &mut Vec<(SlotName, EntityId)>,
-) -> bool {
-    if slot_idx == req_slots.len() {
-        let action = CommitAction {
-            verb: verb_id.clone(),
-            bindings: current_bindings.clone(),
-        };
-        if engine.preview_commit(&action).as_ref() == Ok(recipe_id) {
-            return true;
-        }
-
-        for (opt_name, cands) in opt_slots {
-            for &cand in cands {
-                if used.contains(&cand) {
-                    continue;
-                }
-                current_bindings.push(((*opt_name).clone(), cand));
-                let opt_action = CommitAction {
-                    verb: verb_id.clone(),
-                    bindings: current_bindings.clone(),
-                };
-                let matches = engine.preview_commit(&opt_action).as_ref() == Ok(recipe_id);
-                current_bindings.pop();
-                if matches {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    let (slot_name, min, cands) = &req_slots[slot_idx];
-    if *min == 1 {
-        for &cand in cands {
-            if used.contains(&cand) {
-                continue;
-            }
-            used.insert(cand);
-            current_bindings.push(((*slot_name).clone(), cand));
-            if search_required_bindings(
-                engine,
-                verb_id,
-                recipe_id,
-                req_slots,
-                slot_idx + 1,
-                opt_slots,
-                used,
-                current_bindings,
-            ) {
-                return true;
-            }
-            current_bindings.pop();
-            used.remove(&cand);
-        }
-    } else {
-        let avail: Vec<EntityId> = cands.iter().copied().filter(|e| !used.contains(e)).collect();
-        if avail.len() < *min {
-            return false;
-        }
-        let mark = current_bindings.len();
-        for &e in &avail[..*min] {
-            used.insert(e);
-            current_bindings.push(((*slot_name).clone(), e));
-        }
-        let found = search_required_bindings(
-            engine,
-            verb_id,
-            recipe_id,
-            req_slots,
-            slot_idx + 1,
-            opt_slots,
-            used,
-            current_bindings,
-        );
-        for &e in &avail[..*min] {
-            used.remove(&e);
-        }
-        current_bindings.truncate(mark);
-        if found {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn is_recipe_runnable(
-    engine: &Engine,
-    verb: &story_content::ir::VerbDecl,
-    recipe: &story_content::ir::RecipeDecl,
-) -> bool {
-    match verb.mode {
-        VerbMode::Uncommittable => false,
-        VerbMode::Autonomous => {
-            if engine.state().ended.is_some() {
-                return false;
-            }
-            if is_verb_full(engine, verb) {
-                return false;
-            }
-            if recipe.chain_only {
-                return false;
-            }
-            if let Some(m) = recipe.max {
-                if engine
-                    .state()
-                    .recipe_runs
-                    .get(&recipe.id)
-                    .copied()
-                    .unwrap_or(0)
-                    >= m
-                {
-                    return false;
-                }
-            }
-            if let Some(w) = &recipe.when {
-                if !engine.eval_cond(w) {
-                    return false;
-                }
-            }
-            for g in &recipe.guards {
-                if engine.eval_cond(&g.when) {
-                    return false;
-                }
-            }
-            for s in &recipe.slots {
-                if s.min > 0 {
-                    let cands = engine.slot_candidates(recipe.id.clone(), s.name.clone());
-                    if cands.len() < s.min as usize {
-                        return false;
-                    }
-                }
-            }
-            true
-        }
-        VerbMode::Committable => can_recipe_commit(engine, verb, recipe),
-    }
-}
-
 fn find_recipe_decl<'a>(
     engine: &'a Engine,
     verb: &VerbId,
@@ -760,13 +567,8 @@ fn print_commit_hint(engine: &Engine, verb: &str) {
 /// The host route is snapshot surgery (L2: the snapshot is the save) — the
 /// engine's mint pipeline runs through authored effects only, and the probe
 /// driver owns the undo snapshot either way.
-fn do_give(
-    engine: &mut Engine,
-    undo: &mut Vec<(story_engine::Snapshot, bool)>,
-    card: &str,
-    n: i64,
-) {
-    let Some(decl) = engine
+fn do_give(presenter: &mut Presenter, undo: &mut Vec<(Snapshot, bool)>, card: &str, n: i64) {
+    let Some(decl) = presenter
         .content()
         .cards
         .get(&story_core::CardId::from(card))
@@ -775,7 +577,7 @@ fn do_give(
         println!("  no card declared named `{card}`");
         return;
     };
-    let snap = engine.snapshot();
+    let snap = presenter.snapshot();
     let Ok(mut state) = serde_json::from_slice::<story_core::State>(&snap.state) else {
         println!("  state deserialization failed");
         return;
@@ -792,7 +594,7 @@ fn do_give(
     let body = decl
         .mint_alias
         .as_ref()
-        .and_then(|a| engine.content().cards.get(a))
+        .and_then(|a| presenter.content().cards.get(a))
         .unwrap_or(&decl);
     let mut minted = 0;
     for _ in 0..n {
@@ -814,12 +616,12 @@ fn do_give(
         );
         minted += 1;
     }
-    let prepared = story_engine::Snapshot {
+    let prepared = Snapshot {
         format: snap.format,
         content_fingerprint: snap.content_fingerprint,
         state: serde_json::to_vec(&state).expect("serialize"),
     };
-    match engine.restore(&prepared) {
+    match presenter.restore(&prepared) {
         Ok(()) => {
             undo.push((snap, false));
             println!("  gave {minted} x {card}");
@@ -833,13 +635,13 @@ fn find_entity(engine: &Engine, name: &str) -> Option<EntityId> {
         .state()
         .entities
         .values()
-        .find(|e| e.name == name)
+        .find(|e| e.name == name || e.prototype.as_str() == name)
         .map(|e| e.id)
 }
 
 fn do_commit(
-    engine: &mut Engine,
-    undo: &mut Vec<(story_engine::Snapshot, bool)>,
+    presenter: &mut Presenter,
+    undo: &mut Vec<(Snapshot, bool)>,
     verb: &str,
     rest: &[&str],
     verbose: bool,
@@ -858,8 +660,8 @@ fn do_commit(
             .or_else(|| card.strip_prefix('#'))
             .and_then(|n| n.parse::<u64>().ok())
             .map(story_core::EntityId)
-            .filter(|id| engine.state().entities.contains_key(id))
-            .or_else(|| find_entity(engine, card));
+            .filter(|id| presenter.state().entities.contains_key(id))
+            .or_else(|| find_entity(presenter.engine(), card));
         let Some(e) = e else {
             println!("  no live card named `{card}`");
             return None;
@@ -867,48 +669,46 @@ fn do_commit(
         bindings.push((SlotName::from(slot), e));
         trace_bindings.push((SlotName::from(slot), card.to_string()));
     }
-    let snap = engine.snapshot();
+    let snap = presenter.snapshot();
     let action = CommitAction {
         verb: VerbId::from(verb),
         bindings,
     };
-    match engine.commit(action) {
-        // The undo snapshot is host-held and pushed only for an applied
-        // action; a refusal leaves nothing to undo.
-        Ok(events) => {
+    match presenter.commit(action) {
+        Ok(output) => {
             let old_st = serde_json::from_slice::<story_core::State>(&snap.state).ok();
             undo.push((snap, true));
             if verbose {
                 let new_sit = old_st.as_ref().and_then(|st| {
-                    engine
+                    presenter
                         .state()
                         .situations
                         .values()
                         .find(|s| !st.situations.contains_key(&s.id))
                 });
                 if let Some(s) = new_sit {
-                    let dur = s.ends_at.saturating_sub(engine.state().now);
+                    let dur = s.ends_at.saturating_sub(presenter.state().now);
                     println!(
                         "  [sit {}] {} started ({}m, ends at {}m)",
                         s.id, s.recipe, dur, s.ends_at
                     );
-                } else if events.is_empty() {
+                } else if output.beats.is_empty() && output.raw_events.is_empty() {
                     println!("  committed {verb}");
                 }
-            } else if events.is_empty() {
+            } else if output.beats.iter().all(|b| b.kind != BeatKind::ActionStart) {
                 let new_sit = old_st.as_ref().and_then(|st| {
-                    engine
+                    presenter
                         .state()
                         .situations
                         .values()
                         .find(|s| !st.situations.contains_key(&s.id))
                 });
                 if let Some(s) = new_sit {
-                    let dur = s.ends_at.saturating_sub(engine.state().now);
+                    let dur = s.ends_at.saturating_sub(presenter.state().now);
                     println!("  [sit {}] {} started ({}m)", s.id, s.recipe, dur);
                 }
             }
-            print_events(&events);
+            print_story_output(&output, verbose);
             Some(story_analyze::TraceStep::Commit {
                 verb: VerbId::from(verb),
                 bindings: trace_bindings,
@@ -917,7 +717,7 @@ fn do_commit(
         Err(d) => {
             println!("  refused: {d}");
             if verbose {
-                print_commit_hint(engine, verb);
+                print_commit_hint(presenter.engine(), verb);
             }
             None
         }
@@ -925,8 +725,8 @@ fn do_commit(
 }
 
 fn do_bind(
-    engine: &mut Engine,
-    undo: &mut Vec<(story_engine::Snapshot, bool)>,
+    presenter: &mut Presenter,
+    undo: &mut Vec<(Snapshot, bool)>,
     sit: &str,
     slot: &str,
     card: &str,
@@ -943,19 +743,19 @@ fn do_bind(
         .or_else(|| card.strip_prefix('#'))
         .and_then(|n| n.parse::<u64>().ok())
         .map(story_core::EntityId)
-        .filter(|id| engine.state().entities.contains_key(id))
-        .or_else(|| find_entity(engine, card));
+        .filter(|id| presenter.state().entities.contains_key(id))
+        .or_else(|| find_entity(presenter.engine(), card));
     let Some(e) = e else {
         println!("  no live card named `{card}`");
         return None;
     };
-    let snap = engine.snapshot();
-    match engine.bind(SituationId(sit_id), SlotName::from(slot), e) {
-        Ok(events) => {
+    let snap = presenter.snapshot();
+    match presenter.bind(SituationId(sit_id), SlotName::from(slot), e) {
+        Ok(output) => {
             undo.push((snap, true));
-            print_events(&events);
+            print_story_output(&output, verbose);
             if verbose {
-                if let Some(s) = engine.state().situations.get(&SituationId(sit_id)) {
+                if let Some(s) = presenter.state().situations.get(&SituationId(sit_id)) {
                     let cur = s
                         .bindings
                         .get(&SlotName::from(slot))
@@ -973,8 +773,8 @@ fn do_bind(
         Err(d) => {
             println!("  refused: {d}");
             if verbose {
-                if let Some(s) = engine.state().situations.get(&SituationId(sit_id)) {
-                    if let Some(r) = find_recipe_decl(engine, &s.verb, &s.recipe) {
+                if let Some(s) = presenter.state().situations.get(&SituationId(sit_id)) {
+                    if let Some(r) = find_recipe_decl(presenter.engine(), &s.verb, &s.recipe) {
                         if let Some(slot_decl) = r.slots.iter().find(|sd| sd.name.as_str() == slot)
                         {
                             println!("  slot `{slot}` criteria: {}", format_slot(slot_decl));
@@ -988,43 +788,42 @@ fn do_bind(
 }
 
 fn do_advance(
-    engine: &mut Engine,
-    undo: &mut Vec<(story_engine::Snapshot, bool)>,
+    presenter: &mut Presenter,
+    undo: &mut Vec<(Snapshot, bool)>,
     turns: i64,
     verbose: bool,
 ) -> Option<story_analyze::TraceStep> {
-    let Some(dt) = engine.turn().checked_mul(turns) else {
+    let Some(dt) = presenter.engine().turn().checked_mul(turns) else {
         println!(
             "  refused: error BadDuration [effects]: advance {turns} turns overflows the clock"
         );
         return None;
     };
-    let snap = engine.snapshot();
-    match engine.advance(dt) {
-        Ok(events) => {
+    let snap = presenter.snapshot();
+    match presenter.advance(dt) {
+        Ok(output) => {
             undo.push((snap, true));
             if verbose {
                 println!(
                     "  advanced {turns} turn(s) ({dt}m) -> clock is now {}m",
-                    engine.state().now
+                    presenter.state().now
                 );
-                if !engine.state().situations.is_empty() {
-                    for s in engine.state().situations.values() {
-                        let rem = s.ends_at.saturating_sub(engine.state().now);
+                if !presenter.state().situations.is_empty() {
+                    for s in presenter.state().situations.values() {
+                        let rem = s.ends_at.saturating_sub(presenter.state().now);
                         println!(
                             "  [sit {}] {}: {rem}m remaining (ends at {}m)",
                             s.id, s.recipe, s.ends_at
                         );
                     }
                 }
-            } else if events.is_empty() {
+            } else if output.beats.is_empty() && output.raw_events.is_empty() {
                 println!(
                     "  advanced {turns} turn(s) (clock: {}m)",
-                    engine.state().now
+                    presenter.state().now
                 );
             }
-            print_events(&events);
-            print_ending(engine);
+            print_story_output(&output, verbose);
             Some(story_analyze::TraceStep::Advance { turns })
         }
         Err(d) => {
@@ -1034,93 +833,188 @@ fn do_advance(
     }
 }
 
-fn print_events(events: &[Event]) {
-    for e in events {
-        match e {
-            Event::Narration { text } => println!("  {text}"),
-            Event::Bound { sit, slot, entity } => {
-                println!("  [sit {sit}] {slot} <- entity {entity}");
+fn print_inspect(lore: &story_present::CardLoreView) {
+    let id_str = match lore.entity_id {
+        Some(id) => format!(" (#{id})"),
+        None => String::new(),
+    };
+    let kind_str = match &lore.kind {
+        Some(k) => format!(" [{k}]"),
+        None => String::new(),
+    };
+    if lore.title != lore.prototype {
+        println!(
+            "  {} ({}){}{}",
+            lore.title, lore.prototype, kind_str, id_str
+        );
+    } else {
+        println!("  {}{}{}", lore.title, kind_str, id_str);
+    }
+    if let Some(desc) = &lore.description {
+        println!("    lore: \"{desc}\"");
+    }
+    if !lore.aspects.is_empty() {
+        let aspects: Vec<String> = lore
+            .aspects
+            .iter()
+            .map(|(k, v)| format!("{k}:{v}"))
+            .collect();
+        println!("    aspects: {}", aspects.join(", "));
+    }
+    if let Some(exp) = lore.expires_at {
+        println!("    expires at: {exp}m");
+    } else if let Some(life) = lore.lifetime {
+        println!("    lifetime: {life}m");
+    }
+    if !lore.relations.is_empty() {
+        println!("    relations:");
+        for (rel_kind, target_title, target_id) in &lore.relations {
+            let tgt_str = match target_id {
+                Some(id) => format!("{target_title} (#{id})"),
+                None => target_title.clone(),
+            };
+            println!("      -{rel_kind}-> {tgt_str}");
+        }
+    }
+}
+
+fn print_story_output(output: &story_present::StoryOutput, verbose: bool) {
+    let mut completed_printed = BTreeSet::new();
+
+    // 1. In verbose mode, print event diagnostics (such as slot bindings and countdowns)
+    if verbose {
+        for ev in &output.raw_events {
+            match ev {
+                Event::Bound {
+                    sit,
+                    slot,
+                    entity,
+                    card,
+                } => {
+                    println!("  [sit {sit}] {slot} <- {card} (#{entity})");
+                }
+                Event::SituationStarted { sit, verb, recipe } => {
+                    println!("  [sit {sit}] {verb} started via {recipe}");
+                }
+                Event::SituationCompleted { sit, recipe, .. } => {
+                    println!("  [sit {sit}] {recipe} completed");
+                    completed_printed.insert(*sit);
+                }
+                Event::Continued { sit, recipe } => {
+                    println!("  [sit {sit}] continues via {recipe}");
+                }
+                Event::ResolutionFailed { sit, reason } => {
+                    println!("  [sit {sit} FAILED: {reason}]");
+                }
+                Event::Related { from, kind, to } => {
+                    println!("  [relate] entity {from} -{kind}-> entity {to}");
+                }
+                Event::Unrelated { from, kind, to } => {
+                    println!("  [unrelate] entity {from} -{kind}-/-> entity {to}");
+                }
+                _ => {}
             }
-            Event::SituationCompleted { sit, recipe } => {
-                println!("  [sit {sit}] {recipe} completed");
+        }
+    }
+
+    // 2. Format StoryOutput beats
+    let mut has_action_complete_beat = false;
+    for beat in &output.beats {
+        match beat.kind {
+            BeatKind::ActionStart => {
+                if !beat.text.trim().is_empty() {
+                    println!("  {}", beat.text);
+                }
             }
-            Event::Continued { situation, recipe } => {
-                println!("  [sit {situation}] continues via {recipe}");
+            BeatKind::ActionComplete => {
+                if !beat.text.trim().is_empty() {
+                    has_action_complete_beat = true;
+                    println!("  {}", beat.text);
+                }
             }
-            Event::ChainEnded { verb } => println!("  [chain {verb} ended]"),
-            Event::StartSkipped { verb, reason } => {
-                println!("  [start {verb} skipped: {reason:?}]");
+            BeatKind::NarrativeCue => {
+                if !beat.text.trim().is_empty() {
+                    println!("  [{}]", beat.text);
+                }
             }
-            Event::SpawnSkipped { name } => println!("  [spawn {name} skipped: not unique]"),
-            Event::ResolutionFailed { sit, reason } => {
-                println!("  [sit {sit} FAILED: {reason}]");
+            BeatKind::Ending => {
+                if !beat.text.trim().is_empty() {
+                    println!("  {}", beat.text);
+                }
             }
-            Event::Related { from, kind, to } => {
-                println!("  [relate] entity {from} -{kind}-> entity {to}");
+            BeatKind::ActionContinue | BeatKind::RuleTriggered | BeatKind::WorldUpdate => {
+                if !beat.text.trim().is_empty() {
+                    println!("  {}", beat.text);
+                }
             }
-            Event::Unrelated { from, kind, to } => {
-                println!("  [unrelate] entity {from} -{kind}-/-> entity {to}");
+        }
+    }
+
+    // 3. Fallbacks in non-verbose mode for events not covered by beats
+    if !verbose {
+        for ev in &output.raw_events {
+            match ev {
+                Event::SituationCompleted { sit, recipe, .. } => {
+                    if !has_action_complete_beat && !completed_printed.contains(sit) {
+                        println!("  [sit {sit}] {recipe} completed");
+                        completed_printed.insert(*sit);
+                    }
+                }
+                Event::ResolutionFailed { sit, reason } => {
+                    println!("  [sit {sit} FAILED: {reason}]");
+                }
+                Event::Ended { ending } => {
+                    if output.beats.iter().all(|b| b.kind != BeatKind::Ending) {
+                        println!("  [game ended: {ending}]");
+                    }
+                }
+                _ => {}
             }
         }
     }
 }
 
-fn print_ending(engine: &Engine) {
-    if let Some(ended) = &engine.state().ended {
-        let title = engine
-            .content()
-            .endings
-            .get(ended.as_str())
-            .map(|e| format!("\"{}\" ({})", e.title, e.tier))
-            .unwrap_or_default();
-        println!("  === THE STORY ENDS: {ended} {title} ===");
-    }
-}
-
-fn print_verbs(engine: &Engine, filter_runnable: bool) {
-    let mut verbs: Vec<_> = engine.content().verbs.values().collect();
-    verbs.sort_by_key(|v| v.decl_index);
+fn print_verbs(presenter: &Presenter, filter_runnable: bool) {
+    let views = presenter.verbs_view(filter_runnable);
     let mut any_printed = false;
-    for v in verbs {
-        let mode = match v.mode {
-            VerbMode::Committable => "committable",
-            VerbMode::Autonomous => "autonomous",
-            VerbMode::Uncommittable => "uncommittable",
+    for v in &views {
+        let title_display = if v.title != v.id {
+            format!("{} ({})", v.title, v.id)
+        } else {
+            v.id.clone()
         };
-        let instances = match v.instances {
-            story_content::ir::InstanceCap::Any => "any".to_string(),
-            story_content::ir::InstanceCap::AtMost(n) => n.to_string(),
-        };
-        let mut recipes: Vec<&story_content::ir::RecipeDecl> = v.recipes.values().collect();
-        recipes.sort_by_key(|r| (r.priority, r.decl_index));
-        if filter_runnable {
-            recipes.retain(|r| is_recipe_runnable(engine, v, r));
-            if recipes.is_empty() {
-                continue;
-            }
+        let mut recipes = v.recipes.clone();
+        recipes.sort_by_key(|r| r.priority);
+        if filter_runnable && recipes.is_empty() {
+            continue;
         }
         any_printed = true;
         let list: Vec<String> = recipes
             .iter()
             .map(|r| {
+                let r_display = if r.label != r.name {
+                    format!("{} ({})", r.label, r.name)
+                } else {
+                    r.name.clone()
+                };
+                let kind_str = if r.craftable {
+                    ""
+                } else if r.chain_only {
+                    ", chain-only"
+                } else {
+                    ", auto"
+                };
                 format!(
                     "{} (priority {}, {}m{})",
-                    r.name,
-                    r.priority,
-                    r.duration,
-                    if r.craftable {
-                        ""
-                    } else if r.chain_only {
-                        ", chain-only"
-                    } else {
-                        ", auto"
-                    }
+                    r_display, r.priority, r.duration, kind_str
                 )
             })
             .collect();
         println!(
-            "  {} {mode} instances {instances}: {}",
-            v.id,
+            "  {} {} instances {}: {}",
+            title_display,
+            v.mode,
+            v.instances,
             list.join(", ")
         );
     }
@@ -1129,31 +1023,24 @@ fn print_verbs(engine: &Engine, filter_runnable: bool) {
     }
 }
 
-fn print_verbs_verbose(engine: &Engine, filter_runnable: bool) {
-    let mut verbs: Vec<_> = engine.content().verbs.values().collect();
-    verbs.sort_by_key(|v| v.decl_index);
+fn print_verbs_verbose(presenter: &Presenter, filter_runnable: bool) {
+    let views = presenter.verbs_view(filter_runnable);
     let mut any_printed = false;
-    for v in verbs {
-        let mode = match v.mode {
-            VerbMode::Committable => "committable",
-            VerbMode::Autonomous => "autonomous",
-            VerbMode::Uncommittable => "uncommittable",
-        };
-        let instances = match v.instances {
-            story_content::ir::InstanceCap::Any => "any".to_string(),
-            story_content::ir::InstanceCap::AtMost(n) => n.to_string(),
-        };
-        let mut recipes: Vec<&story_content::ir::RecipeDecl> = v.recipes.values().collect();
-        recipes.sort_by_key(|r| (r.priority, r.decl_index));
-        if filter_runnable {
-            recipes.retain(|r| is_recipe_runnable(engine, v, r));
-            if recipes.is_empty() {
-                continue;
-            }
+    for v in &views {
+        if filter_runnable && v.recipes.is_empty() {
+            continue;
         }
         any_printed = true;
-        println!("  {} [{}, instances: {}]:", v.id, mode, instances);
-        for r in recipes {
+        let title_display = if v.title != v.id {
+            format!("{} ({})", v.title, v.id)
+        } else {
+            v.id.clone()
+        };
+        println!(
+            "  {} [{}, instances: {}]:",
+            title_display, v.mode, v.instances
+        );
+        for r in &v.recipes {
             let kind = if r.craftable {
                 "craftable"
             } else if r.chain_only {
@@ -1161,19 +1048,37 @@ fn print_verbs_verbose(engine: &Engine, filter_runnable: bool) {
             } else {
                 "auto"
             };
+            let r_display = if r.label != r.name {
+                format!("{} ({})", r.label, r.name)
+            } else {
+                r.name.clone()
+            };
             println!(
                 "    {} (priority {}, {}m, {})",
-                r.name, r.priority, r.duration, kind
+                r_display, r.priority, r.duration, kind
             );
             if !r.guards.is_empty() {
                 for g in &r.guards {
-                    println!("      guard: \"{}\"", g.prose);
+                    println!("      guard: \"{}\"", g);
                 }
             }
             if !r.slots.is_empty() {
                 println!("      slots:");
                 for s in &r.slots {
-                    println!("        {}", format_slot(s));
+                    let flags_str = if s.flags.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {}", s.flags)
+                    };
+                    let label_str = if s.label != s.name {
+                        format!(" ({})", s.label)
+                    } else {
+                        String::new()
+                    };
+                    println!(
+                        "        {}{}: {}{flags_str} ({})",
+                        s.name, label_str, s.bounds, s.criteria
+                    );
                 }
             }
         }
@@ -1183,164 +1088,189 @@ fn print_verbs_verbose(engine: &Engine, filter_runnable: bool) {
     }
 }
 
-fn print_state(engine: &Engine) {
-    let st = engine.state();
-    println!("  clock: {}m", st.now);
-    match &st.ended {
-        Some(e) => println!("  ended: {e}"),
+fn print_state(presenter: &Presenter) {
+    let board = presenter.board_view();
+    println!("  clock: {}m", board.clock);
+    match &board.ended {
+        Some(e) => {
+            if e.title != e.id && !e.title.is_empty() {
+                println!("  ended: {} ({})", e.id, e.title);
+            } else {
+                println!("  ended: {}", e.id);
+            }
+        }
         None => println!("  ended: -"),
     }
-    let legacy: Vec<String> = st.legacy.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    let legacy: Vec<String> = board
+        .legacy
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
     println!("  legacy: {}", legacy.join(", "));
-    let mut by_zone: BTreeMap<u64, Vec<String>> = BTreeMap::new();
-    for e in st.entities.values() {
-        let aspects: Vec<String> = e.aspects.iter().map(|(k, v)| format!("{k}:{v}")).collect();
-        by_zone.entry(e.zone.0).or_default().push(format!(
-            "{}#{}{}{}",
-            e.name,
-            e.id,
-            e.expires_at
-                .map(|t| format!(" (expires {t}m)"))
-                .unwrap_or_default(),
-            if aspects.is_empty() {
-                String::new()
-            } else {
-                format!(" {{{}}}", aspects.join(", "))
-            }
-        ));
-    }
-    for (z, cards) in by_zone {
-        let kind = st
-            .zones
-            .get(&story_core::ZoneId(z))
-            .map(|zone| match &zone.kind {
-                story_core::ZoneKind::Table => "table",
-                story_core::ZoneKind::Hidden => "hidden",
-                story_core::ZoneKind::SituationInterior(_) => "interior",
-                story_core::ZoneKind::Of(_) => "carrier",
-            })
-            .unwrap_or("?");
-        println!("  zone {z} [{kind}]: {}", cards.join(" | "));
-    }
-    for s in st.situations.values() {
-        let slots: Vec<String> = s
-            .bindings
+    for z in &board.zones {
+        if z.cards.is_empty() {
+            continue;
+        }
+        let cards: Vec<String> = z
+            .cards
             .iter()
-            .map(|(name, binds)| {
-                let cards: Vec<String> = binds
-                    .iter()
-                    .map(|b| format!("{}#{}", entity_name(engine, b.entity), b.entity))
-                    .collect();
-                format!("{name}: {}", cards.join(", "))
+            .map(|c| {
+                let aspects: Vec<String> =
+                    c.aspects.iter().map(|(k, v)| format!("{k}:{v}")).collect();
+                let title = if c.title != c.prototype {
+                    format!("{} ({})", c.title, c.prototype)
+                } else {
+                    c.prototype.clone()
+                };
+                let count_str = if c.count > 1 {
+                    format!(" x{}", c.count)
+                } else {
+                    String::new()
+                };
+                let expires_str = c
+                    .expires_at
+                    .map(|t| format!(" (expires {t}m)"))
+                    .unwrap_or_default();
+                let aspects_str = if aspects.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {{{}}}", aspects.join(", "))
+                };
+                format!(
+                    "{}#{}{count_str}{expires_str}{aspects_str}",
+                    title, c.entity_id
+                )
             })
             .collect();
+        println!("  zone {} [{}]: {}", z.zone_id.0, z.kind, cards.join(" | "));
+    }
+    for s in &board.situations {
+        let mut by_slot: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        for sc in &s.slotted {
+            let title = if sc.title != sc.prototype {
+                format!("{} ({})", sc.title, sc.prototype)
+            } else {
+                sc.prototype.clone()
+            };
+            by_slot
+                .entry(&sc.slot)
+                .or_default()
+                .push(format!("{}#{}", title, sc.entity_id));
+        }
+        let slots: Vec<String> = by_slot
+            .iter()
+            .map(|(slot, cards)| format!("{}: {}", slot, cards.join(", ")))
+            .collect();
+        let r_display = if s.recipe_label != s.recipe {
+            format!("{} ({})", s.recipe_label, s.recipe)
+        } else {
+            s.recipe.clone()
+        };
         println!(
             "  sit {} {} [{}] ends {}m",
             s.id,
-            s.recipe,
+            r_display,
             slots.join("; "),
             s.ends_at
         );
     }
 }
 
-fn print_state_verbose(engine: &Engine) {
-    let st = engine.state();
-    println!("  clock: {}m", st.now);
-    match &st.ended {
-        Some(e) => println!("  ended: {e}"),
+fn print_state_verbose(presenter: &Presenter) {
+    let board = presenter.board_view();
+    println!("  clock: {}m", board.clock);
+    match &board.ended {
+        Some(e) => {
+            if e.title != e.id && !e.title.is_empty() {
+                println!("  ended: {} ({})", e.id, e.title);
+            } else {
+                println!("  ended: {}", e.id);
+            }
+        }
         None => println!("  ended: -"),
     }
-    let legacy: Vec<String> = st.legacy.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    let legacy: Vec<String> = board
+        .legacy
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
     println!("  legacy: {}", legacy.join(", "));
-    let mut by_zone: BTreeMap<u64, Vec<String>> = BTreeMap::new();
-    for e in st.entities.values() {
-        let aspects: Vec<String> = e.aspects.iter().map(|(k, v)| format!("{k}:{v}")).collect();
-        by_zone.entry(e.zone.0).or_default().push(format!(
-            "{}#{}{}{}",
-            e.name,
-            e.id,
-            e.expires_at
+    for z in &board.zones {
+        if z.cards.is_empty() {
+            continue;
+        }
+        println!("  zone {} [{}]:", z.zone_id.0, z.kind);
+        for c in &z.cards {
+            let aspects: Vec<String> = c.aspects.iter().map(|(k, v)| format!("{k}:{v}")).collect();
+            let title = if c.title != c.prototype {
+                format!("{} ({})", c.title, c.prototype)
+            } else {
+                c.prototype.clone()
+            };
+            let count_str = if c.count > 1 {
+                format!(" x{}", c.count)
+            } else {
+                String::new()
+            };
+            let expires_str = c
+                .expires_at
                 .map(|t| {
-                    let rem = t.saturating_sub(st.now);
+                    let rem = t.saturating_sub(board.clock);
                     format!(" (expires in {rem}m at {t}m)")
                 })
-                .unwrap_or_default(),
-            if aspects.is_empty() {
+                .unwrap_or_default();
+            let aspects_str = if aspects.is_empty() {
                 String::new()
             } else {
                 format!(" {{{}}}", aspects.join(", "))
-            }
-        ));
-    }
-    for (z, cards) in by_zone {
-        let kind = st
-            .zones
-            .get(&story_core::ZoneId(z))
-            .map(|zone| match &zone.kind {
-                story_core::ZoneKind::Table => "table",
-                story_core::ZoneKind::Hidden => "hidden",
-                story_core::ZoneKind::SituationInterior(_) => "interior",
-                story_core::ZoneKind::Of(_) => "carrier",
-            })
-            .unwrap_or("?");
-        println!("  zone {z} [{kind}]:");
-        for c in cards {
-            println!("    {c}");
+            };
+            println!(
+                "    {}#{}{count_str}{expires_str}{aspects_str}",
+                title, c.entity_id
+            );
         }
     }
-    if st.situations.is_empty() {
+    if board.situations.is_empty() {
         println!("  active situations: none");
     } else {
         println!("  active situations:");
-        for s in st.situations.values() {
-            let rem = s.ends_at.saturating_sub(st.now);
+        for s in &board.situations {
+            let r_display = if s.recipe_label != s.recipe {
+                format!("{} ({})", s.recipe_label, s.recipe)
+            } else {
+                s.recipe.clone()
+            };
             println!(
-                "    [sit {}] {}: {rem}m remaining (ends at {}m)",
-                s.id, s.recipe, s.ends_at
+                "    [sit {}] {}: {}m remaining (ends at {}m)",
+                s.id, r_display, s.remaining_time, s.ends_at
             );
-            for (slot_name, binds) in &s.bindings {
-                let cards: Vec<String> = binds
-                    .iter()
-                    .map(|b| format!("{}#{}", entity_name(engine, b.entity), b.entity))
-                    .collect();
+            let mut by_slot: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+            for sc in &s.slotted {
+                let title = if sc.title != sc.prototype {
+                    format!("{} ({})", sc.title, sc.prototype)
+                } else {
+                    sc.prototype.clone()
+                };
+                by_slot
+                    .entry(&sc.slot)
+                    .or_default()
+                    .push(format!("{}#{}", title, sc.entity_id));
+            }
+            for (slot_name, cards) in by_slot {
                 println!("      bound {slot_name}: {}", cards.join(", "));
             }
-            if let Some(r) = find_recipe_decl(engine, &s.verb, &s.recipe) {
-                for slot in &r.slots {
-                    if slot.open {
-                        let cur_count = s.bindings.get(&slot.name).map(|v| v.len()).unwrap_or(0);
-                        let max_str = slot
-                            .max
-                            .map(|m| m.to_string())
-                            .unwrap_or_else(|| "∞".to_string());
-                        if slot.max.map(|m| (cur_count as u32) < m).unwrap_or(true) {
-                            let query_str = if slot.query.is_empty() {
-                                "any".to_string()
-                            } else {
-                                slot.query
-                                    .iter()
-                                    .map(format_query_term)
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            };
-                            println!(
-                                "      open slot: {} ({}/{} bound, accepts {}) -> bind {} {} <card>",
-                                slot.name, cur_count, max_str, query_str, s.id, slot.name
-                            );
-                        }
-                    }
-                }
+            for slot in &s.open_slots {
+                let cur_count = s.slotted.iter().filter(|sc| sc.slot == slot.name).count();
+                let label_str = if slot.label != slot.name {
+                    format!(" ({})", slot.label)
+                } else {
+                    String::new()
+                };
+                println!(
+                    "      open slot: {}{} ({} bound, bounds {}, accepts {}) -> bind {} {} <card>",
+                    slot.name, label_str, cur_count, slot.bounds, slot.criteria, s.id, slot.name
+                );
             }
         }
     }
-}
-
-fn entity_name(engine: &Engine, id: EntityId) -> &str {
-    engine
-        .state()
-        .entities
-        .get(&id)
-        .map(|e| e.name.as_str())
-        .unwrap_or("?")
 }

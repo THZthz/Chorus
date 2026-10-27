@@ -31,8 +31,9 @@ use source::{pairs, s, PLAYER_VERBS, TIME_VERB};
 pub use gaps::{Class, Conversion, GapRow, Gaps, Stats};
 pub use source::SEED;
 
-mod chains;
+mod catalog;
 mod census;
+mod chains;
 mod emit;
 mod gaps;
 mod inventory;
@@ -54,7 +55,9 @@ pub fn convert(d: &CsData) -> Conversion {
     let mut stubs: Vec<String> = Vec::new();
     for (_, r) in &owned.recipes {
         for (k, v) in pairs(r, "effects") {
-            if v > 0 && !k.starts_with("lever_") && !owned.elements.contains_key(&k)
+            if v > 0
+                && !k.starts_with("lever_")
+                && !owned.elements.contains_key(&k)
                 && !stubs.contains(&k)
             {
                 stubs.push(k);
@@ -110,8 +113,10 @@ pub fn convert(d: &CsData) -> Conversion {
     let sw = c.emit();
     c.stats.output_lines = sw.lines().count();
     c.census();
+    let catalog = c.extract_catalog();
     Conversion {
         sw,
+        catalog,
         stats: c.stats.clone(),
         gaps: c.gaps,
         skipped: d.skipped.clone(),

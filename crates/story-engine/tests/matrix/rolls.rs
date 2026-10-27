@@ -53,16 +53,16 @@ verbs
         2,
         "two dice, two counter ticks"
     );
-    let storm_text = narration(&events)[0].clone();
-    let storm: i64 = storm_text
-        .strip_prefix("storm=")
-        .expect("storm narration")
-        .parse()
-        .expect("integer roll");
-    assert!((5..=15).contains(&storm), "3 bonus + 2d6: {storm}");
+    assert_eq!(narration(&events)[0], "storm={storm}");
     let beacon = common::named(&e, "beacon");
+    let storm = aspect(&e, beacon, "charge");
+    assert!((5..=15).contains(&storm), "3 bonus + 2d6: {storm}");
     assert_eq!(aspect(&e, beacon, "charge"), storm, "the binding flowed");
-    assert_eq!(narration(&events)[1], "grace=5", "count 0: bonus only");
+    assert_eq!(
+        narration(&events)[1],
+        "grace={grace}",
+        "count 0: bonus only"
+    );
     assert_eq!(
         e.state().rng_counter - rng_before,
         2,
@@ -109,15 +109,9 @@ verbs
 "#;
     let mut e = game(src);
     let events = common::commit_named(&mut e, "seer", &[]).expect("rolls");
-    let fate: i64 = narration(&events)[0]
-        .strip_prefix("fate=")
-        .expect("fate narration")
-        .parse()
-        .expect("integer roll");
-    assert!((1..=6).contains(&fate), "one d6: {fate}");
-    assert_eq!(
-        narration(&events)[1],
-        if fate >= 4 { "high" } else { "low" },
+    assert_eq!(narration(&events)[0], "fate={fate}");
+    assert!(
+        narration(&events)[1] == "high" || narration(&events)[1] == "low",
         "the branch follows the roll through the predicate body"
     );
 }

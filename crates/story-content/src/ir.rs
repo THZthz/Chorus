@@ -284,10 +284,8 @@ pub enum EffectNode {
         op: SetOp,
         expr: Expr,
     },
-    /// Prose with `{token}` interpolations, statically checked at compile
-    /// time and resolved by the engine at effect time (L6).
-    Narrate {
-        template: String,
+    Cue {
+        id: String,
     },
     Roll {
         count: Expr,

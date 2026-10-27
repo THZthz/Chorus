@@ -268,7 +268,8 @@ impl<'a> Builder<'a> {
         }
 
         let binders = self.slot_binders();
-        let mut recipe_declares: BTreeMap<&RecipeId, BTreeSet<&story_content::ir::AspectKey>> = BTreeMap::new();
+        let mut recipe_declares: BTreeMap<&RecipeId, BTreeSet<&story_content::ir::AspectKey>> =
+            BTreeMap::new();
         for verb in self.content.verbs.values() {
             for rec in verb.recipes.values() {
                 if !rec.declares.is_empty() {
@@ -629,7 +630,7 @@ impl<'a> Builder<'a> {
             EffectNode::Legacy { key, .. } => {
                 ex.produces.insert(Fact::LegacyCanChange(key.clone()));
             }
-            EffectNode::Narrate { .. } => {}
+            EffectNode::Cue { .. } => {}
             EffectNode::Roll { count, sides, .. } => {
                 // Invalid operands are the effect failure (T11): a dynamic
                 // count or a sides expression that is not statically >= 1

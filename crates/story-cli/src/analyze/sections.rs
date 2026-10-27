@@ -308,9 +308,8 @@ fn print_solve(out: &mut String, outcome: &SolveOutcome, opts: &Options, max_tim
                 outln!(out, "  aspects: {}", aspects.join(", "));
             }
             if env.total_causal_landmarks > 0 {
-                let ratio = env.causal_landmarks_reached as f64
-                    / env.total_causal_landmarks as f64
-                    * 100.0;
+                let ratio =
+                    env.causal_landmarks_reached as f64 / env.total_causal_landmarks as f64 * 100.0;
                 outln!(
                     out,
                     "  landmarks: {}/{} causal landmarks grounded ({:.0}%)",
@@ -378,7 +377,7 @@ fn print_witness(out: &mut String, witness: &WitnessPath) {
             step
         );
         if let Some(text) = record.events.iter().rev().find_map(|ev| match ev {
-            Event::Narration { text } => Some(text.as_str()),
+            Event::NarrativeCue { cue_id } => Some(cue_id.as_str()),
             _ => None,
         }) {
             outln!(out, "       \"{text}\"");
@@ -406,11 +405,12 @@ pub(super) fn classify_section(
     outln!(out, "== classify ==");
     let mut config = ClassifyConfig {
         explore: explore_config(opts, prune, max_time, extra_invariant),
-        winning_endings: goal.and_then(|g| match g {
-            GoalPredicate::Ending(id) => Some(ending_set(id.as_ref())),
-            _ => None,
-        })
-        .unwrap_or_default(),
+        winning_endings: goal
+            .and_then(|g| match g {
+                GoalPredicate::Ending(id) => Some(ending_set(id.as_ref())),
+                _ => None,
+            })
+            .unwrap_or_default(),
     };
     if prune {
         // Pruning expands toward the borrowed goal, so the closure becomes
@@ -463,29 +463,38 @@ pub(super) fn classify_section(
     let mut ponr = c.point_of_no_return_edges.clone();
     ponr.sort_unstable();
     outln!(out, "points of no return: {} crossing edge(s)", ponr.len());
-    print_capped(out, ponr.iter().map(|(u, v)| {
-        format!(
-            "node {u} -> node {v} (the state leaves winnable play at clock {}m)",
-            c.graph.nodes[*v].state.now
-        )
-    }));
+    print_capped(
+        out,
+        ponr.iter().map(|(u, v)| {
+            format!(
+                "node {u} -> node {v} (the state leaves winnable play at clock {}m)",
+                c.graph.nodes[*v].state.now
+            )
+        }),
+    );
     outln!(out, "softlocked live states: {}", c.softlock.len());
-    print_capped(out, c.softlock.iter().map(|v| {
-        format!(
-            "node {v} (clock {}m, no ending reachable)",
-            c.graph.nodes[*v].state.now
-        )
-    }));
+    print_capped(
+        out,
+        c.softlock.iter().map(|v| {
+            format!(
+                "node {v} (clock {}m, no ending reachable)",
+                c.graph.nodes[*v].state.now
+            )
+        }),
+    );
     let mut loops = c.infinite_loops.clone();
     for l in &mut loops {
         l.sort_unstable();
     }
     loops.sort();
     outln!(out, "infinite loops: {}", loops.len());
-    print_capped(out, loops.iter().map(|l| {
-        let nodes: Vec<String> = l.iter().map(|v| v.to_string()).collect();
-        format!("loop over {} state(s): nodes {}", l.len(), nodes.join(", "))
-    }));
+    print_capped(
+        out,
+        loops.iter().map(|l| {
+            let nodes: Vec<String> = l.iter().map(|v| v.to_string()).collect();
+            format!("loop over {} state(s): nodes {}", l.len(), nodes.join(", "))
+        }),
+    );
 }
 
 // -- mdp --------------------------------------------------------------------
@@ -582,11 +591,18 @@ pub(super) fn pareto_section(
     config.explore = explore_config(opts, prune, max_time, extra_invariant);
     let report = pareto_analyze(analyzer, &config);
     if report.frontier.is_empty() {
-        outln!(out, "frontier: empty — no explored state satisfies the goal within the bounds");
+        outln!(
+            out,
+            "frontier: empty — no explored state satisfies the goal within the bounds"
+        );
     } else {
         outln!(out, "frontier: {} point(s)", report.frontier.len());
         for (i, point) in report.frontier.iter().enumerate() {
-            let values: Vec<String> = point.values.iter().map(|v| fraction_or_decimal(*v)).collect();
+            let values: Vec<String> = point
+                .values
+                .iter()
+                .map(|v| fraction_or_decimal(*v))
+                .collect();
             outln!(
                 out,
                 "  point {} of {}: [{}] — {} action(s), final clock {}m, {}",
@@ -600,8 +616,16 @@ pub(super) fn pareto_section(
             print_witness(out, &point.witness);
         }
     }
-    outln!(out, "mandatory recipes: {}", joined_or_dash(report.mandatory_recipes.iter()));
-    outln!(out, "mandatory cards: {}", joined_or_dash(report.mandatory_cards.iter()));
+    outln!(
+        out,
+        "mandatory recipes: {}",
+        joined_or_dash(report.mandatory_recipes.iter())
+    );
+    outln!(
+        out,
+        "mandatory cards: {}",
+        joined_or_dash(report.mandatory_cards.iter())
+    );
     outln!(
         out,
         "minimal cuts: {}",
@@ -616,7 +640,10 @@ pub(super) fn pareto_section(
     }
 }
 
-fn cuts_text(cuts: &[std::collections::BTreeSet<story_core::RecipeId>], verified: &[std::collections::BTreeSet<story_core::RecipeId>]) -> String {
+fn cuts_text(
+    cuts: &[std::collections::BTreeSet<story_core::RecipeId>],
+    verified: &[std::collections::BTreeSet<story_core::RecipeId>],
+) -> String {
     if cuts.is_empty() {
         return "-".to_string();
     }
@@ -657,7 +684,10 @@ pub(super) fn audit_section(
     let _span = tracing::info_span!("audit").entered();
     outln!(out);
     outln!(out, "== audit ==");
-    let report = audit(analyzer, &explore_config(opts, prune, max_time, extra_invariant));
+    let report = audit(
+        analyzer,
+        &explore_config(opts, prune, max_time, extra_invariant),
+    );
     outln!(
         out,
         "explored: {} states ({})",
@@ -672,7 +702,10 @@ pub(super) fn audit_section(
     print_capped(
         out,
         shadowing.iter().map(|s| {
-            let verb = s.verb.as_ref().map_or_else(String::new, |v| format!("verb {v}: "));
+            let verb = s
+                .verb
+                .as_ref()
+                .map_or_else(String::new, |v| format!("verb {v}: "));
             let cond = if s.conditional {
                 " (conditional — the shadower is spent after firing)"
             } else {
@@ -689,7 +722,9 @@ pub(super) fn audit_section(
         unreachable.iter().map(|u| {
             let evidence = match u.evidence {
                 Evidence::StaticallyProved => "statically proved",
-                Evidence::NotWithinBounds => "not within the exploration bounds (bounds-conditional)",
+                Evidence::NotWithinBounds => {
+                    "not within the exploration bounds (bounds-conditional)"
+                }
             };
             format!("{} {} — {evidence}", u.kind, u.id)
         }),

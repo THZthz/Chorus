@@ -7,6 +7,7 @@ members = [
     "crates/story-engine",
     "crates/story-cli",
     "crates/story-analyze",
+    "crates/story-present",
     "crates/cs2sw",
 ]
 
@@ -22,3 +23,4 @@ story-content = { path = "crates/story-content" }
 story-engine = { path = "crates/story-engine" }
 story-lang = { path = "crates/story-lang" }
 story-analyze = { path = "crates/story-analyze" }
+story-present = { path = "crates/story-present" }

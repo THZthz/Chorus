@@ -186,9 +186,8 @@ impl Engine {
                 }
                 self.state.legacy.insert(key.clone(), nv);
             }
-            EffectNode::Narrate { template } => {
-                let text = self.interpolate(template, fctx, recipe.as_ref());
-                ev.push(Event::Narration { text });
+            EffectNode::Cue { id } => {
+                ev.push(Event::NarrativeCue { cue_id: id.clone() });
             }
             EffectNode::Roll {
                 count,
@@ -234,10 +233,10 @@ impl Engine {
                     }
                     _ => {
                         for _ in 0..count {
-                            let die = (story_core::rng::splitmix64(
-                                self.seed ^ self.state.rng_counter,
-                            ) % sides as u64) as i64
-                                + 1;
+                            let die =
+                                (story_core::rng::splitmix64(self.seed ^ self.state.rng_counter)
+                                    % sides as u64) as i64
+                                    + 1;
                             self.state.rng_counter = self.state.rng_counter.wrapping_add(1);
                             total = total.saturating_add(die);
                         }
@@ -246,10 +245,10 @@ impl Engine {
                 }
             }
             EffectNode::Draw {
-                    deck,
-                    count,
-                    into: into_opt,
-                } => {
+                deck,
+                count,
+                into: into_opt,
+            } => {
                 let n = self.eval_count(count, &fctx.eval_ctx(recipe.as_ref()))?;
                 let into = into_opt.clone().unwrap_or(IntoZone::Interior);
                 // A chance point fires when the requested count is served
@@ -346,6 +345,7 @@ impl Engine {
                         ));
                     }
                     self.state.ended = Some(id.clone());
+                    ev.push(Event::Ended { ending: id.clone() });
                 }
             }
             EffectNode::Branch { cond, then, els } => {
@@ -404,6 +404,9 @@ impl Engine {
             if r.once {
                 self.state.fired_once.insert(r.id.clone());
             }
+            ev.push(Event::RuleFired {
+                rule_id: r.id.to_string(),
+            });
             return self.run_list(&r.effects, fctx, recipe.cloned(), ev, run, true);
         }
         Ok(())

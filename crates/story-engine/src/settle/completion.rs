@@ -78,6 +78,22 @@ impl Engine {
         // §4.4): unfilled greedy slots pull cards that became available
         // mid-flight, so the completion's own conditions read them.
         self.top_up_greedy(sit, rec, ev);
+        let mut final_bindings: BTreeMap<story_core::SlotName, Vec<story_core::CardId>> =
+            BTreeMap::new();
+        if let Some(s) = self.state.situations.get(&sit) {
+            for (slot, b_list) in &s.bindings {
+                let cards: Vec<story_core::CardId> = b_list
+                    .iter()
+                    .filter_map(|b| {
+                        self.state
+                            .entities
+                            .get(&b.entity)
+                            .map(|e| e.prototype.clone())
+                    })
+                    .collect();
+                final_bindings.insert(slot.clone(), cards);
+            }
+        }
         let mut fctx = EffectCtx {
             sit: Some(sit),
             now: self.state.now,
@@ -117,7 +133,10 @@ impl Engine {
                             .into_iter()
                             .filter(|arm| {
                                 let rec = content.recipe(arm.as_str()).unwrap_or_else(|| {
-                                    crate::kernel_invariant("UnknownRecipe", format!("unknown recipe `{arm}`"))
+                                    crate::kernel_invariant(
+                                        "UnknownRecipe",
+                                        format!("unknown recipe `{arm}`"),
+                                    )
                                 });
                                 match &rec.when {
                                     None => true,
@@ -191,6 +210,7 @@ impl Engine {
         ev.push(Event::SituationCompleted {
             sit,
             recipe: recipe_id,
+            bindings: final_bindings,
         });
         Ok(())
     }
@@ -342,10 +362,27 @@ impl Engine {
             }
         }
         let Some(target_id) = adopted else {
+            let mut final_bindings: BTreeMap<story_core::SlotName, Vec<story_core::CardId>> =
+                BTreeMap::new();
+            if let Some(s) = self.state.situations.get(&sit) {
+                for (slot, b_list) in &s.bindings {
+                    let cards: Vec<story_core::CardId> = b_list
+                        .iter()
+                        .filter_map(|b| {
+                            self.state
+                                .entities
+                                .get(&b.entity)
+                                .map(|e| e.prototype.clone())
+                        })
+                        .collect();
+                    final_bindings.insert(slot.clone(), cards);
+                }
+            }
             self.release_and_remove(sit);
             ev.push(Event::SituationCompleted {
                 sit,
                 recipe: current,
+                bindings: final_bindings,
             });
             return Ok(());
         };
@@ -376,7 +413,7 @@ impl Engine {
             .and_modify(|n| *n += 1)
             .or_insert(1);
         ev.push(Event::Continued {
-            situation: sit,
+            sit,
             recipe: target.id.clone(),
         });
         if target.duration == 0 {
@@ -391,7 +428,13 @@ impl Engine {
     /// completion book alone (card books belong to completion, not abortion),
     /// then the release path. The book is best-effort: a failing abort book
     /// rolls back and the release continues. Nothing authored invokes this.
-    fn abort_situation(&mut self, sit: SituationId, f: &Fail, ev: &mut Vec<Event>, run: &mut Run<'_>) {
+    fn abort_situation(
+        &mut self,
+        sit: SituationId,
+        f: &Fail,
+        ev: &mut Vec<Event>,
+        run: &mut Run<'_>,
+    ) {
         ev.push(Event::ResolutionFailed {
             sit,
             reason: f.display_reason(),

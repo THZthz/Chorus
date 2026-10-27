@@ -17,6 +17,7 @@ dependencies = [
  "story-core",
  "story-engine",
  "story-lang",
+ "story-present",
 ]
 
 [[package]]
@@ -143,6 +144,7 @@ dependencies = [
  "story-core",
  "story-engine",
  "story-lang",
+ "story-present",
  "tracing",
  "tracing-subscriber",
 ]
@@ -182,6 +184,18 @@ dependencies = [
  "serde_json",
  "story-content",
  "story-core",
+]
+
+[[package]]
+name = "story-present"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "story-content",
+ "story-core",
+ "story-engine",
+ "story-lang",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@ pub mod report;
 
 pub use convert::{convert, Class, Conversion, GapRow, Gaps, Stats, SEED};
 pub use model::{load_tree, CsData};
+pub use story_present::catalog::PresentationCatalog;
 
 /// The CS core root from the environment. The env-gated tests run only when
 /// `CS2SW_CS_CORE` is set; this machine pins it in `.cargo/config.toml`.

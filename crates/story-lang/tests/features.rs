@@ -139,7 +139,7 @@ fn effectset_expands_at_the_call_site() {
             ..
         }
     ));
-    assert!(matches!(&effects[2], EffectNode::Narrate { .. }));
+    assert!(matches!(&effects[2], EffectNode::Cue { .. }));
 }
 
 #[test]
@@ -445,7 +445,7 @@ verbs
     );
     let effects = &content.verbs["v"].recipes["r"].effects;
     assert_eq!(effects.len(), 2);
-    assert!(matches!(&effects[0], EffectNode::Narrate { .. }));
+    assert!(matches!(&effects[0], EffectNode::Cue { .. }));
 }
 
 /// `{handle.aspect}` resolves against the enclosing spawn's handle.
@@ -455,7 +455,7 @@ fn prose_tokens_accept_handle_aspects() {
         verb_with_effects("spawn cell count 1 as fresh\nnarrate \"fresh spark: {fresh.spark}\"");
     let effects = &content.verbs["v"].recipes["r"].effects;
     assert!(matches!(&effects[0], EffectNode::Spawn { handle: Some(h), .. } if h == "fresh"));
-    assert!(matches!(&effects[1], EffectNode::Narrate { .. }));
+    assert!(matches!(&effects[1], EffectNode::Cue { .. }));
 }
 
 /// A parameter forwarded to a card-typed callee parameter stays a card
@@ -605,12 +605,18 @@ fn table_scope_lowers_to_scope_table() {
         "narrate \"gone\"\nif count(table, aspect:spark) >= 1\n  destroy table aspect:spark count 1",
     );
     let effects = &content.verbs["v"].recipes["r"].effects;
-    assert!(matches!(&effects[0], EffectNode::Narrate { .. }));
+    assert!(matches!(&effects[0], EffectNode::Cue { .. }));
     let EffectNode::Branch { cond, then, .. } = &effects[1] else {
         panic!("expected a branch");
     };
     let is_table_count = match cond {
-        Expr::Cmp { left, .. } => matches!(**left, Expr::Count { scope: Scope::Table, .. }),
+        Expr::Cmp { left, .. } => matches!(
+            **left,
+            Expr::Count {
+                scope: Scope::Table,
+                ..
+            }
+        ),
         _ => false,
     };
     assert!(is_table_count, "{cond:?}");

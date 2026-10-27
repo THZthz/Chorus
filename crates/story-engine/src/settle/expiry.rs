@@ -33,6 +33,7 @@ pub(super) fn settle_expiry(
     if let Some(ent) = engine.state.entities.get_mut(&e) {
         ent.expires_at = None;
     }
+    let ev_checkpoint = ev.len();
     if let Some(book) = book {
         let mut fctx = EffectCtx {
             sit: None,
@@ -49,6 +50,7 @@ pub(super) fn settle_expiry(
             // spent regardless — expiry is one-shot — so the loop progresses.
             Err(_) => {
                 engine.state = checkpoint.expect("a book fired, so a checkpoint exists");
+                ev.truncate(ev_checkpoint);
                 if let Some(ent) = engine.state.entities.get_mut(&e) {
                     ent.expires_at = None;
                 }

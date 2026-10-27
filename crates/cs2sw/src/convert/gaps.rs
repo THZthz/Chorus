@@ -104,6 +104,7 @@ pub struct Stats {
 
 pub struct Conversion {
     pub sw: String,
+    pub catalog: story_present::catalog::PresentationCatalog,
     pub stats: Stats,
     pub gaps: Gaps,
     /// Files that failed to load or were excluded, (kind, name, reason).

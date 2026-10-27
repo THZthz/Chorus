@@ -14,7 +14,7 @@ use settle::Run;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use story_content::ir::{InstanceCap, RecipeDecl, SlotDecl, VerbDecl, VerbMode};
-use story_content::runtime::{DiagKind, RuntimeDiagnostic};
+use story_content::runtime::DiagKind;
 use story_content::Content;
 use story_core::{
     Binding, CardId, DeckId, EntityId, RecipeId, Situation, SituationId, SituationSource, SlotName,
@@ -22,6 +22,7 @@ use story_core::{
 };
 
 pub use effects::{Effect, EffectCtx, EffectRegistry, RegistryEntry};
+pub use story_content::runtime::RuntimeDiagnostic;
 pub use story_core::Snapshot;
 
 /// One stochastic settlement node (story-analyze spec §2.2): a `roll` or a
@@ -81,23 +82,31 @@ pub enum StartSkipReason {
 /// The v1 event set; the host renders (L6).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
-    /// Renderable prose.
-    Narration { text: String },
+    /// A situation was opened / materialized.
+    SituationStarted {
+        sit: SituationId,
+        verb: VerbId,
+        recipe: RecipeId,
+    },
+    /// Renderable narrative cue.
+    NarrativeCue { cue_id: String },
     /// A card joined a slot.
     Bound {
         sit: SituationId,
         slot: SlotName,
         entity: EntityId,
+        card: CardId,
     },
     /// An instance finished its completion sequence.
-    SituationCompleted { sit: SituationId, recipe: RecipeId },
+    SituationCompleted {
+        sit: SituationId,
+        recipe: RecipeId,
+        bindings: BTreeMap<SlotName, Vec<CardId>>,
+    },
     /// A situation adopted a `continue via` target instead of completing:
     /// the same instance goes on executing the target recipe with its timer
     /// re-armed (spec.md §4.2).
-    Continued {
-        situation: SituationId,
-        recipe: RecipeId,
-    },
+    Continued { sit: SituationId, recipe: RecipeId },
     /// A start chain ended silently: no eligible recipe, every `when` false,
     /// or the winner's guard refused.
     ChainEnded { verb: VerbId },
@@ -113,6 +122,10 @@ pub enum Event {
     /// failing verb's open rolls back alone. Advance traffic, not a
     /// Diagnostic.
     ResolutionFailed { sit: SituationId, reason: String },
+    /// A rule triggered.
+    RuleFired { rule_id: String },
+    /// An ending condition was reached.
+    Ended { ending: story_core::EndingId },
     /// A logical relation edge was written by an authored `relate` (one per
     /// written edge, in the authored orientation). Boot edges emit nothing.
     Related {
@@ -238,6 +251,10 @@ impl Engine {
         &mut self.state
     }
 
+    pub fn zone_ids(&self) -> &BTreeMap<String, ZoneId> {
+        &self.zone_ids
+    }
+
     /// Run the commit selection pipeline — eligibility, minimum-fill,
     /// when-scan, guard — without mutating state or spending time.
     pub fn preview_commit(&self, action: &CommitAction) -> Result<RecipeId, RuntimeDiagnostic> {
@@ -319,7 +336,8 @@ impl Engine {
             if self.verb_full(verb) {
                 continue;
             }
-            if let select::Selection::Matched(_) = self.select(Source::Poll, verb, None, None, None) {
+            if let select::Selection::Matched(_) = self.select(Source::Poll, verb, None, None, None)
+            {
                 return true;
             }
         }
@@ -354,10 +372,9 @@ impl Engine {
             return Err(DiagKind::StoryEnded.refused("the story has ended"));
         }
         let content = self.content.clone();
-        let verb = content
-            .verbs
-            .get(action.verb.as_str())
-            .ok_or_else(|| DiagKind::UnknownVerb.refused(format!("unknown verb `{}`", action.verb)))?;
+        let verb = content.verbs.get(action.verb.as_str()).ok_or_else(|| {
+            DiagKind::UnknownVerb.refused(format!("unknown verb `{}`", action.verb))
+        })?;
         if verb.mode != VerbMode::Committable {
             return Err(DiagKind::VerbAutonomous.in_context(
                 verb.id.to_string(),
@@ -443,6 +460,7 @@ impl Engine {
         }
         let seq = bind_count(&self.state, sit);
         let bound_from = self.state.entities[&e].zone;
+        let card = self.state.entities[&e].prototype.clone();
         let interior = self.state.situations[&sit].interior;
         let entity = self.state.entities.get_mut(&e).expect("checked alive");
         entity.zone = interior;
@@ -460,6 +478,7 @@ impl Engine {
             sit,
             slot,
             entity: e,
+            card,
         }])
     }
 
@@ -584,7 +603,8 @@ impl Engine {
     pub(crate) fn is_locked(&self, e: EntityId) -> bool {
         let zone = self.state.entities.get(&e).map(|ent| &ent.zone);
         self.state.situations.values().any(|s| {
-            Some(&s.interior) == zone || s.bindings.values().any(|b| b.iter().any(|b| b.entity == e))
+            Some(&s.interior) == zone
+                || s.bindings.values().any(|b| b.iter().any(|b| b.entity == e))
         })
     }
 

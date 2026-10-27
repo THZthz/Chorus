@@ -22,10 +22,19 @@ pub enum StartSkipReasonMatcher {
 /// event stream of one transition record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventMatcher {
-    SituationCompleted { recipe: RecipeId },
-    Continued { recipe: RecipeId },
-    Bound { slot: SlotName, card: Option<CardId> },
-    StartSkipped { reason: Option<StartSkipReasonMatcher> },
+    SituationCompleted {
+        recipe: RecipeId,
+    },
+    Continued {
+        recipe: RecipeId,
+    },
+    Bound {
+        slot: SlotName,
+        card: Option<CardId>,
+    },
+    StartSkipped {
+        reason: Option<StartSkipReasonMatcher>,
+    },
     NarrationContains(String),
     ResolutionFailed,
 }
@@ -179,13 +188,15 @@ impl ReachQuery {
     /// The engine-reported clock thresholds of the goal and the invariant
     /// (§5.4): part of the transition generator's critical-moment set.
     pub fn clock_thresholds(&self) -> BTreeSet<Time> {
-        predicate_clock_thresholds(&self.goal).into_iter().chain(
-            self.invariant
-                .as_ref()
-                .map(predicate_clock_thresholds)
-                .unwrap_or_default(),
-        )
-        .collect()
+        predicate_clock_thresholds(&self.goal)
+            .into_iter()
+            .chain(
+                self.invariant
+                    .as_ref()
+                    .map(predicate_clock_thresholds)
+                    .unwrap_or_default(),
+            )
+            .collect()
     }
 }
 
@@ -250,15 +261,12 @@ impl GoalPredicate {
                 Some(want) => ctx.engine.state().ended.as_ref() == Some(want),
                 None => ctx.engine.state().ended.is_some(),
             },
-            GoalPredicate::SituationActive { verb, recipe } => ctx
-                .engine
-                .state()
-                .situations
-                .values()
-                .any(|s| {
+            GoalPredicate::SituationActive { verb, recipe } => {
+                ctx.engine.state().situations.values().any(|s| {
                     verb.as_ref().is_none_or(|v| &s.verb == v)
                         && recipe.as_ref().is_none_or(|r| &s.recipe == r)
-                }),
+                })
+            }
             GoalPredicate::TransitionEvent(m) => match_events(m, ctx),
             GoalPredicate::PartialState(p) => holds_pattern(p, ctx),
             GoalPredicate::And(ps) => ps.iter().all(|p| p.holds(ctx)),
@@ -276,7 +284,12 @@ fn match_events(m: &EventMatcher, ctx: &GoalCtx<'_>) -> bool {
             Event::SituationCompleted { recipe: r, .. },
         ) => r == recipe,
         (EventMatcher::Continued { recipe }, Event::Continued { recipe: r, .. }) => r == recipe,
-        (EventMatcher::Bound { slot, card }, Event::Bound { slot: s, entity, .. }) => {
+        (
+            EventMatcher::Bound { slot, card },
+            Event::Bound {
+                slot: s, entity, ..
+            },
+        ) => {
             s == slot
                 && card.as_ref().is_none_or(|c| {
                     ctx.engine
@@ -286,19 +299,18 @@ fn match_events(m: &EventMatcher, ctx: &GoalCtx<'_>) -> bool {
                         .is_some_and(|ent| &ent.prototype == c)
                 })
         }
-        (
-            EventMatcher::StartSkipped { reason },
-            Event::StartSkipped { reason: r, .. },
-        ) => match reason {
-            None => true,
-            Some(StartSkipReasonMatcher::Any) => true,
-            Some(StartSkipReasonMatcher::InstanceCap) => *r == StartSkipReason::InstanceCap,
-            Some(StartSkipReasonMatcher::MaterializationFailed) => {
-                *r == StartSkipReason::MaterializationFailed
+        (EventMatcher::StartSkipped { reason }, Event::StartSkipped { reason: r, .. }) => {
+            match reason {
+                None => true,
+                Some(StartSkipReasonMatcher::Any) => true,
+                Some(StartSkipReasonMatcher::InstanceCap) => *r == StartSkipReason::InstanceCap,
+                Some(StartSkipReasonMatcher::MaterializationFailed) => {
+                    *r == StartSkipReason::MaterializationFailed
+                }
             }
-        },
-        (EventMatcher::NarrationContains(needle), Event::Narration { text }) => {
-            text.contains(needle.as_str())
+        }
+        (EventMatcher::NarrationContains(needle), Event::NarrativeCue { cue_id }) => {
+            cue_id.contains(needle.as_str())
         }
         (EventMatcher::ResolutionFailed, Event::ResolutionFailed { .. }) => true,
         _ => false,
@@ -326,16 +338,13 @@ fn holds_pattern(p: &StatePattern, ctx: &GoalCtx<'_>) -> bool {
     for (scope, prototype, terms) in &p.cards {
         let ok = ctx.engine.scope_entities(scope).iter().any(|e| {
             let ent = &state.entities[e];
-            prototype.as_ref().is_none_or(|p| &ent.prototype == p)
-                && ctx.engine.matches(*e, terms)
+            prototype.as_ref().is_none_or(|p| &ent.prototype == p) && ctx.engine.matches(*e, terms)
         });
         if !ok {
             return false;
         }
     }
-    p.legacy
-        .iter()
-        .all(|(k, v)| state.legacy.get(k) == Some(v))
+    p.legacy.iter().all(|(k, v)| state.legacy.get(k) == Some(v))
 }
 
 /// The live entity of a unique card name: the first live entity whose name
@@ -393,11 +402,7 @@ fn mirror(op: story_content::ir::CmpOp) -> story_content::ir::CmpOp {
     }
 }
 
-fn insert_threshold(
-    op: story_content::ir::CmpOp,
-    t: Time,
-    out: &mut BTreeSet<Time>,
-) {
+fn insert_threshold(op: story_content::ir::CmpOp, t: Time, out: &mut BTreeSet<Time>) {
     use story_content::ir::CmpOp::*;
     match op {
         Ge => {

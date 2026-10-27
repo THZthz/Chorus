@@ -41,8 +41,8 @@ verbs
     let events = common::commit_named(&mut e, "minter", &[]).expect("mints");
     assert_eq!(
         narration(&events),
-        vec!["pool coin, coin, coin", "left coin"],
-        "the pool renders oldest-first and shrinks as its cards die"
+        vec!["pool {pile}", "left {pile}"],
+        "the cues are recorded for the presentation layer"
     );
     let minted: Vec<EntityId> = (next_before..next_before + 3).map(EntityId).collect();
     assert_eq!(count_named(&e, "coin"), 1, "two of the pool destroyed");

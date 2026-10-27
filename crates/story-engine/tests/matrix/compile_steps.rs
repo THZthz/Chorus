@@ -200,9 +200,7 @@ verbs
       effects
         %CALL%
 "#;
-    assert!(
-        compile_error_codes(&base.replace("%CALL%", "stoke_wrong(2)")).contains(&code::E233)
-    );
+    assert!(compile_error_codes(&base.replace("%CALL%", "stoke_wrong(2)")).contains(&code::E233));
     assert!(compile_error_codes(&base.replace("%CALL%", "stoke(1, 2)")).contains(&code::E234));
 }
 
@@ -211,8 +209,8 @@ verbs
 /// root's verbs read and bind what the included file declares.
 #[test]
 fn matrix_19_include_splicing_pos() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/matrix_inc_root.sw");
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/matrix_inc_root.sw");
     let out = story_lang::compile_file(&path);
     let errors: Vec<String> = out
         .diagnostics
@@ -228,7 +226,8 @@ fn matrix_19_include_splicing_pos() {
     assert_eq!(count_named(&e, "gem"), 2, "the included boot face applied");
     let events = common::commit_named(&mut e, "use_included", &[("gem", "gem")])
         .expect("the spliced card binds");
-    assert_eq!(narration(&events), vec!["charged 3"]);
+    assert_eq!(narration(&events), vec!["charged {beacon.charge}"]);
+    assert_eq!(aspect(&e, common::named(&e, "beacon"), "charge"), 3);
 }
 
 // matrix 19
@@ -237,8 +236,8 @@ fn matrix_19_include_splicing_pos() {
 /// location and the `first declared at` note.
 #[test]
 fn matrix_19_include_splicing_neg() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/matrix_inc_dup.sw");
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/matrix_inc_dup.sw");
     let out = story_lang::compile_file(&path);
     let d = out
         .diagnostics
@@ -310,7 +309,7 @@ verbs
     );
     let mut e = boot(content, 1);
     let events = common::commit_named(&mut e, "poker", &[("s", "coin")]).expect("plays");
-    assert_eq!(narration(&events), vec!["poked coin"]);
+    assert_eq!(narration(&events), vec!["poked {s}"]);
 }
 
 // matrix 20

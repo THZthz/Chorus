@@ -1,0 +1,14 @@
+[package]
+name = "story-present"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+story-core = { workspace = true }
+story-content = { workspace = true }
+story-engine = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+story-lang = { workspace = true }

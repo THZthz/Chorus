@@ -3,7 +3,6 @@
 //! kernel by registering `Host` closures under op names.
 
 mod cards;
-mod narrate;
 mod relations;
 mod run;
 mod start;

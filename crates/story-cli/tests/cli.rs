@@ -75,7 +75,7 @@ fn play_drives_commit_state_and_undo_over_piped_stdin() {
         "{out}"
     );
     // The commit settled its roll through the deterministic kernel path.
-    assert!(out.contains("Nothing stirs (1)."), "{out}");
+    assert!(out.contains("Nothing stirs"), "{out}");
     assert!(out.contains("[sit 1] gamble.flip completed"), "{out}");
     // `state` sees the committed run; `undo` reverts the legacy write.
     assert!(out.contains("undone"), "{out}");
@@ -1033,7 +1033,7 @@ fn play_verbose_action_feedback() {
         out.contains("[sit 3] sup.eat started (10m, ends at 10m)"),
         "{out}"
     );
-    assert!(out.contains("morsel <- entity 10"), "{out}");
+    assert!(out.contains("morsel <- bread (#10)"), "{out}");
     assert!(
         out.contains("advanced 1 turn(s) (10m) -> clock is now 10m"),
         "{out}"
@@ -1139,16 +1139,32 @@ fn play_available_flag_and_emberwatch_filtering() {
     let (code, out) = play_with_stdin(&["play", EMBER, "--available"], script);
     assert_eq!(code, 0);
 
-    assert!(out.contains("tend committable instances 1:"), "{out}");
-    assert!(out.contains("sup committable instances 1: eat"), "{out}");
+    assert!(
+        out.contains("tend committable instances 1:")
+            || out.contains("(tend) committable instances 1:"),
+        "{out}"
+    );
+    assert!(
+        out.contains("sup committable instances 1: eat")
+            || out.contains("(sup) committable instances 1: eat"),
+        "{out}"
+    );
     assert!(!out.contains("salvage"), "{out}");
     assert!(!out.contains("distress"), "{out}");
 
     // Also works with bare alias and -a
     let (code2, out2) = play_with_stdin(&[EMBER, "-a"], script);
     assert_eq!(code2, 0);
-    assert!(out2.contains("tend committable instances 1:"), "{out2}");
-    assert!(out2.contains("sup committable instances 1: eat"), "{out2}");
+    assert!(
+        out2.contains("tend committable instances 1:")
+            || out2.contains("(tend) committable instances 1:"),
+        "{out2}"
+    );
+    assert!(
+        out2.contains("sup committable instances 1: eat")
+            || out2.contains("(sup) committable instances 1: eat"),
+        "{out2}"
+    );
     assert!(!out2.contains("salvage"), "{out2}");
     assert!(!out2.contains("distress"), "{out2}");
 }
@@ -1166,3 +1182,113 @@ fn play_filter_cs_sw_if_present() {
     assert!(out.contains("workhealth_noinjurychance"), "{out}");
 }
 
+#[test]
+fn play_inspect_card_commands() {
+    let script =
+        "inspect\ninspect bread\ninspect bread#10\ninspect #10\ninspect nosuchcard\nquit\n";
+    let (code, out) = play_with_stdin(&["play", EMBER], script);
+    assert_eq!(code, 0);
+    assert!(out.contains("usage: inspect <card>"), "{out}");
+    assert!(out.contains("bread [provision]"), "{out}");
+    assert!(out.contains("aspects: restore:1"), "{out}");
+    assert!(out.contains("bread [provision] (#10)"), "{out}");
+    assert!(out.contains("card not found: `nosuchcard`"), "{out}");
+}
+
+#[test]
+fn play_companion_narrative_catalog_loading() {
+    let temp_id = std::process::id();
+    let sw_path = std::env::temp_dir().join(format!("narrative_test_{temp_id}.sw"));
+    let cat_path = std::env::temp_dir().join(format!("narrative_test_{temp_id}.narrative.json"));
+
+    let sw_content = r#"
+game "Narrative Test"
+  seed 42
+  turn 10m
+  home sanctuary
+
+zones
+  sanctuary
+
+cards
+  card scholar
+    kind mortal
+    start in sanctuary count 1
+
+endings
+  ending transcend "Ascension" radiant
+    text "Default ending text."
+
+verbs
+  verb study committable instances 1
+    recipe delve
+      craftable
+      duration 10m
+      slots
+        reader: 1..1 name:scholar
+      effects
+        ending transcend
+"#;
+
+    let narrative_json = r#"{
+  "cards": {
+    "scholar": {
+      "title": "Wise Scholar",
+      "description": "A seeker of hidden truths."
+    }
+  },
+  "verbs": {
+    "study": {
+      "title": "Study the Ancient Secrets"
+    }
+  },
+  "recipes": {
+    "study.delve": {
+      "label": "Deep Contemplation",
+      "start": "{reader} enters deep contemplation...",
+      "completion": "The mysteries unfold before {reader}."
+    }
+  },
+  "endings": {
+    "transcend": {
+      "title": "Transcendence",
+      "tier": "radiant",
+      "text": "The scholar dissolves into brilliant white light."
+    }
+  }
+}"#;
+
+    std::fs::write(&sw_path, sw_content).expect("write sw");
+    std::fs::write(&cat_path, narrative_json).expect("write json");
+
+    let sw_path_str = sw_path.to_str().expect("utf-8");
+    let script = "verbs\ninspect scholar\ncommit study reader=scholar#1\nadvance\nquit\n";
+    let (code, out) = play_with_stdin(&["play", sw_path_str], script);
+
+    let _ = std::fs::remove_file(&sw_path);
+    let _ = std::fs::remove_file(&cat_path);
+
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("loaded companion narrative catalog:"), "{out}");
+    assert!(out.contains("Study the Ancient Secrets (study)"), "{out}");
+    assert!(
+        out.contains("Wise Scholar (scholar) [mortal] (#1)"),
+        "{out}"
+    );
+    assert!(
+        out.contains("lore: \"A seeker of hidden truths.\""),
+        "{out}"
+    );
+    assert!(
+        out.contains("Wise Scholar enters deep contemplation..."),
+        "{out}"
+    );
+    assert!(
+        out.contains("The mysteries unfold before Wise Scholar."),
+        "{out}"
+    );
+    assert!(
+        out.contains("The scholar dissolves into brilliant white light."),
+        "{out}"
+    );
+}

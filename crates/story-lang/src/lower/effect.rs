@@ -179,9 +179,7 @@ impl Compiler {
             }
             ast::AEffect::Narrate { text, .. } => {
                 crate::token_check::check(self, &text.1, &text.0, env);
-                Some(EffectNode::Narrate {
-                    template: text.1.clone(),
-                })
+                Some(EffectNode::Cue { id: text.1.clone() })
             }
             ast::AEffect::Roll {
                 count,

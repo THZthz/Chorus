@@ -118,7 +118,7 @@ verbs
     common::commit_named(&mut e, "act", &[]).expect("relates");
     let events =
         common::commit_named(&mut e, "picker", &[("held", "sword")]).expect("the sword matches");
-    assert_eq!(narration(&events), vec!["picked sword"]);
+    assert_eq!(narration(&events), vec!["picked {held}"]);
     assert!(common::commit_named(&mut e, "picker", &[("held", "stone")]).is_err());
 }
 
@@ -441,7 +441,10 @@ verbs
     let mut e = game(&src);
     let events =
         common::commit_named(&mut e, "act", &[("hero", "alice")]).expect("commits with binding");
-    assert_eq!(narration(&events), vec!["carries: [sword]"]);
+    assert_eq!(
+        narration(&events),
+        vec!["carries: [{related:carries of first(slot:hero)}]"]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -492,6 +495,10 @@ verbs
     let events = common::commit_named(&mut e, "act", &[]).expect("commits");
     assert_eq!(
         narration(&events),
-        vec!["forward: tower, cabin", "reverse: gate", "empty: []"]
+        vec![
+            "forward: {related:north_of of gate}",
+            "reverse: {related:north_of to tower}",
+            "empty: [{related:north_of of cabin}]"
+        ]
     );
 }

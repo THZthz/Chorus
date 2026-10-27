@@ -54,9 +54,26 @@ fn main() -> ExitCode {
         return ExitCode::from(1);
     }
 
+    let narrative_path = {
+        let stem = out.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+        match out.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => {
+                parent.join(format!("{stem}.narrative.json"))
+            }
+            _ => PathBuf::from(format!("{stem}.narrative.json")),
+        }
+    };
+    if let Err(e) = conversion.catalog.save_to_file(&narrative_path) {
+        eprintln!("cannot write narrative catalog: {e}");
+        return ExitCode::from(1);
+    }
+
     let s = &conversion.stats;
     println!("== cs2sw conversion summary ==");
-    println!("elements in:        {} (aspects without cards: {})", s.elements_in, s.aspect_elements);
+    println!(
+        "elements in:        {} (aspects without cards: {})",
+        s.elements_in, s.aspect_elements
+    );
     println!("cards out:          {}", s.cards_out);
     println!("aspect keys:        {}", s.aspect_keys);
     println!("recipes in/out:     {} / {}", s.recipes_in, s.recipes_out);
@@ -64,11 +81,25 @@ fn main() -> ExitCode {
     println!("verbs out:          {}", s.verbs_out);
     println!("decks out:          {}", s.decks_out);
     println!("endings out:        {}", s.endings_out);
-    println!("output:             {} lines, {} bytes", s.output_lines, conversion.sw.len());
+    println!(
+        "output:             {} lines, {} bytes",
+        s.output_lines,
+        conversion.sw.len()
+    );
     println!("named gaps:         {}", conversion.gaps.rows.len());
+    println!(
+        "narrative catalog:  {} cards, {} recipes, {} verbs",
+        conversion.catalog.cards.len(),
+        conversion.catalog.recipes.len(),
+        conversion.catalog.verbs.len()
+    );
     let errors: Vec<_> = diags.iter().filter(|d| d.is_error()).collect();
     let warnings: Vec<_> = diags.iter().filter(|d| !d.is_error()).collect();
-    println!("compile diagnostics: {} error(s), {} warning(s)", errors.len(), warnings.len());
+    println!(
+        "compile diagnostics: {} error(s), {} warning(s)",
+        errors.len(),
+        warnings.len()
+    );
     for d in errors.iter().take(40) {
         println!("  {d}");
     }
@@ -77,6 +108,7 @@ fn main() -> ExitCode {
     }
     if errors.is_empty() {
         println!("wrote {}", out.display());
+        println!("narrative {}", narrative_path.display());
         if let Some(r) = report_path {
             println!("report {}", r.display());
         }

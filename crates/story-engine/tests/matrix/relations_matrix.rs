@@ -264,7 +264,7 @@ verbs
     assert_eq!(narration(&events), vec!["edge"]);
     let events =
         common::commit_named(&mut e, "picker", &[("held", "sword")]).expect("filter matches");
-    assert_eq!(narration(&events), vec!["picked sword"]);
+    assert_eq!(narration(&events), vec!["picked {held}"]);
     // The expiry book reads the edge through `subject` before its
     // (replaced) destruction.
     let events = e.advance(1).expect("expires");
@@ -480,8 +480,7 @@ fn matrix_42_move_independence() {
         .and_then(|k| k.get("carries"))
         .is_some_and(|o| o.contains(&sword)));
 
-    let mut e2 =
-        relations_game("        relate alice to sword as carries\n        destroy sword");
+    let mut e2 = relations_game("        relate alice to sword as carries\n        destroy sword");
     let events = common::commit_named(&mut e2, "act", &[]).expect("destroys");
     let alice2 = common::named(&e2, "alice");
     assert!(!e2.state().relations.contains_key(&alice2));
@@ -554,7 +553,10 @@ verbs
     let mut e2 = boot(compile(&src), 1);
     let events =
         common::commit_named(&mut e2, "act", &[("hero", "alice")]).expect("binds and relates");
-    assert_eq!(narration(&events), vec!["[sword]"]);
+    assert_eq!(
+        narration(&events),
+        vec!["[{related:carries of first(slot:hero)}]"]
+    );
 }
 
 // matrix 44

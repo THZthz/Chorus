@@ -33,12 +33,16 @@ impl Engine {
 
     /// A card's read for a key: the entity's value, else the declared
     /// default. A dead or absent entity reads the default (T1).
-    pub(crate) fn read(&self, e: EntityId, key: &str) -> i64 {
+    pub fn read(&self, e: EntityId, key: &str) -> i64 {
         self.state
             .entities
             .get(&e)
             .and_then(|ent| ent.aspects.get(key).copied())
             .unwrap_or_else(|| self.aspect_default(key))
+    }
+
+    pub fn read_aspect(&self, e: EntityId, key: &str) -> i64 {
+        self.read(e, key)
     }
 
     pub(crate) fn read_attr(&self, e: EntityId, key: &str) -> i64 {
@@ -50,7 +54,7 @@ impl Engine {
     }
 
     /// The live entity of a `unique` card name; at most one exists.
-    pub(crate) fn named_entity(&self, card: &str) -> Option<EntityId> {
+    pub fn named_entity(&self, card: &str) -> Option<EntityId> {
         self.state
             .entities
             .values()
@@ -107,8 +111,7 @@ impl Engine {
             Expr::Arith { op, left, right } => {
                 // Fold the left spine iteratively: a `when` summing hundreds
                 // of carriers evaluates without per-node recursion.
-                let mut spine: Vec<(story_content::ir::ArithOp, &Expr)> =
-                    Vec::with_capacity(8);
+                let mut spine: Vec<(story_content::ir::ArithOp, &Expr)> = Vec::with_capacity(8);
                 spine.push((*op, right.as_ref()));
                 let mut cur: &Expr = left.as_ref();
                 while let Expr::Arith { op, left, right } = cur {
@@ -229,12 +232,7 @@ impl Engine {
     /// incoming (`to`) scans for rows pointing at the endpoint; a symmetric
     /// kind reads its partners under either spelling. A dead endpoint
     /// enumerates nothing.
-    pub(crate) fn related_entities(
-        &self,
-        x: EntityId,
-        kind: &str,
-        incoming: bool,
-    ) -> Vec<EntityId> {
+    pub fn related_entities(&self, x: EntityId, kind: &str, incoming: bool) -> Vec<EntityId> {
         let symmetric = self
             .content
             .relation_kind(kind)
@@ -320,7 +318,7 @@ impl Engine {
         ids
     }
 
-    pub(crate) fn zone_entities(&self, z: ZoneId) -> Vec<EntityId> {
+    pub fn zone_entities(&self, z: ZoneId) -> Vec<EntityId> {
         self.state
             .entities
             .values()

@@ -117,7 +117,7 @@ pub fn narration(events: &[Event]) -> Vec<String> {
     events
         .iter()
         .filter_map(|e| match e {
-            Event::Narration { text } => Some(text.clone()),
+            Event::NarrativeCue { cue_id } => Some(cue_id.clone()),
             _ => None,
         })
         .collect()

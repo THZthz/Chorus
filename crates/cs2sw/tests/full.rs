@@ -90,6 +90,49 @@ fn full_conversion_compiles_clean() {
         s.dead_recipes,
         s.dead_verbs
     );
+
+    let cat = &conversion.catalog;
+    assert!(
+        cat.cards.len() > 1000,
+        "narrative catalog contains cards, got {}",
+        cat.cards.len()
+    );
+    assert!(
+        cat.recipes.len() > 1800,
+        "narrative catalog contains recipes, got {}",
+        cat.recipes.len()
+    );
+    assert!(
+        cat.verbs.len() >= 5,
+        "narrative catalog contains verbs, got {}",
+        cat.verbs.len()
+    );
+    assert!(
+        cat.endings.len() >= 80,
+        "narrative catalog contains endings, got {}",
+        cat.endings.len()
+    );
+
+    assert_eq!(
+        cat.cards.get("health").and_then(|c| c.title.as_deref()),
+        Some("Health")
+    );
+    assert_eq!(
+        cat.verbs.get("work").and_then(|v| v.title.as_deref()),
+        Some("Work")
+    );
+    assert_eq!(
+        cat.verbs.get("study").and_then(|v| v.title.as_deref()),
+        Some("Study")
+    );
+
+    let json = cat.to_json_pretty().expect("catalog serializes to json");
+    let loaded =
+        story_present::catalog::PresentationCatalog::from_json(&json).expect("roundtrip json");
+    assert_eq!(loaded.cards.len(), cat.cards.len());
+    assert_eq!(loaded.recipes.len(), cat.recipes.len());
+    assert_eq!(loaded.verbs.len(), cat.verbs.len());
+    assert_eq!(loaded.endings.len(), cat.endings.len());
 }
 
 #[test]
@@ -141,7 +184,12 @@ fn playability_smoke_zero_engine_errors() {
     // F-3: the funds card greedy-bound into `needs`' expenses slot at boot is
     // destroyed by the same-context linked continuation (`discardseason`'s
     // funds wipe) running inside the parent situation at its completion.
-    let needs_sit = *engine.state().situations.keys().next().expect("needs opens at boot");
+    let needs_sit = *engine
+        .state()
+        .situations
+        .keys()
+        .next()
+        .expect("needs opens at boot");
     let bound_funds = engine.state().situations[&needs_sit].bindings[&SlotName::from("expenses")]
         .iter()
         .map(|b| b.entity)
@@ -166,11 +214,11 @@ fn playability_smoke_zero_engine_errors() {
                     if let Event::ResolutionFailed { sit, reason } = e {
                         resolution_failures.push(format!("sit {sit}: {reason}"));
                     }
-                    if let Event::SituationCompleted { sit, recipe } = e {
+                    if let Event::SituationCompleted { sit, recipe, .. } = e {
                         journal.push(format!("[sit {sit}] {recipe} completed"));
                     }
-                    if let Event::Continued { situation, recipe } = e {
-                        journal.push(format!("[sit {situation}] continued via {recipe}"));
+                    if let Event::Continued { sit, recipe } = e {
+                        journal.push(format!("[sit {sit}] continued via {recipe}"));
                     }
                 }
             }
@@ -204,10 +252,7 @@ fn playability_smoke_zero_engine_errors() {
         }
     }
     assert!(wipe_checked, "the first season completed");
-    assert!(
-        turns >= 20,
-        "at least 20 turns advance; got {turns}"
-    );
+    assert!(turns >= 20, "at least 20 turns advance; got {turns}");
     assert!(
         resolution_failures.is_empty(),
         "zero resolution failures: {resolution_failures:?}"
@@ -298,7 +343,10 @@ fn card_book_fires_at_a_completion_that_binds_the_requirement_card() {
         })
         .expect("the routed commit opens getcommissionbechet");
     for e in &events {
-        if let Event::Bound { sit, slot, entity } = e {
+        if let Event::Bound {
+            sit, slot, entity, ..
+        } = e
+        {
             println!("journal: [sit {sit}] {slot} <- entity {entity}");
         }
     }
@@ -307,10 +355,7 @@ fn card_book_fires_at_a_completion_that_binds_the_requirement_card() {
     // `on complete [commissiongiven]` book swaps Mme Bechet to her
     // commission-given face.
     engine.advance(engine.turn() * 11).expect("advance");
-    let journal_swap = format!(
-        "bechetready #{} destroyed, bechet minted",
-        bechetready.0
-    );
+    let journal_swap = format!("bechetready #{} destroyed, bechet minted", bechetready.0);
     assert!(
         !engine.state().entities.contains_key(&bechetready),
         "the book swapped the bound card away ({journal_swap})"
@@ -327,8 +372,7 @@ fn card_book_fires_at_a_completion_that_binds_the_requirement_card() {
 fn aspirant_opening_sequence_and_instancecap_fault() {
     let Some(root) = cs_core() else { return };
     let content = compile(&root, "cultist-simulator.aspirant.sw");
-    let (mut engine, _) =
-        Engine::boot(content.clone(), EffectRegistry::new(), cs2sw::SEED, None);
+    let (mut engine, _) = Engine::boot(content.clone(), EffectRegistry::new(), cs2sw::SEED, None);
 
     let introjob = find(&engine, "introjob").expect("introjob on table");
     let passion = find(&engine, "passion").expect("passion on table");
@@ -353,19 +397,23 @@ fn aspirant_opening_sequence_and_instancecap_fault() {
     let events = engine.advance(engine.turn() * 10).expect("advance 10m");
 
     // Check that start dream was skipped due to InstanceCap
-    let skipped = events.iter().any(|e| matches!(e, Event::StartSkipped {
+    let skipped = events.iter().any(|e| {
+        matches!(e, Event::StartSkipped {
         verb,
         reason: story_engine::StartSkipReason::InstanceCap,
-    } if verb.as_str() == "dream"));
-    assert!(skipped, "reproduced fault: start dream was skipped due to InstanceCap");
+    } if verb.as_str() == "dream")
+    });
+    assert!(
+        skipped,
+        "reproduced fault: start dream was skipped due to InstanceCap"
+    );
 }
 
 #[test]
 fn aspirant_intended_opening_loop_progression() {
     let Some(root) = cs_core() else { return };
     let content = compile(&root, "cultist-simulator.clean.sw");
-    let (mut engine, _) =
-        Engine::boot(content.clone(), EffectRegistry::new(), cs2sw::SEED, None);
+    let (mut engine, _) = Engine::boot(content.clone(), EffectRegistry::new(), cs2sw::SEED, None);
 
     let introjob = find(&engine, "introjob").expect("introjob on table");
 
@@ -412,6 +460,9 @@ fn aspirant_intended_opening_loop_progression() {
 
     // Advance 30m: bequestarrives completes, spawning funds, reason, and bequestintro
     let _ev4 = engine.advance(engine.turn() * 30).expect("advance 30m");
-    assert!(find(&engine, "bequestintro").is_some(), "bequest arrived with papers");
+    assert!(
+        find(&engine, "bequestintro").is_some(),
+        "bequest arrived with papers"
+    );
     assert!(find(&engine, "reason").is_some(), "player receives reason");
 }

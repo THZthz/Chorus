@@ -293,9 +293,21 @@ impl Engine {
             }
         }
 
+        ev.push(Event::SituationStarted {
+            sit: sit_id,
+            verb: verb.id.clone(),
+            recipe: rec.id.clone(),
+        });
+
         let mut bindings = std::collections::BTreeMap::new();
         for (seq, (slot, e)) in planned.iter().enumerate() {
             let bound_from = self.state.entities.get(e).map(|ent| ent.zone).ok_or(())?;
+            let card = self
+                .state
+                .entities
+                .get(e)
+                .map(|ent| ent.prototype.clone())
+                .ok_or(())?;
             let entity = self.state.entities.get_mut(e).ok_or(())?;
             entity.zone = zid;
             bindings
@@ -310,6 +322,7 @@ impl Engine {
                 sit: sit_id,
                 slot: slot.clone(),
                 entity: *e,
+                card,
             });
         }
 
@@ -391,10 +404,17 @@ impl Engine {
                         bound_from,
                         seq,
                     });
+                let card = self
+                    .state
+                    .entities
+                    .get(&e)
+                    .map(|ent| ent.prototype.clone())
+                    .unwrap_or_else(|| story_core::CardId::from(""));
                 ev.push(Event::Bound {
                     sit,
                     slot: sd.name.clone(),
                     entity: e,
+                    card,
                 });
             }
         }

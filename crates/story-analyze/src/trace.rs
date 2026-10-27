@@ -128,12 +128,7 @@ impl PlayTrace {
         registry: EffectRegistry,
         seed: u64,
     ) -> Result<WitnessPath, String> {
-        let (mut engine, diags) = Engine::boot(
-            content,
-            registry,
-            seed,
-            self.legacy_in.clone(),
-        );
+        let (mut engine, diags) = Engine::boot(content, registry, seed, self.legacy_in.clone());
         if diags.iter().any(|d| d.is_error()) {
             return Err("boot diagnostics reported errors".into());
         }
@@ -208,9 +203,8 @@ impl PlayTrace {
                     slot,
                     card,
                 } => {
-                    let ent = resolve_entity(engine.state(), card).ok_or_else(|| {
-                        format!("step {idx}: card `{card}` not found in state")
-                    })?;
+                    let ent = resolve_entity(engine.state(), card)
+                        .ok_or_else(|| format!("step {idx}: card `{card}` not found in state"))?;
                     let events = engine
                         .bind(*situation, slot.clone(), ent)
                         .map_err(|d| format!("step {idx} bind refused: {d}"))?;
@@ -252,7 +246,11 @@ impl PlayTrace {
 }
 
 fn resolve_entity(state: &State, spec: &str) -> Option<EntityId> {
-    if let Some(num) = spec.strip_prefix('#') {
+    let id_str = spec
+        .split_once('#')
+        .map(|(_, id)| id)
+        .or_else(|| spec.strip_prefix('#'));
+    if let Some(num) = id_str {
         if let Ok(id) = num.parse::<u64>() {
             let ent_id = EntityId(id);
             if state.entities.contains_key(&ent_id) {

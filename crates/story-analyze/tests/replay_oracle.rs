@@ -7,7 +7,7 @@
 mod common;
 
 use story_analyze::transitions::{GeneratorConfig, TransitionGenerator};
-use story_analyze::{GoalPredicate, PlayerStep, ReachQuery, RngMode, Replayer, ReplayError};
+use story_analyze::{GoalPredicate, PlayerStep, ReachQuery, ReplayError, Replayer, RngMode};
 use story_content::ir::Expr;
 
 const DICE: &str = r#"
@@ -152,7 +152,11 @@ fn hand_built_deterministic_witness_replays_to_identical_states() {
     };
     let replayer = Replayer::new(content.clone(), Default::default(), 1, None);
     let final_state = replayer
-        .replay(&witness, Some(&GoalPredicate::Expr(Expr::Legacy("luck".into()))), None)
+        .replay(
+            &witness,
+            Some(&GoalPredicate::Expr(Expr::Legacy("luck".into()))),
+            None,
+        )
         .expect("the oracle replays the witness");
     // The final state is logically identical to the record's.
     let k1 = story_analyze::CanonicalStateKey::of(&final_state, &content);
@@ -220,8 +224,8 @@ fn tampered_witnesses_fail_the_oracle() {
         probability: Some(1.0),
     };
     let replayer = Replayer::new(content.clone(), Default::default(), 1, None);
-    record.events.push(story_engine::Event::Narration {
-        text: "forged".into(),
+    record.events.push(story_engine::Event::NarrativeCue {
+        cue_id: "forged".into(),
     });
     witness.records = vec![record];
     match replayer.replay(&witness, Some(&GoalPredicate::Ending(None)), None) {

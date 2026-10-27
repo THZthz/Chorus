@@ -7,6 +7,7 @@ edition.workspace = true
 serde_json = { workspace = true }
 story-content = { workspace = true }
 story-lang = { workspace = true }
+story-present = { workspace = true }
 
 [dev-dependencies]
 story-core = { workspace = true }

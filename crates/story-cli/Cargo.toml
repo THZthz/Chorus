@@ -9,6 +9,7 @@ story-content = { workspace = true }
 story-engine = { workspace = true }
 story-lang = { workspace = true }
 story-analyze = { workspace = true, features = ["lang"] }
+story-present = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { version = "0.1", default-features = false, features = ["std"] }

@@ -24,7 +24,10 @@ fn golden_slice_converts_and_compiles() {
 
     // Cards: one per non-aspect element, bearing their own id as an aspect.
     assert!(sw.contains("  card health\n"), "health card emitted");
-    assert!(sw.contains("  card affliction\n"), "affliction card emitted");
+    assert!(
+        sw.contains("  card affliction\n"),
+        "affliction card emitted"
+    );
     assert!(sw.contains("  card fleeting\n"), "fleeting card emitted");
     // health carries its CS aspects.
     assert!(
@@ -100,14 +103,10 @@ fn golden_slice_converts_and_compiles() {
         recipe
     );
     assert!(
-        recipe
-            .contains("total(interior, aspect:funds) + total(slot:req_follower, aspect:funds)"),
+        recipe.contains("total(interior, aspect:funds) + total(slot:req_follower, aspect:funds)"),
         "the when sums the interior plus the bindable carriers (no world arm)",
     );
-    assert!(
-        !recipe.contains("total(world,"),
-        "the world arm is retired"
-    );
+    assert!(!recipe.contains("total(world,"), "the world arm is retired");
     assert!(
         recipe.contains("narrate \"It is rare for passenger vessels"),
         "startdescription narrated"
@@ -142,6 +141,53 @@ fn golden_slice_converts_and_compiles() {
     let data = cs2sw::load_tree(&fixture_root());
     let again = cs2sw::convert(&data);
     assert_eq!(conversion.sw, again.sw, "conversion is deterministic");
+    assert_eq!(
+        conversion.catalog.to_json_pretty().unwrap(),
+        again.catalog.to_json_pretty().unwrap(),
+        "catalog conversion is deterministic"
+    );
+}
+
+#[test]
+fn golden_slice_narrative_catalog() {
+    let (conversion, diags) = cs2sw::run(&fixture_root());
+    assert!(diags.is_empty());
+
+    let catalog = &conversion.catalog;
+
+    // Elements (Cards)
+    assert!(catalog.cards.contains_key("health"));
+    assert!(catalog.cards.contains_key("affliction"));
+    assert!(catalog.cards.contains_key("fleeting"));
+    let health = catalog.cards.get("health").unwrap();
+    assert_eq!(health.title.as_deref(), Some("Health"));
+    assert!(health
+        .description
+        .as_deref()
+        .unwrap()
+        .contains("This is my body"));
+
+    // Recipes
+    let setup = catalog
+        .recipes
+        .get("explore_vaultfloating1_setup")
+        .expect("recipe in catalog");
+    assert_eq!(
+        setup.label.as_deref(),
+        Some("Beginning an Expedition: the 'Hebe Stanton'")
+    );
+    assert!(setup
+        .start
+        .as_deref()
+        .unwrap()
+        .contains("It is rare for passenger vessels"));
+    assert_eq!(setup.completion.as_deref(), Some("."));
+
+    // JSON serialization roundtrip
+    let json = catalog.to_json_pretty().expect("serializes to json");
+    let roundtrip = cs2sw::PresentationCatalog::from_json(&json).expect("deserializes from json");
+    assert_eq!(roundtrip.cards.len(), catalog.cards.len());
+    assert_eq!(roundtrip.recipes.len(), catalog.recipes.len());
 }
 
 #[test]

@@ -31,7 +31,8 @@ fn two_named(e: &story_engine::Engine, name: &str) -> (EntityId, EntityId) {
     ids.sort();
     (
         *ids.first().unwrap_or_else(|| panic!("no live `{name}`")),
-        *ids.get(1).unwrap_or_else(|| panic!("no second live `{name}`")),
+        *ids.get(1)
+            .unwrap_or_else(|| panic!("no second live `{name}`")),
     )
 }
 
@@ -81,22 +82,19 @@ verbs
 fn continue_adopts_the_target_releases_storage_and_rearms_the_timer() {
     let mut e = game(HAPPY);
     let (coal1, coal2) = two_named(&e, "coal");
-    common::commit(&mut e, "ritual", &[("fuel", coal1), ("ash", coal2)])
-        .expect("stage opens");
+    common::commit(&mut e, "ritual", &[("fuel", coal1), ("ash", coal2)]).expect("stage opens");
     let sit = situations(&e)[0];
 
     let events = e.advance(10).expect("stage settles at 10m");
     assert_eq!(narration(&events), vec!["stage"]);
     // The step reported continuation, not completion.
-    assert!(
-        !events
-            .iter()
-            .any(|ev| matches!(ev, Event::SituationCompleted { .. }))
-    );
+    assert!(!events
+        .iter()
+        .any(|ev| matches!(ev, Event::SituationCompleted { .. })));
     let continued: Vec<_> = events
         .iter()
         .filter_map(|ev| match ev {
-            Event::Continued { situation, recipe } => Some((*situation, recipe.clone())),
+            Event::Continued { sit, recipe } => Some((*sit, recipe.clone())),
             _ => None,
         })
         .collect();
@@ -173,8 +171,7 @@ verbs
 fn when_missing_the_interior_sums_falls_through_to_completion() {
     let mut e = game(WHEN_FAILS);
     let (coal1, coal2) = two_named(&e, "coal");
-    common::commit(&mut e, "ritual", &[("fuel", coal1), ("ash", coal2)])
-        .expect("stage opens");
+    common::commit(&mut e, "ritual", &[("fuel", coal1), ("ash", coal2)]).expect("stage opens");
 
     let events = e.advance(10).expect("stage settles");
     assert_eq!(narration(&events), vec!["stage"]);
@@ -198,7 +195,11 @@ fn when_missing_the_interior_sums_falls_through_to_completion() {
     );
     assert!(situations(&e).is_empty());
     assert_eq!(count_named(&e, "coal"), 1, "only the consuming slot burned");
-    assert_eq!(zone_kind_of(&e, coal1), "table", "the released storage went home");
+    assert_eq!(
+        zone_kind_of(&e, coal1),
+        "table",
+        "the released storage went home"
+    );
 }
 
 const BOOKS: &str = r#"
@@ -262,11 +263,9 @@ fn books_fire_at_every_continue_step() {
         vec!["stage", "stage-book", "keeper-book"],
         "recipe book first, card book second"
     );
-    assert!(
-        events
-            .iter()
-            .any(|ev| matches!(ev, Event::Continued { .. }))
-    );
+    assert!(events
+        .iter()
+        .any(|ev| matches!(ev, Event::Continued { .. })));
 
     // Step 2: storm's books; the keeper is now unbound interior storage and
     // still walks (the widened card-book walk).
@@ -388,7 +387,9 @@ fn max_exhausted_target_misses_and_adoption_spends_a_count() {
     let events = e.advance(5).expect("first tick");
     assert_eq!(narration(&events), vec!["tick"]);
     assert!(
-        events.iter().any(|ev| matches!(ev, Event::Continued { .. })),
+        events
+            .iter()
+            .any(|ev| matches!(ev, Event::Continued { .. })),
         "the cap had room, so the arm adopted"
     );
     assert_eq!(e.state().situations[&sit].recipe.as_str(), "pulse.tick");
@@ -415,7 +416,6 @@ fn max_exhausted_target_misses_and_adoption_spends_a_count() {
     assert!(situations(&e).is_empty());
     assert_eq!(common::recipe_runs(&e, "pulse.tick"), 2, "the cap held");
 }
-
 
 /// The continuation gate reads the pool as the executing recipe left it:
 /// the arms' `when`s are decided before the books walk, so a book that
@@ -475,7 +475,9 @@ verbs
     // gate was decided pre-book — storm adopts and runs.
     let events = e.advance(5).expect("stage settles");
     assert!(
-        events.iter().any(|ev| matches!(ev, Event::Continued { .. })),
+        events
+            .iter()
+            .any(|ev| matches!(ev, Event::Continued { .. })),
         "storm adopts despite the transmuting book: {events:?}"
     );
     assert_eq!(narration(&events), vec!["stage".to_string()]);

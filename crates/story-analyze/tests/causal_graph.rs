@@ -139,13 +139,21 @@ fn boot_state_opens_player_and_heartbeat_recipes() {
     let graph = CausalGraph::build(&compile(SRC));
     let boot = edge(&graph, &Site::BootState).expect("boot state edge");
     assert!(boot.requires.is_empty());
-    for r in ["tend.stoke", "tend.ignite", "tend.drown", "pulse.beat", "call.summon"] {
+    for r in [
+        "tend.stoke",
+        "tend.ignite",
+        "tend.drown",
+        "pulse.beat",
+        "call.summon",
+    ] {
         assert!(
             boot.produces.contains(&Fact::RecipeCanOpen(r.into())),
             "boot should open {r}"
         );
     }
-    assert!(!boot.produces.contains(&Fact::RecipeCanOpen("secret.unveil".into())));
+    assert!(!boot
+        .produces
+        .contains(&Fact::RecipeCanOpen("secret.unveil".into())));
 }
 
 #[test]
@@ -160,7 +168,10 @@ fn boot_cards_produce_their_declarations() {
             &Fact::CardHasAspect(fact("lamp"), "heat".into()),
         ])
     );
-    assert!(edge(&graph, &Site::Boot(fact("ash"))).is_none(), "ash never boots");
+    assert!(
+        edge(&graph, &Site::Boot(fact("ash"))).is_none(),
+        "ash never boots"
+    );
 }
 
 #[test]
@@ -199,8 +210,7 @@ fn fallible_list_emits_the_abort_hyperedge() {
     // Ignite: a consume whose target can come up short -> the abort path.
     let ignite = edge(&graph, &Site::Recipe("tend.ignite".into())).expect("ignite edge");
     assert!(ignite.produces.contains(&Fact::EndingReached("lit".into())));
-    let abort = edge(&graph, &Site::RecipeAbort("tend.ignite".into()))
-        .expect("ignite can abort");
+    let abort = edge(&graph, &Site::RecipeAbort("tend.ignite".into())).expect("ignite can abort");
     assert_eq!(abort.requires, ignite.requires);
     assert!(abort.produces.is_empty(), "no completion book walks alone");
     // Unveil: a SingleCopy spawn can hard-fail with NameInUse.
@@ -215,11 +225,9 @@ fn draw_produces_every_deck_entry_and_the_fallback() {
     let drown = edge(&graph, &Site::Recipe("tend.drown".into())).expect("drown edge");
     for card in ["coal", "ash"] {
         assert!(drown.produces.contains(&Fact::CardLive(fact(card))));
-        assert!(
-            drown
-                .produces
-                .contains(&Fact::CardInZone(fact(card), "hall".into()))
-        );
+        assert!(drown
+            .produces
+            .contains(&Fact::CardInZone(fact(card), "hall".into())));
     }
     let deck = edge(&graph, &Site::Deck("pile".into())).expect("deck edge");
     assert!(deck.produces.contains(&Fact::CardLive(fact("coal"))));
@@ -248,8 +256,8 @@ fn card_book_connects_to_binding_and_storage_routes() {
             other => panic!("unexpected requirement {other:?}"),
         }
     }
-    assert!(required_routes.contains(&"tend.stoke".into()));
-    assert!(required_routes.contains(&"tend.drown".into()));
+    assert!(required_routes.contains("tend.stoke"));
+    assert!(required_routes.contains("tend.drown"));
 }
 
 #[test]
@@ -285,7 +293,9 @@ fn event_book_chains_from_signal_to_products() {
     }));
     // The signal site produces the ignition fact.
     let beat = edge(&graph, &Site::Recipe("pulse.beat".into())).expect("beat edge");
-    assert!(beat.produces.contains(&Fact::EventSignaled("relight".into())));
+    assert!(beat
+        .produces
+        .contains(&Fact::EventSignaled("relight".into())));
 }
 
 #[test]
@@ -302,9 +312,10 @@ fn provenance_chains_ending_to_the_boot_state() {
     assert!(proof.requires.iter().any(|p| {
         p.fact == Fact::RecipeCanOpen("tend.ignite".into()) && p.site == Site::BootState
     }));
-    assert!(proof.requires.iter().any(|p| {
-        p.fact == Fact::CardLive(fact("coal")) && p.site == Site::Boot(fact("coal"))
-    }));
+    assert!(proof
+        .requires
+        .iter()
+        .any(|p| { p.fact == Fact::CardLive(fact("coal")) && p.site == Site::Boot(fact("coal")) }));
 }
 
 #[test]
@@ -321,10 +332,7 @@ fn polarity_producers_bridge_to_card_has_aspect() {
     assert!(sites.contains(&Site::Boot(fact("lamp"))));
     assert!(sites.contains(&Site::Recipe("tend.stoke".into())));
     assert!(sites.contains(&Site::Event("relight".into())));
-    assert_eq!(
-        graph.plausibility(&goal),
-        Plausibility::Plausible,
-    );
+    assert_eq!(graph.plausibility(&goal), Plausibility::Plausible,);
 }
 
 #[test]

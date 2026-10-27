@@ -19,10 +19,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use story_content::ir::{CmpOp, DestroyCount, EffectNode, Expr};
+use story_content::runtime::RuntimeDiagnostic;
 use story_content::Content;
 use story_core::{CardId, DeckId, State};
-use story_content::runtime::RuntimeDiagnostic;
-use story_engine::{ChanceOutcome, ChancePoint, CommitAction, Engine, };
+use story_engine::{ChanceOutcome, ChancePoint, CommitAction, Engine};
 
 use crate::query::RngMode;
 use crate::transitions::PlayerStep;
@@ -120,7 +120,7 @@ fn walk_list(nodes: &[EffectNode], bind: &mut Option<String>, out: &mut RollCons
                 walk_list(then, bind, out);
                 walk_list(els, bind, out);
             }
-            EffectNode::Narrate { .. } => {}
+            EffectNode::Cue { .. } => {}
             // A roll-fed destroy count consumes the binding: per-distinct-
             // total classes (`DestroyCount::AtMost(expr)`; `All` reads
             // nothing).
@@ -305,7 +305,11 @@ fn roll_classes(
     let mut out = Vec::new();
     for i in 0..edges.len() {
         let lo = edges[i];
-        let hi = if i + 1 < edges.len() { edges[i + 1] - 1 } else { max };
+        let hi = if i + 1 < edges.len() {
+            edges[i + 1] - 1
+        } else {
+            max
+        };
         if lo > hi {
             continue;
         }

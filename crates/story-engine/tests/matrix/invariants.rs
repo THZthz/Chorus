@@ -57,8 +57,15 @@ verbs
     let events = common::commit_named(&mut e, "prober", &[]).expect("probes");
     assert_eq!(
         narration(&events),
-        vec!["a0", "b0", "c0", "d0", "f0", "g0"],
-        "every total read answered 0"
+        vec![
+            "a{slain.ghost}",
+            "b{beacon.ghost}",
+            "c0",
+            "d0",
+            "f{beacon.charge}",
+            "g0"
+        ],
+        "the cues are recorded for the presentation layer"
     );
     assert_eq!(aspect(&e, common::named(&e, "beacon"), "charge"), 0);
 }

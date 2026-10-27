@@ -273,13 +273,14 @@ fn matrix_31_bind_happy_path_pos() {
             sit,
             slot: SlotName::from("extra"),
             entity: common::named(&e, "coin_b"),
+            card: story_core::CardId::from("coin_b"),
         }]
     );
     let interior = e.state().situations[&sit].interior;
     assert_eq!(zone_of(&e, common::named(&e, "coin_b")), interior);
 
     let events = e.advance(10).expect("completes");
-    assert_eq!(narration(&events), vec!["stamped coin_b"]);
+    assert_eq!(narration(&events), vec!["stamped {extra}"]);
     assert_eq!(count_named(&e, "coin_a"), 0, "the consuming slot burned");
     let b = common::named(&e, "coin_b");
     assert_eq!(aspect(&e, b, "stamp"), 1, "the effect wrote the newcomer");
@@ -340,7 +341,6 @@ fn matrix_31_bind_happy_path_neg() {
         DiagKind::UnresolvableRef
     );
 }
-
 
 // matrix 45
 /// A greedy slot tops up from the world just before its completion

@@ -23,8 +23,11 @@ fn relate_then_unrelate_basic() {
     let events = common::commit_named(&mut e, "act", &[]).expect("commits");
     assert_eq!(
         narration(&events),
-        vec!["carries: [sword]", "carries: []"],
-        "the token renders the walk while the edge lives and after it goes"
+        vec![
+            "carries: [{related:carries of alice}]",
+            "carries: [{related:carries of alice}]"
+        ],
+        "the cue is recorded for the presentation layer"
     );
     assert_eq!(
         events
@@ -70,7 +73,10 @@ fn relate_multi_targets_apply_per_pair() {
     for c in &coins {
         assert_eq!(related_of(&e, *c, "knows").len(), 1);
     }
-    assert_eq!(narration(&events), vec!["[coin]"]);
+    assert_eq!(
+        narration(&events),
+        vec!["[{related:knows of first(world name:coin)}]"]
+    );
 }
 
 /// Self-pairs are skipped silently: nothing written, nothing emitted.

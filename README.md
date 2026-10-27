@@ -104,3 +104,31 @@ Play the converted game with full presentation:
 ```bash
 cargo run -p story-cli -- play cultist-simulator.sw
 ```
+
+---
+
+## Visualizer (`godot/`)
+
+Chorus² includes a 2D tabletop visualizer built in Godot 4, styled after classic tabletop narrative card games like *Cultist Simulator* and *Book of Hours*.
+
+### Running the Visualizer
+
+Launch the tabletop client (defaults to `docs/emberwatch.sw`):
+```bash
+godot --path godot
+```
+
+Or pass a specific story script:
+```bash
+godot --path godot -- docs/emberwatch.sw
+```
+
+### Controls & Interactions
+
+- **Tabletop:** Drag cards between zone trays and situation sockets. Dragging slotted cards back to the felt tabletop unstages them.
+- **Auto-Slotting & Unstaging:** Right-click any card on the tabletop to auto-stage it into the open situation window. Right-click any slotted card to return it to the tabletop.
+- **Lore Inspector:** Left-click any card to view its category, lore, aspect breakdown, and decay status in the pinned index card.
+- **Keyboard Shortcuts:**
+  - `Space`: Advance 1 turn.
+  - `Escape`: Close the active situation window or inspector card.
+  - `Cmd+Z` / `Ctrl+Z`: Undo the last turn or action.

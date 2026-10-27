@@ -258,6 +258,12 @@ impl Presenter {
         let clock = state.now;
         let legacy = state.legacy.clone();
 
+        let locked_entities: BTreeSet<EntityId> = state
+            .situations
+            .values()
+            .flat_map(|s| s.bindings.values().flatten().map(|b| b.entity))
+            .collect();
+
         let mut zones = Vec::new();
         for (z_name, &zid) in self.engine.zone_ids() {
             let zone_obj = state.zones.get(&zid);
@@ -274,13 +280,20 @@ impl Presenter {
             for ent in state.entities.values().filter(|e| e.zone == zid) {
                 let proto = ent.prototype.as_str();
                 let title = self.catalog.card_title(proto, content).to_string();
+                let is_locked = locked_entities.contains(&ent.id);
                 if let Some(existing) = card_map.get_mut(proto) {
                     existing.count += 1;
+                    existing.entity_ids.push(ent.id);
+                    if is_locked {
+                        existing.locked_ids.push(ent.id);
+                    }
                 } else {
                     card_map.insert(
                         proto.to_string(),
                         CardSummaryView {
                             entity_id: ent.id,
+                            entity_ids: vec![ent.id],
+                            locked_ids: if is_locked { vec![ent.id] } else { Vec::new() },
                             prototype: proto.to_string(),
                             title,
                             kind: ent.kind.clone(),
@@ -341,6 +354,16 @@ impl Presenter {
 
             let total_dur = rec_decl.map(|r| r.duration).unwrap_or(0);
             let remaining = s.ends_at.saturating_sub(clock);
+            let start_text = rec_decl.and_then(|r| self.catalog.recipe_start(qid, r)).map(|p| {
+                let ctx = PresentationContext {
+                    sit: Some(s.id),
+                    recipe: Some(s.recipe.clone()),
+                    verb: Some(s.verb.clone()),
+                    bound_cards: self.active_bindings.get(&s.id).cloned().unwrap_or_default(),
+                    ..Default::default()
+                };
+                interpolate(p, state, content, &self.catalog, &ctx)
+            });
 
             situations.push(SituationView {
                 id: s.id,
@@ -352,6 +375,7 @@ impl Presenter {
                 ends_at: s.ends_at,
                 remaining_time: remaining,
                 total_duration: total_dur,
+                start_text,
                 slotted,
                 open_slots,
             });

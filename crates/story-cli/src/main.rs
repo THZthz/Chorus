@@ -5,6 +5,7 @@
 //! story-analyze's design-time analyses, printing reports to stdout.
 
 mod analyze;
+mod bridge;
 mod profile;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,6 +21,7 @@ story-cli — the Chorus² dev driver and design analyzer
 
 USAGE:
     story-cli play <file.sw> [options]
+    story-cli bridge <file.sw> [options]
     story-cli analyze <file.sw> [options]
     story-cli <file.sw> [options]             alias for play
 
@@ -32,6 +34,11 @@ PLAY — the interactive terminal driver; commands at the `>` prompt:
     --seed N        host seed when the content declares `seed host` (default 1)
     --record <f>    record forward play trace to JSON file on exit
     run `story-cli play --help` for the interactive command reference.
+
+BRIDGE — line-delimited JSON (NDJSON) stdio bridge for external visualizers:
+    story-cli bridge <file.sw> [options]
+    --seed N        host seed when the content declares `seed host` (default 1)
+    run `story-cli bridge --help` for the bridge command reference.
 
 ANALYZE — boot the content and run design analyses; reports go to stdout.
     story-cli analyze <file.sw> [options]
@@ -80,6 +87,7 @@ fn main() {
     match args.first().map(String::as_str) {
         None => usage_exit(2),
         Some("play") => play(&args[1..]),
+        Some("bridge") => std::process::exit(bridge::run(&args[1..])),
         Some("analyze") => std::process::exit(analyze::run(&args[1..])),
         Some("help" | "--help" | "-h") => println!("{USAGE}"),
         Some(other) => {

@@ -1292,3 +1292,17 @@ verbs
         "{out}"
     );
 }
+
+#[test]
+fn bridge_smoke_and_help() {
+    let (code, stdout, _) = run(&["bridge", "--help"]);
+    assert_eq!(code, 0, "{stdout}");
+    assert!(stdout.contains("story-cli bridge"), "{stdout}");
+
+    let (code, out) = play_with_stdin(
+        &["bridge", EMBER],
+        "{\"cmd\":\"state\"}\n{\"cmd\":\"quit\"}\n",
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("\"title\":\"Emberwatch\""), "{out}");
+}

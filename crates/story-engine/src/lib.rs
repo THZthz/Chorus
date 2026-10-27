@@ -73,14 +73,14 @@ pub const MAX_RESOLUTION_DEPTH: u32 = 128;
 // ---------------------------------------------------------------------------
 
 /// Why an open was skipped (a `start` or an autonomous poll).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum StartSkipReason {
     InstanceCap,
     MaterializationFailed,
 }
 
 /// The v1 event set; the host renders (L6).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Event {
     /// A situation was opened / materialized.
     SituationStarted {
@@ -146,7 +146,7 @@ pub enum Event {
 }
 
 /// A player's open request: the verb and the explicit slot bindings.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct CommitAction {
     pub verb: VerbId,
     pub bindings: Vec<(SlotName, EntityId)>,

@@ -1,23 +1,24 @@
 //! View models and narrative presentation types.
 
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use story_core::{EntityId, SituationId, Time, ZoneId};
 use story_engine::Event;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoryOutput {
     pub beats: Vec<StoryBeat>,
     pub raw_events: Vec<Event>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoryBeat {
     pub kind: BeatKind,
     pub text: String,
     pub clock: Option<Time>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BeatKind {
     ActionStart,
     ActionComplete,
@@ -28,7 +29,7 @@ pub enum BeatKind {
     Ending,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BoardView {
     pub clock: Time,
     pub legacy: BTreeMap<String, i64>,
@@ -37,7 +38,7 @@ pub struct BoardView {
     pub ended: Option<EndingView>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZoneView {
     pub zone_id: ZoneId,
     pub name: String,
@@ -45,9 +46,11 @@ pub struct ZoneView {
     pub cards: Vec<CardSummaryView>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CardSummaryView {
     pub entity_id: EntityId,
+    pub entity_ids: Vec<EntityId>,
+    pub locked_ids: Vec<EntityId>,
     pub prototype: String,
     pub title: String,
     pub kind: Option<String>,
@@ -56,7 +59,7 @@ pub struct CardSummaryView {
     pub expires_at: Option<Time>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SituationView {
     pub id: SituationId,
     pub verb: String,
@@ -67,11 +70,12 @@ pub struct SituationView {
     pub ends_at: Time,
     pub remaining_time: Time,
     pub total_duration: Time,
+    pub start_text: Option<String>,
     pub slotted: Vec<SlottedCardView>,
     pub open_slots: Vec<SlotPromptView>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SlottedCardView {
     pub slot: String,
     pub entity_id: EntityId,
@@ -79,7 +83,7 @@ pub struct SlottedCardView {
     pub prototype: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VerbOpportunityView {
     pub id: String,
     pub title: String,
@@ -89,7 +93,7 @@ pub struct VerbOpportunityView {
     pub recipes: Vec<RecipeOpportunityView>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RecipeOpportunityView {
     pub id: String,
     pub name: String,
@@ -103,7 +107,7 @@ pub struct RecipeOpportunityView {
     pub guards: Vec<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SlotPromptView {
     pub name: String,
     pub label: String,
@@ -113,7 +117,7 @@ pub struct SlotPromptView {
     pub criteria: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CardLoreView {
     pub entity_id: Option<EntityId>,
     pub prototype: String,
@@ -126,7 +130,7 @@ pub struct CardLoreView {
     pub relations: Vec<(String, String, Option<EntityId>)>, // (kind, related_card_title, related_entity_id)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EndingView {
     pub id: String,
     pub title: String,

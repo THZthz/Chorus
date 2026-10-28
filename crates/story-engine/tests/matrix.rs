@@ -16,6 +16,8 @@ use story_engine::{Engine, Event, StartSkipReason};
 mod minting;
 #[path = "matrix/slots.rs"]
 mod slots;
+#[path = "matrix/presence.rs"]
+mod presence;
 #[path = "matrix/starts.rs"]
 mod starts;
 #[path = "matrix/instant.rs"]

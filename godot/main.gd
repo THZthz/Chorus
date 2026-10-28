@@ -9,8 +9,12 @@ var open_verb: String = "tend"
 var current_page: int = 0
 var dragging_eid: int = -1
 
-# Staged slot bindings for the open verb window: slot_name -> Array of entity_ids
-var staged: Dictionary = {}
+# Staged slot bindings for the open verb window: Array of [slot_name, entity_id].
+# An empty slot name asks the bridge to place the card.
+var staged: Array = []
+
+# Latest staging response per verb: verb_id -> staging view Dictionary
+var staging_cache: Dictionary = {}
 
 # Catalog of known entity data by entity_id: int -> Dictionary
 var entity_catalog: Dictionary = {}
@@ -73,7 +77,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_send({"cmd": "advance", "turns": 1})
 		elif event.keycode == KEY_Z and (event.ctrl_pressed or event.meta_pressed):
 			if not undo_btn.disabled:
-				staged.clear()
+				staged = []
 				_send({"cmd": "undo"})
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if situation_window.visible:
@@ -271,7 +275,7 @@ func _build_layout() -> void:
 	undo_btn.text = "[ UNDO ]"
 	undo_btn.disabled = true
 	undo_btn.pressed.connect(func() -> void:
-		staged.clear()
+		staged = []
 		_send({"cmd": "undo"})
 	)
 	bar_hbox.add_child(undo_btn)
@@ -340,11 +344,14 @@ func _apply_state(res: Dictionary) -> void:
 			for raw_id in card.get("entity_ids", []):
 				entity_catalog[int(raw_id)] = card
 
-	_rebuild_table()
+	# The world moved; every cached staging view is stale.
+	staging_cache.clear()
 
-	# Refresh situation window if open
+	# Refresh the situation window first (its staging refresh may prune staged
+	# pairs back to the table), then the table.
 	if not open_verb.is_empty():
 		open_window(open_verb, current_page)
+	_rebuild_table()
 
 func _rebuild_table() -> void:
 	var board: Dictionary = current_state.get("board", {})
@@ -430,9 +437,8 @@ func _rebuild_table() -> void:
 
 func _staged_set() -> Dictionary:
 	var s := {}
-	for arr in staged.values():
-		for eid in arr:
-			s[int(eid)] = true
+	for pair in staged:
+		s[int(pair[1])] = true
 	return s
 
 func _redraw_drop_targets() -> void:
@@ -472,6 +478,8 @@ func _find_zone_card_view(eid: int) -> CardView:
 	return null
 
 func open_window(verb_id: String, page_idx: int = 0) -> void:
+	if verb_id != open_verb:
+		staged = []
 	open_verb = verb_id
 	current_page = page_idx
 	var v_dict: Dictionary = _find_verb(verb_id)
@@ -498,7 +506,7 @@ func open_window(verb_id: String, page_idx: int = 0) -> void:
 
 func close_window() -> void:
 	open_verb = ""
-	staged.clear()
+	staged = []
 	situation_window.visible = false
 	_rebuild_table()
 	_redraw_drop_targets()
@@ -537,57 +545,43 @@ func verb_accepts(verb_id: String, eid: int) -> bool:
 				if arr.has(eid) or arr.has(float(eid)):
 					return true
 
-	# Otherwise check if craftable recipe slots accept eid
+	# Otherwise the card must fit some slot of the verb's latest staging view.
+	# With no informative response yet (nothing matched, so no candidates are
+	# known), accept and let the drop resolve.
 	if verb_has_room(v_dict):
-		var slot_cands: Dictionary = current_state.get("slot_candidates", {})
-		for r in v_dict.get("recipes", []):
-			if not bool(r.get("craftable", false)):
-				continue
-			var rid := str(r.get("id", ""))
-			for sl in r.get("slots", []):
-				var key := "%s:%s" % [rid, str(sl.get("name", ""))]
-				var arr: Array = slot_cands.get(key, [])
-				if arr.has(eid) or arr.has(float(eid)):
+		var st: Dictionary = staging_cache.get(verb_id, {})
+		if st.is_empty():
+			st = staging_refresh(verb_id)
+		if st.get("matched") == null and (st.get("slots", []) as Array).is_empty():
+			return true
+		for sl in st.get("slots", []):
+			for c in sl.get("candidates", []):
+				if int(c[0]) == eid:
 					return true
 
 	return false
 
 func drop_on_verb(verb_id: String, eid: int) -> void:
-	open_window(verb_id)
-	var v_dict := _find_verb(verb_id)
-
-	# If current page is a running situation and accepts eid into an open slot:
+	# If a running situation of this verb has an open slot accepting eid:
 	var board: Dictionary = current_state.get("board", {})
 	for s in board.get("situations", []):
 		if str(s.get("verb", "")) == verb_id:
 			var sid := int(s.get("id", -1))
-			var open_cands: Dictionary = current_state.get("open_slot_candidates", {})
 			for os in s.get("open_slots", []):
 				var sname := str(os.get("name", ""))
-				var key := "%d:%s" % [sid, sname]
-				var arr: Array = open_cands.get(key, [])
-				if arr.has(eid) or arr.has(float(eid)):
+				if open_slot_accepts(sid, sname, eid):
 					bind(sid, sname, eid)
 					return
 
-	# Otherwise stage into first eligible recipe slot
-	var slots := slot_union(v_dict)
-	for sl in slots:
-		var sname := str(sl.get("name", ""))
-		if slot_accepts(v_dict, sname, eid):
-			stage(sname, eid)
-			return
-
-func slot_accepts(verb_dict: Dictionary, slot_name: String, eid: int) -> bool:
-	var slot_cands: Dictionary = current_state.get("slot_candidates", {})
-	for r in verb_dict.get("recipes", []):
-		if not bool(r.get("craftable", false)):
-			continue
-		var key := "%s:%s" % [str(r.get("id", "")), slot_name]
-		var arr: Array = slot_cands.get(key, [])
-		if arr.has(eid) or arr.has(float(eid)):
-			return true
-	return false
+	# Otherwise stage the card for a new action on its new-action page; the
+	# empty slot name asks the bridge to place the card where it fits.
+	var v_dict := _find_verb(verb_id)
+	if v_dict.is_empty() or not verb_has_room(v_dict):
+		return
+	if open_verb != verb_id:
+		staged = []
+	open_window(verb_id, 9999)
+	stage("", eid)
 
 func open_slot_accepts(sit_id: int, slot_name: String, eid: int) -> bool:
 	var open_cands: Dictionary = current_state.get("open_slot_candidates", {})
@@ -595,73 +589,113 @@ func open_slot_accepts(sit_id: int, slot_name: String, eid: int) -> bool:
 	var arr: Array = open_cands.get(key, [])
 	return arr.has(eid) or arr.has(float(eid))
 
+func slot_accepts(slot_name: String, eid: int) -> bool:
+	var st: Dictionary = staging_cache.get(open_verb, {})
+	for sl in st.get("slots", []):
+		if str(sl.get("name", "")) != slot_name:
+			continue
+		for c in sl.get("candidates", []):
+			if int(c[0]) == eid:
+				return true
+	return false
+
+func staging_refresh(verb_id: String) -> Dictionary:
+	var bindings: Array = staged_bindings() if verb_id == open_verb else []
+	var res := bridge.staging(verb_id, bindings)
+	if not res.get("ok", false):
+		return {}
+	var st: Dictionary = res.get("staging", {})
+	staging_cache[verb_id] = st
+	if verb_id == open_verb:
+		_prune_staged(st)
+	return st
+
+# Align staged pairs with a fresh staging view: a pair whose slot no longer
+# renders moves to the first slot that still takes its card, and a pair
+# nothing takes is pruned back to the table.
+func _prune_staged(st: Dictionary) -> void:
+	if staged.is_empty():
+		return
+	var kept := []
+	for pair in staged:
+		var sname := str(pair[0])
+		var eid := int(pair[1])
+		var placed := false
+		for sl in st.get("slots", []):
+			if placed or str(sl.get("name", "")) != sname:
+				continue
+			kept.append(pair)
+			placed = true
+		if placed:
+			continue
+		for sl in st.get("slots", []):
+			var taken := false
+			for c in sl.get("candidates", []):
+				if int(c[0]) == eid:
+					kept.append([str(sl.get("name", "")), eid])
+					taken = true
+					break
+			if taken:
+				placed = true
+				break
+		if not placed:
+			_append_log("[color=#ff6b6b]Refused: %s does not take that card right now.[/color]" % open_verb)
+	staged = kept
+
 func stage(slot_name: String, eid: int) -> void:
-	for sname in staged.keys():
-		staged[sname].erase(eid)
-	if not staged.has(slot_name):
-		staged[slot_name] = []
-	if not staged[slot_name].has(eid):
-		staged[slot_name].append(eid)
-	_rebuild_table()
-	open_window(open_verb, current_page)
+	var kept := []
+	for pair in staged:
+		if int(pair[1]) != eid:
+			kept.append(pair)
+	kept.append([slot_name, eid])
+	staged = kept
+	_refresh_open_verb()
 
 func unstage(eid: int) -> void:
-	for sname in staged.keys():
-		staged[sname].erase(eid)
+	staged = staged.filter(func(pair: Array) -> bool: return int(pair[1]) != eid)
+	_refresh_open_verb()
+
+func _refresh_open_verb() -> void:
+	if not open_verb.is_empty():
+		open_window(open_verb, current_page)
 	_rebuild_table()
-	open_window(open_verb, current_page)
+	_redraw_drop_targets()
 
 func bind(sit_id: int, slot_name: String, eid: int) -> void:
 	_send({"cmd": "bind", "sit": sit_id, "slot": slot_name, "entity": eid})
 
 func start() -> void:
-	var bindings := []
-	for sname in staged.keys():
-		for eid in staged[sname]:
-			bindings.append([sname, int(eid)])
 	var vid := open_verb
-	var prev_staged := staged.duplicate(true)
-	staged.clear()
+	var bindings := staged.duplicate(true)
+	staged = []
 	var res := _send({"cmd": "commit", "verb": vid, "bindings": bindings})
 	if not res.get("ok", false):
-		staged = prev_staged
+		staged = bindings
+		open_window(vid, current_page)
 		_rebuild_table()
-		open_window(open_verb, current_page)
+
+func staged_bindings() -> Array:
+	var out := []
+	for pair in staged:
+		out.append([str(pair[0]), int(pair[1])])
+	return out
 
 func preview_staged() -> Dictionary:
-	var bindings := []
-	for sname in staged.keys():
-		for eid in staged[sname]:
-			bindings.append([sname, int(eid)])
-	return bridge.request({"cmd": "preview", "verb": open_verb, "bindings": bindings})
+	return bridge.request({"cmd": "preview", "verb": open_verb, "bindings": staged_bindings()})
 
 func staged_aspects_text() -> String:
 	var totals := {}
-	for sname in staged.keys():
-		for eid in staged[sname]:
-			var c := card_of(int(eid))
-			var aspects: Dictionary = c.get("aspects", {})
-			for k in aspects.keys():
-				totals[k] = totals.get(k, 0) + int(aspects[k])
+	for pair in staged:
+		var c := card_of(int(pair[1]))
+		var aspects: Dictionary = c.get("aspects", {})
+		for k in aspects.keys():
+			totals[k] = totals.get(k, 0) + int(aspects[k])
 	if totals.is_empty():
 		return ""
 	var parts := PackedStringArray()
 	for k in totals.keys():
 		parts.append("%s %d" % [k, totals[k]])
 	return "ASPECTS: " + "  ·  ".join(parts)
-
-func slot_union(verb_dict: Dictionary) -> Array:
-	var res := []
-	var seen := {}
-	for r in verb_dict.get("recipes", []):
-		if not bool(r.get("craftable", false)):
-			continue
-		for sl in r.get("slots", []):
-			var sname := str(sl.get("name", ""))
-			if not seen.has(sname):
-				seen[sname] = true
-				res.append(sl)
-	return res
 
 func slot_capacity(sl: Dictionary) -> int:
 	var bounds_str := str(sl.get("bounds", "1..1"))

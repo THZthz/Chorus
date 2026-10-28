@@ -64,7 +64,9 @@ impl<'a> Converter<'a> {
             }
         }
 
-        let mut slot_lines: Vec<String> = Vec::new();
+        // Each entry is one slot: its main line first, then its `shown when`
+        // sub-line if the slot carries a presence condition.
+        let mut slot_lines: Vec<Vec<String>> = Vec::new();
         let source: Vec<Value> = r
             .get("slots")
             .and_then(|x| x.as_array())
@@ -84,12 +86,13 @@ impl<'a> Converter<'a> {
                 line.push(' ');
                 line.push_str(&terms.join(" "));
             }
-            slot_lines.push(line);
+            slot_lines.push(vec![line]);
         }
         // The verb slot and the synthesized slots follow the source slots, in
-        // plan order (verb slot first, then cost, then requirement slots).
+        // plan order (verb slot first, then merged, cost, and requirement
+        // slots).
         for planned in plan.slots.iter().skip(source.len()) {
-            let line = match planned.kind {
+            let entry = match planned.kind {
                 SlotKind::Source => continue,
                 SlotKind::Verb => {
                     let action = self.action_of(rid);
@@ -101,13 +104,15 @@ impl<'a> Converter<'a> {
                             line.push_str(&terms.join(" "));
                         }
                     }
-                    line
+                    vec![line]
                 }
                 SlotKind::Cost => {
-                    // `cost_<key>: 1..N consuming <term>` — the bind is the
-                    // payment route; the paired negative effect drains the
-                    // interior at the effects pass, and the consuming
-                    // settlement burns the bound payers.
+                    // `cost_<key>: 1..N consuming internal <term>` — the
+                    // payment route is machinery: the host stages the bind at
+                    // commit (the player never drags a cost), the paired
+                    // negative effect drains the interior at the effects
+                    // pass, and the consuming settlement burns the bound
+                    // payers.
                     let k = planned.key.clone().unwrap_or_default();
                     let n = pairs(r, "effects")
                         .into_iter()
@@ -116,28 +121,44 @@ impl<'a> Converter<'a> {
                         .unwrap_or(1)
                         .clamp(1, 12);
                     let term = self.arm_term(&k, 1);
-                    format!("{}: 1..{n} consuming open {term}", planned.name)
+                    vec![format!(
+                        "{}: 1..{n} consuming internal {term}",
+                        planned.name
+                    )]
                 }
                 SlotKind::Req => {
                     // A synthesized requirement slot: the key's own term.
+                    // Machinery like the cost slots — the host stages the
+                    // bind, so the slot is `internal` and `open` is dead.
                     let k = planned.key.clone().unwrap_or_default();
                     let term = self.arm_term(&k, 1);
-                    format!("{}: 0..1 open {term}", planned.name)
+                    vec![format!("{}: 0..1 internal {term}", planned.name)]
                 }
                 SlotKind::Merged => {
-                    // A merged element slot: its line is fixed at plan time.
-                    planned.line.clone().unwrap_or_else(|| {
+                    // A merged element slot: its line is fixed at plan time,
+                    // with the donor-presence sub-line under it.
+                    let mut entry = vec![planned.line.clone().unwrap_or_else(|| {
                         format!("{}: 0..1 open", planned.name)
-                    })
+                    })];
+                    if let Some(shown) = &planned.shown {
+                        entry.push(shown.clone());
+                    }
+                    entry
                 }
             };
-            slot_lines.push(line);
+            slot_lines.push(entry);
         }
         if !slot_lines.is_empty() {
             self.stats.slots_out += slot_lines.len();
             out.push("      slots".into());
-            for l in slot_lines {
-                out.push(format!("        {l}"));
+            for entry in slot_lines {
+                for (i, l) in entry.iter().enumerate() {
+                    if i == 0 {
+                        out.push(format!("        {l}"));
+                    } else {
+                        out.push(format!("          {l}"));
+                    }
+                }
             }
         }
 

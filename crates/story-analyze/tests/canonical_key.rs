@@ -72,6 +72,8 @@ fn content(beta_charge: i64) -> Content {
         consuming: false,
         open: false,
         take: false,
+        internal: false,
+        presence: None,
         query: vec![story_content::ir::QueryTerm::Aspect(
             story_content::ir::AspectTerm {
                 key: "charge".into(),

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use story_core::{EntityId, SituationId, Time, ZoneId};
+use story_core::{EntityId, RecipeId, SituationId, SlotName, Time, ZoneId};
 use story_engine::Event;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -115,6 +115,27 @@ pub struct SlotPromptView {
     pub flags: String,
     pub description: Option<String>,
     pub criteria: String,
+}
+
+/// A host staging surface: the recipe a partial binding set would open and
+/// the still-stageable slots under the full binding set.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StagingView {
+    pub verb: String,
+    pub matched: Option<RecipeId>,
+    pub recipe_label: Option<String>,
+    pub slots: Vec<StagingSlotView>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StagingSlotView {
+    pub name: SlotName,
+    pub label: String,
+    pub bounds: String,
+    pub flags: String,
+    pub criteria: String,
+    /// Bind candidates as (entity id, display title).
+    pub candidates: Vec<(EntityId, String)>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -179,6 +179,7 @@ pub enum SlotFlagAst {
     Consuming,
     Open,
     Take,
+    Internal,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -188,6 +189,8 @@ pub struct SlotAst {
     pub range: RangeAst,
     pub flags: Vec<(Span, SlotFlagAst)>,
     pub query: Vec<AQueryTerm>,
+    /// `shown when <cond>` sub-line: the player-facing presence condition.
+    pub shown: Option<(Span, ACond)>,
     pub meta: Vec<MetaLine>,
 }
 

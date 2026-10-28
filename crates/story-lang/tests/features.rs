@@ -631,3 +631,34 @@ fn table_scope_lowers_to_scope_table() {
         }
     ));
 }
+
+/// Slot presence: `shown when` lowers into `SlotDecl.presence` in the recipe
+/// env, `internal` lands as its flag, and a clause-less slot stays always-shown.
+#[test]
+fn slot_presence_and_internal_lowering() {
+    let content = compile_body(
+        "\
+verbs
+  verb v committable instances 1
+    recipe r
+      duration 0m
+      slots
+        gated: 0..1 open aspect:charge
+          shown when legacy.favor >= 1 and count(slot:plain) == 0
+        machinery: 0..1 internal aspect:charge
+        plain: 1..1 aspect:charge
+      effects
+        narrate \"ok\"
+",
+    );
+    let recipe = &content.verbs["v"].recipes["r"];
+    let by_name = |n: &str| recipe.slots.iter().find(|s| s.name.as_str() == n).unwrap();
+    let gated = by_name("gated");
+    let machinery = by_name("machinery");
+    let plain = by_name("plain");
+    assert!(gated.presence.is_some(), "`shown when` must lower to presence");
+    assert!(!gated.internal);
+    assert!(machinery.internal);
+    assert!(machinery.presence.is_none());
+    assert!(plain.presence.is_none() && !plain.internal);
+}

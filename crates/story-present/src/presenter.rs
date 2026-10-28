@@ -5,15 +5,15 @@ use std::sync::Arc;
 
 use story_content::ir::{InstanceCap, QueryTerm, RecipeDecl, VerbDecl, VerbMode};
 use story_content::Content;
-use story_core::{CardId, EntityId, SituationId, SlotName, Snapshot, State, Time};
+use story_core::{CardId, EntityId, SituationId, SlotName, Snapshot, State, Time, VerbId};
 use story_engine::{CommitAction, Engine, Event, RuntimeDiagnostic};
 
 use crate::catalog::PresentationCatalog;
 use crate::interpolate::{interpolate, PresentationContext};
 use crate::view::{
     BeatKind, BoardView, CardLoreView, CardSummaryView, EndingView, RecipeOpportunityView,
-    SituationView, SlotPromptView, SlottedCardView, StoryBeat, StoryOutput, VerbOpportunityView,
-    ZoneView,
+    SituationView, SlotPromptView, SlottedCardView, StagingSlotView, StagingView, StoryBeat,
+    StoryOutput, VerbOpportunityView, ZoneView,
 };
 
 pub struct Presenter {
@@ -107,6 +107,148 @@ impl Presenter {
     ) -> Result<StoryOutput, RuntimeDiagnostic> {
         let events = self.engine.bind(sit, slot, entity)?;
         Ok(self.process_events(events))
+    }
+
+    /// Commit from a partially staged binding set: the matched recipe's
+    /// `internal` slots with `min >= 1` are auto-staged deterministically
+    /// (see `match_staged`), and the full set runs the ordinary commit. When
+    /// nothing matches, the staged bindings alone go to the kernel so the
+    /// caller receives its real refusal.
+    pub fn commit_staged(
+        &mut self,
+        verb: &str,
+        staged: &[(SlotName, EntityId)],
+    ) -> Result<StoryOutput, RuntimeDiagnostic> {
+        let bindings = match self.match_staged(verb, staged) {
+            Some((_, full)) => full,
+            None => staged.to_vec(),
+        };
+        self.commit(CommitAction {
+            verb: VerbId::from(verb),
+            bindings,
+        })
+    }
+
+    /// The staging view for a host UI: what would this partial binding set
+    /// open? Slots of the matched recipe that are shown under the full
+    /// binding set, each with its bind candidates. When nothing matches, the
+    /// view is empty.
+    pub fn staging_view(&self, verb: &str, staged: &[(SlotName, EntityId)]) -> StagingView {
+        let Some((recipe, full)) = self.match_staged(verb, staged) else {
+            return StagingView {
+                verb: verb.to_string(),
+                matched: None,
+                recipe_label: None,
+                slots: Vec::new(),
+            };
+        };
+        let content = self.engine.content();
+        let qid = recipe.id.as_str();
+        let mut slots = Vec::new();
+        for s in &recipe.slots {
+            if !self
+                .engine
+                .slot_shown_staged(recipe.id.clone(), s.name.clone(), &full)
+            {
+                continue;
+            }
+            let prompt = self.format_slot_prompt(qid, s);
+            let candidates = self
+                .engine
+                .slot_candidates(recipe.id.clone(), s.name.clone())
+                .into_iter()
+                .map(|e| {
+                    let title = self
+                        .engine
+                        .state()
+                        .entities
+                        .get(&e)
+                        .map(|ent| {
+                            self.catalog
+                                .card_title(ent.prototype.as_str(), content)
+                                .to_string()
+                        })
+                        .unwrap_or_else(|| e.to_string());
+                    (e, title)
+                })
+                .collect();
+            slots.push(StagingSlotView {
+                name: s.name.clone(),
+                label: prompt.label,
+                bounds: prompt.bounds,
+                flags: prompt.flags,
+                criteria: prompt.criteria,
+                candidates,
+            });
+        }
+        StagingView {
+            verb: verb.to_string(),
+            matched: Some(recipe.id.clone()),
+            recipe_label: Some(self.catalog.recipe_label(qid, &recipe).to_string()),
+            slots,
+        }
+    }
+
+    /// The shared staged matcher: craftable recipes of the verb in selection
+    /// order (priority ascending, then declaration order — what `commit`
+    /// selects by), each tried with the staged bindings plus deterministic
+    /// auto-staging; the first whose `preview_commit` selects it wins.
+    fn match_staged(
+        &self,
+        verb: &str,
+        staged: &[(SlotName, EntityId)],
+    ) -> Option<(RecipeDecl, Vec<(SlotName, EntityId)>)> {
+        let v = self.content().verbs.get(verb)?;
+        let mut recipes: Vec<&RecipeDecl> = v
+            .recipes
+            .values()
+            .filter(|r| r.craftable && !r.chain_only)
+            .collect();
+        recipes.sort_by_key(|r| (r.priority, r.decl_index));
+        for r in recipes {
+            let full = self.auto_staged(r, staged);
+            let action = CommitAction {
+                verb: r.verb.clone(),
+                bindings: full.clone(),
+            };
+            if self.engine.preview_commit(&action).as_ref() == Ok(&r.id) {
+                return Some((r.clone(), full));
+            }
+        }
+        None
+    }
+
+    /// Deterministic auto-staging for one recipe: each `internal` slot with
+    /// `min >= 1` takes `slot_candidates` in order, skipping entities already
+    /// used anywhere in the set, up to `min`.
+    fn auto_staged(
+        &self,
+        recipe: &RecipeDecl,
+        staged: &[(SlotName, EntityId)],
+    ) -> Vec<(SlotName, EntityId)> {
+        let mut full: Vec<(SlotName, EntityId)> = staged.to_vec();
+        let mut used: BTreeSet<EntityId> = staged.iter().map(|(_, e)| *e).collect();
+        for s in &recipe.slots {
+            if !s.internal || s.min == 0 {
+                continue;
+            }
+            let mut taken = 0;
+            for c in self
+                .engine
+                .slot_candidates(recipe.id.clone(), s.name.clone())
+            {
+                if taken >= s.min as usize {
+                    break;
+                }
+                if used.contains(&c) {
+                    continue;
+                }
+                used.insert(c);
+                full.push((s.name.clone(), c));
+                taken += 1;
+            }
+        }
+        full
     }
 
     fn process_events(&mut self, raw_events: Vec<Event>) -> StoryOutput {
@@ -346,24 +488,37 @@ impl Presenter {
             let mut open_slots = Vec::new();
             if let Some(rec) = rec_decl {
                 for sl in &rec.slots {
-                    if sl.open {
-                        open_slots.push(self.format_slot_prompt(qid, sl));
+                    if !sl.open {
+                        continue;
                     }
+                    // Presence gate: internal slots and slots whose `shown
+                    // when` does not hold (or that resolve to nothing) are
+                    // not prompted; their bound cards still show in `slotted`.
+                    if !self
+                        .engine
+                        .slot_shown(s.id, sl.name.clone())
+                        .unwrap_or(false)
+                    {
+                        continue;
+                    }
+                    open_slots.push(self.format_slot_prompt(qid, sl));
                 }
             }
 
             let total_dur = rec_decl.map(|r| r.duration).unwrap_or(0);
             let remaining = s.ends_at.saturating_sub(clock);
-            let start_text = rec_decl.and_then(|r| self.catalog.recipe_start(qid, r)).map(|p| {
-                let ctx = PresentationContext {
-                    sit: Some(s.id),
-                    recipe: Some(s.recipe.clone()),
-                    verb: Some(s.verb.clone()),
-                    bound_cards: self.active_bindings.get(&s.id).cloned().unwrap_or_default(),
-                    ..Default::default()
-                };
-                interpolate(p, state, content, &self.catalog, &ctx)
-            });
+            let start_text = rec_decl
+                .and_then(|r| self.catalog.recipe_start(qid, r))
+                .map(|p| {
+                    let ctx = PresentationContext {
+                        sit: Some(s.id),
+                        recipe: Some(s.recipe.clone()),
+                        verb: Some(s.verb.clone()),
+                        bound_cards: self.active_bindings.get(&s.id).cloned().unwrap_or_default(),
+                        ..Default::default()
+                    };
+                    interpolate(p, state, content, &self.catalog, &ctx)
+                });
 
             situations.push(SituationView {
                 id: s.id,
@@ -561,6 +716,9 @@ impl Presenter {
         }
         if slot.greedy {
             flags.push("greedy");
+        }
+        if slot.internal {
+            flags.push("internal");
         }
         let flags_str = flags.join(" ");
 

@@ -14,6 +14,6 @@ pub use interpolate::{interpolate, PresentationContext};
 pub use presenter::Presenter;
 pub use view::{
     BeatKind, BoardView, CardLoreView, CardSummaryView, EndingView, RecipeOpportunityView,
-    SituationView, SlotPromptView, SlottedCardView, StoryBeat, StoryOutput, VerbOpportunityView,
-    ZoneView,
+    SituationView, SlotPromptView, SlottedCardView, StagingSlotView, StagingView, StoryBeat,
+    StoryOutput, VerbOpportunityView, ZoneView,
 };

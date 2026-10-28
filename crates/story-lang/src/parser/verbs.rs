@@ -296,6 +296,10 @@ impl<'d> Parser<'d> {
                 }
                 return;
             }
+            if l.first_ident() == Some("shown") {
+                p.parse_shown_line(&l, recipe);
+                return;
+            }
             let span = l.first().map(|(s, _)| s.clone()).unwrap();
             let mut tc = TC::new(&l.toks);
             let Some(name) = tc.expect_ident("a slot name", p.diags) else {
@@ -329,6 +333,7 @@ impl<'d> Parser<'d> {
                         "consuming" => Some((s.clone(), SlotFlagAst::Consuming)),
                         "open" => Some((s.clone(), SlotFlagAst::Open)),
                         "take" => Some((s.clone(), SlotFlagAst::Take)),
+                        "internal" => Some((s.clone(), SlotFlagAst::Internal)),
                         _ => None,
                     },
                     _ => None,
@@ -348,8 +353,38 @@ impl<'d> Parser<'d> {
                 range,
                 flags,
                 query,
+                shown: None,
                 meta: Vec::new(),
             });
         });
+    }
+
+    /// `shown when <condition>` under a slot line: the slot's player-facing
+    /// presence. Line-initial only, and at most one per slot [E236].
+    fn parse_shown_line(&mut self, l: &Line, recipe: &mut RecipeAst) {
+        let Some(s) = recipe.slots.last_mut() else {
+            self.err_here("`shown when` line before any slot");
+            return;
+        };
+        let span = l.first().map(|(sp, _)| sp.clone()).unwrap();
+        if s.shown.is_some() {
+            self.diags.push(
+                span.error(
+                    code::E236,
+                    format!("slot `{}` declares a second `shown when` line", s.name.1),
+                ),
+            );
+            return;
+        }
+        let mut tc = TC::new(&l.toks);
+        tc.next();
+        if tc.eat_ident("when").is_none() {
+            self.diags
+                .push(span.error(code::E201, "a slot presence line is `shown when <condition>`"));
+            return;
+        }
+        if let Some(c) = parse_cond(&mut tc, self.diags) {
+            s.shown = Some((c.span().clone(), c));
+        }
     }
 }

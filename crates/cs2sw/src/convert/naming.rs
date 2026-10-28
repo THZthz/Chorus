@@ -223,6 +223,7 @@ impl<'a> Converter<'a> {
                 kind: SlotKind::Source,
                 key: None,
                 line: None,
+                shown: None,
             });
         }
 
@@ -241,6 +242,7 @@ impl<'a> Converter<'a> {
                 kind: SlotKind::Verb,
                 key: None,
                 line: None,
+                shown: None,
             });
         }
 
@@ -360,6 +362,12 @@ impl<'a> Converter<'a> {
                         line.push(' ');
                         line.push_str(&terms.join(" "));
                     }
+                    // The donor's presence gates the child slot (CS opens it
+                    // as a dependent sphere of the situation only while the
+                    // carrier card is in it): `count(bound, name:<card>) >= 1`
+                    // reads every binding of the live situation.
+                    let donor = self.card_name(&eid).unwrap_or_else(|| mangle(&eid));
+                    let shown = format!("shown when count(bound, name:{donor}) >= 1");
                     shapes.insert(shape, name.clone());
                     for (ck, _) in required.iter().chain(essential.iter()) {
                         covered.insert(ck.clone());
@@ -369,6 +377,7 @@ impl<'a> Converter<'a> {
                         kind: SlotKind::Merged,
                         key: None,
                         line: Some(line),
+                        shown: Some(shown),
                     });
                 }
             }
@@ -406,6 +415,7 @@ impl<'a> Converter<'a> {
                 kind: SlotKind::Cost,
                 key: Some(k.clone()),
                 line: None,
+                shown: None,
             });
         }
 
@@ -428,6 +438,7 @@ impl<'a> Converter<'a> {
                 kind: SlotKind::Req,
                 key: Some(k.clone()),
                 line: None,
+                shown: None,
             });
         }
         plan

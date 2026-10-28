@@ -322,6 +322,59 @@ impl Engine {
             .collect()
     }
 
+    /// Player-facing presence of one slot of one live situation: `false` for
+    /// an internal slot or one whose `shown when` does not hold. The read
+    /// face behind the host's views; eligibility itself lives in
+    /// `check_bindable`.
+    pub fn slot_shown(
+        &self,
+        sit: SituationId,
+        slot: SlotName,
+    ) -> Result<bool, RuntimeDiagnostic> {
+        let situation = self.situation(sit)?;
+        let rec = self.recipe_of(&situation.recipe);
+        let Some(sd) = rec.slots.iter().find(|s| s.name == slot) else {
+            return Err(
+                DiagKind::UnresolvableRef.refused(format!("situation {sit} has no slot `{slot}`"))
+            );
+        };
+        Ok(!self.slot_hidden(sit, sd))
+    }
+
+    /// Player-facing presence of one slot of one recipe under staged
+    /// bindings — the same context commit selection gives recipe `when`:
+    /// the staged bindings stand in for the slot scopes, `interior` and
+    /// `bound` read empty. Total: an unknown recipe or slot reads not-shown.
+    /// This is the pre-commit staging face; commit semantics themselves are
+    /// unchanged, and the host assembles `internal`-slot bindings itself
+    /// from `slot_candidates`.
+    pub fn slot_shown_staged(
+        &self,
+        recipe: RecipeId,
+        slot: SlotName,
+        staged: &[(SlotName, EntityId)],
+    ) -> bool {
+        let Some(rec) = self.content.recipe(recipe.as_str()) else {
+            return false;
+        };
+        let Some(sd) = rec.slots.iter().find(|s| s.name == slot) else {
+            return false;
+        };
+        if sd.internal {
+            return false;
+        }
+        match &sd.presence {
+            None => true,
+            Some(cond) => {
+                let ctx = Ctx {
+                    sel_bindings: Some(staged.to_vec()),
+                    ..Ctx::default()
+                };
+                self.eval_cond_ctx(cond, &ctx)
+            }
+        }
+    }
+
     /// Check whether any autonomous verb can start a recipe in the current state.
     pub fn can_autonomous_start(&self, allowed: Option<&BTreeSet<VerbId>>) -> bool {
         for verb in self.content.verbs.values() {
@@ -656,10 +709,13 @@ impl Engine {
     }
 
     /// Total-ordered bind eligibility for one slot of one live situation:
-    /// alive -> not locked -> zone bindable -> open slot -> filter match ->
-    /// not full (spec.md §4.4). Locks come first because they are total (T8)
-    /// and a bound card sits in a non-bindable interior, so the zone check
-    /// alone would never reach `EntityLocked`. The slot-full count reads the
+    /// alive -> not locked -> zone bindable -> shown -> open slot -> filter
+    /// match -> not full (spec.md §4.4). Locks come first because they are
+    /// total (T8) and a bound card sits in a non-bindable interior, so the
+    /// zone check alone would never reach `EntityLocked`. Presence gates the
+    /// player face only: an internal or hidden slot refuses `bind` with
+    /// `SlotHidden` whatever its flags; greedy pulls, candidacy, settlement,
+    /// and release never read presence. The slot-full count reads the
     /// addressed situation's bindings only: situations sharing a slot name do
     /// not fill each other.
     pub(crate) fn check_bindable(
@@ -686,6 +742,9 @@ impl Engine {
                 );
             }
         }
+        if self.slot_hidden(sit, sd) {
+            return Err(DiagKind::SlotHidden.in_context(name, "the slot is not shown"));
+        }
         if !sd.open {
             // Mid-run intervention addresses open slots only (spec.md §4.4).
             return Err(DiagKind::ZoneNotBindable.in_context(name, "the slot is not open"));
@@ -708,6 +767,26 @@ impl Engine {
             }
         }
         Ok(())
+    }
+
+    /// Player-facing presence of one slot of one live situation: internal
+    /// slots and slots whose `shown when` does not hold are hidden. Derived
+    /// from state on every read — never stored, so snapshots and L5
+    /// determinism are untouched.
+    pub(crate) fn slot_hidden(&self, sit: SituationId, sd: &SlotDecl) -> bool {
+        if sd.internal {
+            return true;
+        }
+        match &sd.presence {
+            None => false,
+            Some(cond) => {
+                let ctx = Ctx {
+                    sit: Some(sit),
+                    ..Ctx::default()
+                };
+                !self.eval_cond_ctx(cond, &ctx)
+            }
+        }
     }
 
     /// Charge one resolution unit against the per-advance budget; exceeding

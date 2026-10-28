@@ -135,7 +135,7 @@ verb tend committable instances 1
 - **`declares <aspect>, ...`** lists aspect keys this recipe declares, comma-separated; every key must be in the aspects registry [E203]. An aspect-qualified card completion book fires at a recipe that declares that aspect, or — when the walking card's own declaration carries the qualifier — at any completing recipe whose interior pool contains it (§5).
 - Two recipes of one verb that share a priority and an identical (or missing) `when` raise the [W110] shadowing warning; `allow shadow`, written on the shadowed recipe (the second declaration), suppresses it. Disjoint `when`s never shadow.
 - `guard "<prose>" when <cond>`: guards are checked at opening, in declaration order, before any time is spent and before any card locks; a hit cancels the whole commit with the guard-refused diagnostic. Guards apply to commits and autonomous polls; a `start` opens the situation regardless of guards — use `when` to gate a chain by state.
-- **Slots are recipe-level.** `name: range [flags] [query]` — range `N` | `N..M` | `N..` (`min > max` is [E240]); flags `greedy` (auto-pull; requires a finite max — [E241]), `consuming` (burned at settlement), `open` (re-bindable mid-run), `take` (cards return to their bound-from zone at release); the query may call derived predicates. Explicit fills come first; greedy tops up after selection. Bindings lock until completion. Slot names appear in conditions as the `slot:<name>` scope and in prose as `{<name>}`.
+- **Slots are recipe-level.** `name: range [flags] [query]` — range `N` | `N..M` | `N..` (`min > max` is [E240]); flags `greedy` (auto-pull; requires a finite max — [E241]), `consuming` (burned at settlement), `open` (re-bindable mid-run), `take` (cards return to their bound-from zone at release), `internal` (engine machinery — never shown to the player, never player-bindable; the host stages its bindings from `slot_candidates` when assembling a commit); the query may call derived predicates. Explicit fills come first; greedy tops up after selection. Bindings lock until completion. One indented sub-line `shown when <condition>` under the slot line states the slot's player-facing presence — the condition is the §3 grammar lowered in the recipe's environment, exactly like recipe `when` (a `slot:<name>` it does not declare is [E249]; a second `shown when` line is [E236]); a slot without the line is always shown. Presence is derived from state on every read, never stored, and gates the player-intervention face only: `bind` on a hidden slot refuses with the runtime refusal `SlotHidden` (kernel-api.md §7), while greedy pulls, candidacy, minimum fill, settlement, and release never read it, and a slot that turns hidden while filled keeps its bindings. Slot names appear in conditions as the `slot:<name>` scope and in prose as `{<name>}`.
 - Recipe ids are unique within their verb; global references read `<verb>.<recipe>`.
 
 **Eligibility sets:**
@@ -427,7 +427,7 @@ Compile diagnostics carry `file:line:col`, a stable number, and a note phrased a
 | E233 | An `effectset` call names no declared macro. |
 | E234 | An `effectset` call's argument count differs from its parameter count. |
 | E235 | An `effectset` expansion reaches itself or exceeds the depth cap (16). |
-| E236 | A declaration-level key repeats: a `meta` key, an `on complete` qualifier, or an `on expire` block on one declaration. |
+| E236 | A declaration-level key repeats: a `meta` key, an `on complete` qualifier, an `on expire` block, or a `shown when` line on one declaration. |
 | E237 | A recipe has no `duration` line. |
 | E238 | A `<handle>` target has no enclosing `spawn ... as <handle>` in the same effect list (an orphan handle-shaped prose token is [E205], §7). |
 | E239 | A name-path operand or target addresses a card that is not `unique`. |
@@ -440,7 +440,10 @@ Compile diagnostics carry `file:line:col`, a stable number, and a note phrased a
 | E246 | A magnitude is non-positive where that is required (turn, lifetime, `max`, counts) or out of range (a duration literal past 64 bits). |
 | E247 | `continue` appears outside recipe effects (a trigger book: recipe, card, expiry, or event). |
 | E248 | A relation kind is read or written but is not declared (the relations registry): a `rel(...)` operand, a `related:` scope, `relate`/`unrelate`, a card `relates` line. (Inside a `{related:...}` prose token the unresolvable kind is the token checker's [E205].) |
+| E249 | A slot's `shown when` condition references `slot:<name>` the recipe does not declare. |
 | W110 | Two recipes of one verb share a priority and an identical (or missing) `when` (warning; `allow shadow` on the shadowed recipe suppresses it). |
+| W111 | A slot declares `internal` together with `open` (warning; an internal slot never accepts a player bind, so `open` has no effect). |
+| W112 | A `greedy` slot carries a `shown when` condition (warning; greedy pulls fill the slot even while it is hidden). |
 
 Runtime diagnostics (refusals, effect failures, boot and snapshot kinds) are the engine's catalog: kernel-api.md §7.
 

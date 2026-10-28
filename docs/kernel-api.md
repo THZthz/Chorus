@@ -37,6 +37,9 @@ impl Engine {
     pub fn preview_commit(&self, action: &CommitAction) -> Result<RecipeId, RuntimeDiagnostic>;
     pub fn can_bind(&self, sit: SituationId, slot: SlotName, e: EntityId) -> Result<(), RuntimeDiagnostic>;
     pub fn slot_candidates(&self, recipe: RecipeId, slot: SlotName) -> Vec<EntityId>;
+    pub fn slot_shown(&self, sit: SituationId, slot: SlotName) -> Result<bool, RuntimeDiagnostic>;
+    pub fn slot_shown_staged(&self, recipe: RecipeId, slot: SlotName,
+                staged: &[(SlotName, EntityId)]) -> bool;   // total; unknown recipe/slot reads not-shown
     pub fn can_autonomous_start(&self, allowed: Option<&BTreeSet<VerbId>>) -> bool;
     // persistence face:
     pub fn legacy_out(&self) -> &BTreeMap<String, i64>;
@@ -67,7 +70,7 @@ pub struct CommitAction { pub verb: VerbId, pub bindings: Vec<(SlotName, EntityI
 ```
 
 - `boot` validates the content-fixed seed (`SeedMismatch` is blocking; `seed host` content delegates the seed to the argument), folds `legacy_in` over the declared defaults, arms boot instances (timers anchored at t=0), and runs one autonomous checkpoint at t=0. Its diagnostics split into warnings (play may proceed) and errors (the host must not proceed).
-- `can_bind` addresses open slots of a live situation; `slot_candidates` addresses a recipe, not a verb, because two recipes of one verb may reuse a slot name under different filters. `can_autonomous_start` answers whether any autonomous verb — optionally restricted to the `allowed` set — would open on a poll in the current state.
+- `can_bind` addresses open slots of a live situation; `slot_candidates` addresses a recipe, not a verb, because two recipes of one verb may reuse a slot name under different filters. `slot_shown` reads one slot's player-facing presence of a live situation; `slot_shown_staged` is the pre-commit twin over staged bindings — the same context commit selection gives recipe `when`. `can_autonomous_start` answers whether any autonomous verb — optionally restricted to the `allowed` set — would open on a poll in the current state.
 - `preview_commit` runs the selection pipeline — eligibility, minimum-fill, when-scan, guard — and reports the would-be selection including the guard outcome, without mutating state or spending time.
 - Invariants: every entry point returns `Result<_, RuntimeDiagnostic>`; content-driven failure is always a value, never a panic. `commit` is all-or-nothing. `advance` is atomic per resolution unit (§9).
 
@@ -311,7 +314,7 @@ The engine-side grammar mirrors the DSL's (language.md §3). `Interior` is the i
 `RuntimeDiagnostic { severity, kind, message, context }`, in four families. Compile diagnostics (E-numbers) live in language.md §9 and are produced by `story-content` / `story-lang`; this catalog is the runtime face. `severity` splits boot output into warnings (play may proceed) and errors (it must not); the kind is the catalog entry below.
 
 - **Lookup:** UnknownVerb / UnknownEntity / UnknownRecipe / UnknownZone / UnknownDeck / UnknownEnding / UnresolvableRef / UndeclaredEvent
-- **Eligibility (commit and bind refusals):** VerbAutonomous / StoryEnded / InstanceCapReached / EntityDead / EntityLocked / ZoneNotBindable / SlotFilterFail / SlotUnderMin / SlotOverMax / NoRecipe / GuardRefused (the guard's prose rides in `message` / `context`)
+- **Eligibility (commit and bind refusals):** VerbAutonomous / StoryEnded / InstanceCapReached / EntityDead / EntityLocked / ZoneNotBindable / SlotHidden / SlotFilterFail / SlotUnderMin / SlotOverMax / NoRecipe / GuardRefused (the guard's prose rides in `message` / `context`)
 - **Effects:** NameInUse / DeckExhausted / UnregisteredOp / BadLifetime / BadDuration / EffectFailure
 - **Advance / Snapshot / Boot:** Livelock / FormatVersion / ContentMismatch / Deserialize / SeedMismatch
 
@@ -354,6 +357,9 @@ Each statement is directly assertable by a test:
 - **T19 Destroy drops edges.** Destroying either endpoint removes every logical edge touching it, via `destroy`, `consume`, `swap`, and default expiry destruction; the surviving endpoint's other edges survive; the drops are silent.
 - **T20 Symmetric and exclusive maintenance.** A symmetric `relate` stores one canonical row yet reads as `rel` both ways, and `unrelate` clears it; an exclusive directed `relate` removes prior holders (`Unrelated` per victim, map order, before the `Related`); a symmetric exclusive `relate` steals prior partners of either endpoint; non-exclusive kinds accumulate holders.
 - **T21 Event fidelity.** Exactly one `Related` per written and one `Unrelated` per removed logical edge from authored effects and steals; self-pairs, no-op unrelates, and destroy-drops emit nothing.
+- **T22 Presence gates the player face.** `bind` and `can_bind` on an `internal` slot, or on a slot whose `shown when` does not hold in the live situation's context, refuse `SlotHidden`; greedy pulls, start/autonomous candidacy, minimum-fill tests, settlement, and release never read presence, and a slot that turns hidden while filled keeps its bindings.
+- **T23 Presence is derived, never stored.** The presence faces are pure reads: identical content + seed + operations give identical state bytes whether or not presence was read, and a snapshot round-trip carries no presence residue.
+- **T24 Staged presence context.** `slot_shown_staged` evaluates the presence condition with the staged bindings standing in for the slot scopes — `interior` and `bound` empty, the same context commit selection gives recipe `when`; internal slots and unknown recipe or slot names read not-shown.
 
 ## 10. Test Matrix
 
@@ -415,4 +421,10 @@ Behavioral coverage contract: at least one positive and one refusal path per mec
 43. `first(...)` endpoints — oldest-copy resolution, the `slot:` endpoint, empty reads false/empty;
 44. `unrelate` without a kind severs all kinds between the pair, either direction, once per logical edge.
 
-Every entry in §9 (T1–T21) carries an executable assertion as well.
+**Slot presence entries (spec.md §4.4):**
+
+45. `internal` slots — the `bind`/`can_bind` `SlotHidden` refusal whatever the other flags, `slot_shown` reading false, and host-staged internal-slot bindings accepted as ordinary commit data;
+46. `shown when` presence — the hidden-slot bind refusal, the state-driven reveal mid-run (a legacy write from another situation flips the condition), and the sibling-slot reveal through `slot:` scopes;
+47. the presence faces — `slot_shown_staged` over staged bindings mirroring commit selection's context, unknown recipe/slot reading not-shown, and derived-not-stored determinism (presence reads leave the state bit-identical).
+
+Every entry in §9 (T1–T24) carries an executable assertion as well.

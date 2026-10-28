@@ -1,8 +1,9 @@
 //! Golden test: a tiny verbatim slice of CS data converts, compiles cleanly,
 //! and shows the key output shapes (cards with xtrigger books, a deck with
-//! its relief path, a craftable recipe with `when` and synthesized
-//! requirement slots, a cost slot on the recipe that pays). Also asserts
-//! byte determinism.
+//! its relief path, a craftable recipe with `when` and synthesized internal
+//! requirement slots, a cost slot on the recipe that pays, and an element's
+//! own slots merged in under a `shown when` donor-presence line). Also
+//! asserts byte determinism.
 
 use std::path::PathBuf;
 
@@ -96,10 +97,10 @@ fn golden_slice_converts_and_compiles() {
     assert!(recipe.contains("duration 30m"), "warmup 30 -> duration 30m");
     assert!(recipe.contains("priority 0"), "content-order priority");
     assert!(
-        recipe.contains("req_funds: 0..1 open aspect:funds")
-            && recipe.contains("req_follower: 0..1 open aspect:follower")
-            && recipe.contains("req_vaultfloating1: 0..1 open aspect:vaultfloating1"),
-        "every requirement key gets a synthesized slot, got: {}",
+        recipe.contains("req_funds: 0..1 internal aspect:funds")
+            && recipe.contains("req_follower: 0..1 internal aspect:follower")
+            && recipe.contains("req_vaultfloating1: 0..1 internal aspect:vaultfloating1"),
+        "every requirement key gets a synthesized internal slot, got: {}",
         recipe
     );
     assert!(
@@ -132,9 +133,40 @@ fn golden_slice_converts_and_compiles() {
         .next()
         .unwrap();
     assert!(
-        success.contains("cost_vaultfloating1: 1..1 consuming open"),
-        "the cost slot forces and burns the payer, got: {}",
+        success.contains("cost_vaultfloating1: 1..1 consuming internal"),
+        "the cost slot is internal machinery that forces and burns the payer, got: {}",
         success
+    );
+
+    // The dream recipe's requirement admits the affliction card, so the
+    // affliction element's own slots merge in as `shown when`-gated slots:
+    // present only while the donor card is bound in the situation.
+    let cure = sw
+        .split("    recipe dream_affliction_cure")
+        .nth(1)
+        .unwrap()
+        .split("    recipe ")
+        .next()
+        .unwrap();
+    let shown = "\n          shown when count(bound, name:affliction) >= 1";
+    assert!(
+        cure.contains(&format!(
+            "affliction_medicine: 0..1 open aspect:funds{shown}"
+        )),
+        "the merged medicine slot carries the donor-presence sub-line, got: {}",
+        cure
+    );
+    assert!(
+        cure.contains(&format!(
+            "affliction_vitality: 0..1 open aspect:vitality{shown}"
+        )),
+        "the merged vitality slot carries the donor-presence sub-line, got: {}",
+        cure
+    );
+    assert!(
+        cure.contains("req_illhealth: 0..1 internal aspect:illhealth"),
+        "the recipe's own key stays a synthesized internal slot, got: {}",
+        cure
     );
 
     // Determinism: the same input yields identical bytes.

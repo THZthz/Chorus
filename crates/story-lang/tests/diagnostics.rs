@@ -13,6 +13,8 @@ mod effects;
 mod relations;
 #[path = "diagnostics/registry.rs"]
 mod registry;
+#[path = "diagnostics/slots.rs"]
+mod slots;
 
 use story_content::{Diagnostic, Severity};
 

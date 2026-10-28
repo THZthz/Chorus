@@ -519,6 +519,9 @@ fn format_slot(slot: &SlotDecl) -> String {
     if slot.greedy {
         flags.push("greedy");
     }
+    if slot.internal {
+        flags.push("internal");
+    }
     let flags_str = if flags.is_empty() {
         String::new()
     } else {

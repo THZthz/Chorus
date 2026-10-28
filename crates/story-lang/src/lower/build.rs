@@ -494,7 +494,7 @@ impl Compiler {
             }
             let mut slots = Vec::new();
             for s in &r.slots {
-                if let Some(sd) = self.build_slot(s) {
+                if let Some(sd) = self.build_slot(s, &mut env) {
                     slots.push(sd);
                 }
             }
@@ -573,7 +573,7 @@ impl Compiler {
         self.content.verbs.insert(v.name.1.clone(), decl);
     }
 
-    fn build_slot(&mut self, s: &ast::SlotAst) -> Option<SlotDecl> {
+    fn build_slot(&mut self, s: &ast::SlotAst, recipe_env: &mut Env) -> Option<SlotDecl> {
         let (min, max) = match &s.range {
             ast::RangeAst::Exact(_, n) => (*n, Some(*n)),
             ast::RangeAst::Bounded(_, lo, hi) => {
@@ -594,12 +594,14 @@ impl Compiler {
         let mut consuming = false;
         let mut open = false;
         let mut take = false;
+        let mut internal = false;
         for (sp, f) in &s.flags {
             match f {
                 ast::SlotFlagAst::Greedy => greedy = true,
                 ast::SlotFlagAst::Consuming => consuming = true,
                 ast::SlotFlagAst::Open => open = true,
                 ast::SlotFlagAst::Take => take = true,
+                ast::SlotFlagAst::Internal => internal = true,
             }
             let _ = sp;
         }
@@ -612,6 +614,50 @@ impl Compiler {
                 ),
             ));
         }
+        // [W111] `open` re-opens a slot for the player's mid-run `bind`; an
+        // internal slot refuses every player bind, so the flag is dead.
+        if internal && open {
+            let d = s.span.warning(
+                code::W111,
+                format!(
+                    "slot `{}` is `internal` and `open`; an internal slot never accepts a player bind, so `open` has no effect",
+                    s.name.1
+                ),
+            );
+            self.err(d.with_note("drop `open`, or drop `internal` if the slot is meant to be shown"));
+        }
+        // [W112] greedy pulls are mechanical and ignore presence, so a
+        // conditional slot with `greedy` fills while hidden.
+        if greedy && s.shown.is_some() {
+            let d = s.span.warning(
+                code::W112,
+                format!(
+                    "greedy slot `{}` carries `shown when`; greedy pulls fill the slot even while it is hidden",
+                    s.name.1
+                ),
+            );
+            self.err(
+                d.with_note("move the condition onto a non-greedy slot, or mark the slot `internal`"),
+            );
+        }
+        // The presence condition lowers in the recipe env (same context kind
+        // as `when` and guards) and may reference only this recipe's slots
+        // [E249] — at runtime an absent slot scope reads empty, so a typo
+        // would silence the condition instead of failing loudly.
+        let presence = s.shown.as_ref().and_then(|(_, c)| {
+            for (sp, name) in cond_slot_refs(c) {
+                if !recipe_env.slots.iter().any(|n| n == &name) {
+                    self.err(sp.error(
+                        code::E249,
+                        format!(
+                            "presence condition of slot `{}` references `slot:{name}`, which the recipe does not declare",
+                            s.name.1
+                        ),
+                    ));
+                }
+            }
+            self.lower_cond(c, recipe_env)
+        });
         let mut env = Env::default();
         let query = self.lower_query(&s.query, &mut env);
         Some(SlotDecl {
@@ -622,10 +668,87 @@ impl Compiler {
             consuming,
             open,
             take,
+            internal,
+            presence,
             query,
             decl_index: self.next_index(),
         })
     }
+}
+
+/// Every `slot:<name>` scope referenced anywhere in a condition, in source
+/// order, with spans for diagnostics.
+fn cond_slot_refs(c: &ast::ACond) -> Vec<(crate::span::Span, String)> {
+    let mut out = Vec::new();
+    walk_cond(c, &mut out);
+    fn walk_cond(c: &ast::ACond, out: &mut Vec<(crate::span::Span, String)>) {
+        match c {
+            ast::ACond::Or(l, r) | ast::ACond::And(l, r) => {
+                walk_cond(l, out);
+                walk_cond(r, out);
+            }
+            ast::ACond::Not(l) => walk_cond(l, out),
+            ast::ACond::Cmp { l, r, .. } => {
+                walk_expr(l, out);
+                walk_expr(r, out);
+            }
+            ast::ACond::Rel { from, to, .. } => {
+                walk_ref(from, out);
+                walk_ref(to, out);
+            }
+            ast::ACond::Call { args, .. } => args.iter().for_each(|a| walk_expr(a, out)),
+            ast::ACond::Name(..) => {}
+        }
+    }
+    fn walk_expr(e: &ast::AExpr, out: &mut Vec<(crate::span::Span, String)>) {
+        match e {
+            ast::AExpr::Int(..)
+            | ast::AExpr::Dur(..)
+            | ast::AExpr::Ident(..)
+            | ast::AExpr::Clock(..)
+            | ast::AExpr::NamePath { .. }
+            | ast::AExpr::Legacy { .. }
+            | ast::AExpr::Alive { .. } => {}
+            ast::AExpr::Neg(_, e) => walk_expr(e, out),
+            ast::AExpr::Bin { l, r, .. } => {
+                walk_expr(l, out);
+                walk_expr(r, out);
+            }
+            ast::AExpr::Count { scope, terms, .. } => {
+                walk_scope(scope, out);
+                terms.iter().for_each(|t| walk_term(t, out));
+            }
+            ast::AExpr::Total { scope, .. } => walk_scope(scope, out),
+            ast::AExpr::Rel { from, to, .. } => {
+                walk_ref(from, out);
+                walk_ref(to, out);
+            }
+        }
+    }
+    fn walk_term(t: &ast::AQueryTerm, out: &mut Vec<(crate::span::Span, String)>) {
+        match t {
+            ast::AQueryTerm::Aspect { .. }
+            | ast::AQueryTerm::Name(..)
+            | ast::AQueryTerm::Kind(..) => {}
+            ast::AQueryTerm::Not(inner) => walk_term(inner, out),
+            ast::AQueryTerm::Call { args, .. } => args.iter().for_each(|a| walk_expr(a, out)),
+        }
+    }
+    fn walk_ref(r: &ast::ACardRef, out: &mut Vec<(crate::span::Span, String)>) {
+        match r {
+            ast::ACardRef::Name(..) | ast::ACardRef::Subject(_) => {}
+            ast::ACardRef::First { scope, terms, .. } => {
+                walk_scope(scope, out);
+                terms.iter().for_each(|t| walk_term(t, out));
+            }
+        }
+    }
+    fn walk_scope(s: &ast::AScope, out: &mut Vec<(crate::span::Span, String)>) {
+        if let ast::AScope::Slot(_, name) = s {
+            out.push((name.0.clone(), name.1.clone()));
+        }
+    }
+    out
 }
 
 /// [W110] narrowing: a missing `when` is always-true, so it shadows anything;

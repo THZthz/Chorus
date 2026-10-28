@@ -6,9 +6,17 @@ var ui: Node
 var _is_dragging: bool = false
 var _drag_start_mouse: Vector2 = Vector2.ZERO
 var _drag_start_pos: Vector2 = Vector2.ZERO
+var _staging_page := false   # the current page stages a new action
 
 func _gui_input(event: InputEvent) -> void:
 	_handle_drag(event)
+
+func _can_drop_data(_at: Vector2, data: Variant) -> bool:
+	return _staging_page and ui != null and typeof(data) == TYPE_DICTIONARY \
+		and data.get("type") == "card" and ui.verb_accepts(ui.open_verb, int(data.get("entity_id", -1)))
+
+func _drop_data(_at: Vector2, data: Variant) -> void:
+	ui.drop_on_verb(ui.open_verb, int(data.get("entity_id", -1)))
 
 func _handle_drag(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -40,8 +48,11 @@ func build(p_ui: Node, verb: Dictionary, sits: Array, page: int, pages: int) -> 
 
 	var running := page < sits.size()
 	var sit: Dictionary = sits[page] if running else {}
-	var preview: Dictionary = {} if running else ui.preview_staged()
-	var matched := bool(preview.get("matched", false))
+	var can_start: bool = not running and ui.verb_has_room(verb)
+	_staging_page = can_start
+	var staging: Dictionary = {} if not can_start else ui.staging_refresh(str(verb.get("id", "")))
+	var preview: Dictionary = {} if not can_start else ui.preview_staged()
+	var matched: bool = can_start and staging.get("matched") != null
 	var desc := str(verb.get("description")) if verb.get("description") != null else ""
 
 	var title := str(verb.get("title", verb.get("id", ""))).capitalize()
@@ -52,17 +63,16 @@ func build(p_ui: Node, verb: Dictionary, sits: Array, page: int, pages: int) -> 
 		if sit.get("start_text") != null:
 			prose = str(sit.get("start_text"))
 		note = "Ends at %dm." % int(sit.get("ends_at", 0))
-	elif not ui.verb_has_room(verb):
+	elif not can_start:
 		note = "This verb starts on its own." if str(verb.get("mode", "")) == "autonomous" else "No room for another action here."
 	elif matched:
-		title = str(preview.get("label", title)).capitalize()
-		if preview.get("prose") != null:
-			prose = str(preview.get("prose"))
-		note = "Takes %dm." % int(preview.get("duration", 0))
+		title = str(staging.get("recipe_label", title)).capitalize()
+		if bool(preview.get("matched", false)):
+			if preview.get("prose") != null:
+				prose = str(preview.get("prose"))
+			note = "Takes %dm." % int(preview.get("duration", 0))
 	elif str(preview.get("kind", "")) == "GuardRefused":
 		note = str(preview.get("reason", ""))
-	elif not ui.staged.is_empty():
-		note = "Nothing will come of this."
 
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 10)
@@ -140,10 +150,10 @@ func build(p_ui: Node, verb: Dictionary, sits: Array, page: int, pages: int) -> 
 
 	if running:
 		_build_running(right, sit)
-	elif ui.verb_has_room(verb):
-		_build_new(right, verb)
+	elif can_start:
+		_build_new(right, staging)
 
-	# Footer: aspect strip, close button, and action button
+	# Footer: aspect strip and action button
 	var footer := HBoxContainer.new()
 	footer.add_theme_constant_override("separation", 10)
 	root.add_child(footer)
@@ -151,20 +161,13 @@ func build(p_ui: Node, verb: Dictionary, sits: Array, page: int, pages: int) -> 
 	aspects.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	footer.add_child(aspects)
 
-	var close_btn := Button.new()
-	close_btn.text = "Close"
-	close_btn.custom_minimum_size = Vector2(80, 32)
-	close_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	close_btn.add_theme_stylebox_override("normal", UiKit.box(Color(0.12, 0.13, 0.16), UiKit.WINDOW_EDGE, 1, 3, 4))
-	close_btn.add_theme_stylebox_override("hover", UiKit.box(Color(0.2, 0.22, 0.28), UiKit.HILITE, 1, 3, 4))
-	close_btn.add_theme_color_override("font_color", UiKit.TEXT)
-	close_btn.pressed.connect(func() -> void: ui.close_window())
-	footer.add_child(close_btn)
-
 	var action := Button.new()
 	action.custom_minimum_size = Vector2(100, 32)
 	if running:
 		action.text = "Running"
+		action.disabled = true
+	elif not can_start:
+		action.text = "Start"
 		action.disabled = true
 	else:
 		action.text = "Start"
@@ -172,21 +175,25 @@ func build(p_ui: Node, verb: Dictionary, sits: Array, page: int, pages: int) -> 
 		action.pressed.connect(ui.start)
 	footer.add_child(action)
 
-func _build_new(parent: Control, verb: Dictionary) -> void:
-	var slots: Array = ui.slot_union(verb)
+func _build_new(parent: Control, staging: Dictionary) -> void:
+	var slots: Array = staging.get("slots", [])
 	if slots.is_empty():
-		parent.add_child(UiKit.label("No cards needed.", 12, UiKit.TEXT_FAINT))
+		var msg := "No cards needed." if staging.get("matched") != null else "Drop a card onto this window to begin."
+		parent.add_child(UiKit.label(msg, 12, UiKit.TEXT_FAINT))
 		return
 	for sl in slots:
 		var s_name := str(sl.get("name", ""))
 		var staged_cards := []
-		for eid in ui.staged.get(s_name, []):
+		for pair in ui.staged:
+			if str(pair[0]) != s_name:
+				continue
+			var eid := int(pair[1])
 			var cv := CardView.new().setup(ui, ui.card_of(eid), [eid], ui.clock())
 			cv.from_slot = s_name
 			staged_cards.append(cv)
 		var socket := SlotSocket.new().setup(
 			ui, ui.slot_capacity(sl), staged_cards,
-			func(eid: int) -> bool: return ui.slot_accepts(verb, s_name, eid),
+			func(eid: int) -> bool: return ui.slot_accepts(s_name, eid),
 			func(eid: int) -> void: ui.stage(s_name, eid)
 		)
 		parent.add_child(_slot_column(sl, socket))

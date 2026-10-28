@@ -11,7 +11,7 @@ use story_core::{CardId, EntityId, RecipeId, SituationId, SlotName, Snapshot, Ve
 use story_engine::{CommitAction, EffectRegistry, Engine};
 use story_present::{
     interpolate, BoardView, CardLoreView, PresentationCatalog, PresentationContext, Presenter,
-    StoryOutput, VerbOpportunityView,
+    StoryOutput,
 };
 
 #[derive(Deserialize)]
@@ -22,6 +22,11 @@ enum Request {
         available: bool,
     },
     Preview {
+        verb: String,
+        #[serde(default)]
+        bindings: Vec<(String, u64)>,
+    },
+    Staging {
         verb: String,
         #[serde(default)]
         bindings: Vec<(String, u64)>,
@@ -73,9 +78,20 @@ struct StateEnvelope {
     #[serde(skip_serializing_if = "Option::is_none")]
     output: Option<StoryOutput>,
     board: BoardView,
-    verbs: Vec<VerbOpportunityView>,
-    slot_candidates: BTreeMap<String, Vec<EntityId>>,
+    verbs: Vec<VerbEntry>,
     open_slot_candidates: BTreeMap<String, Vec<EntityId>>,
+}
+
+/// Slim verb index for the visualizer: identity and capacity only. Slot and
+/// recipe detail lives behind the `staging` request.
+#[derive(Serialize)]
+struct VerbEntry {
+    id: String,
+    title: String,
+    mode: String,
+    instances: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
 }
 
 const BRIDGE_USAGE: &str = "\
@@ -90,7 +106,7 @@ OPTIONS:
 
 PROTOCOL:
     Requests and responses are single-line JSON objects exchanged over stdin/stdout.
-    Commands: state, preview, commit, bind, advance, undo, inspect, candidates, quit.";
+    Commands: state, preview, staging, commit, bind, advance, undo, inspect, candidates, quit.";
 
 pub fn run(args: &[String]) -> i32 {
     let mut path: Option<String> = None;
@@ -190,12 +206,10 @@ pub fn run(args: &[String]) -> i32 {
                 );
             }
             Request::Preview { verb, bindings } => {
+                let action_bindings = resolve_staged(&presenter, &verb, to_staged(bindings));
                 let action = CommitAction {
                     verb: VerbId::from(verb),
-                    bindings: bindings
-                        .into_iter()
-                        .map(|(s, id)| (SlotName::from(s), EntityId(id)))
-                        .collect(),
+                    bindings: action_bindings,
                 };
                 match presenter.engine().preview_commit(&action) {
                     Ok(rec_id) => {
@@ -249,20 +263,19 @@ pub fn run(args: &[String]) -> i32 {
                     }
                 }
             }
+            Request::Staging { verb, bindings } => {
+                let staged = resolve_staged(&presenter, &verb, to_staged(bindings));
+                let view = presenter.staging_view(&verb, &staged);
+                emit_json(&serde_json::json!({ "ok": true, "staging": view }));
+            }
             Request::Commit {
                 verb,
                 bindings,
                 available,
             } => {
                 let snap = presenter.snapshot();
-                let action = CommitAction {
-                    verb: VerbId::from(verb),
-                    bindings: bindings
-                        .into_iter()
-                        .map(|(s, id)| (SlotName::from(s), EntityId(id)))
-                        .collect(),
-                };
-                match presenter.commit(action) {
+                let staged = resolve_staged(&presenter, &verb, to_staged(bindings));
+                match presenter.commit_staged(&verb, &staged) {
                     Ok(output) => {
                         undo_stack.push(snap);
                         emit_state(
@@ -366,19 +379,18 @@ fn emit_state(
     available: bool,
 ) {
     let board = presenter.board_view();
-    let verbs = presenter.verbs_view(available);
+    let verbs = presenter
+        .verbs_view(available)
+        .into_iter()
+        .map(|v| VerbEntry {
+            id: v.id,
+            title: v.title,
+            mode: v.mode,
+            instances: v.instances,
+            description: v.description,
+        })
+        .collect();
     let engine = presenter.engine();
-
-    let mut slot_candidates: BTreeMap<String, Vec<EntityId>> = BTreeMap::new();
-    for v in &verbs {
-        for r in &v.recipes {
-            for s in &r.slots {
-                let key = format!("{}:{}", r.id, s.name);
-                let cands = engine.slot_candidates(RecipeId::from(r.id.as_str()), SlotName::from(s.name.as_str()));
-                slot_candidates.insert(key, cands);
-            }
-        }
-    }
 
     let mut open_slot_candidates: BTreeMap<String, Vec<EntityId>> = BTreeMap::new();
     let all_entities: Vec<EntityId> = engine.state().entities.keys().copied().collect();
@@ -406,10 +418,64 @@ fn emit_state(
         output,
         board,
         verbs,
-        slot_candidates,
         open_slot_candidates,
     };
     emit_json(&env);
+}
+
+fn to_staged(bindings: Vec<(String, u64)>) -> Vec<(SlotName, EntityId)> {
+    bindings
+        .into_iter()
+        .map(|(s, id)| (SlotName::from(s), EntityId(id)))
+        .collect()
+}
+
+/// Resolve staged pairs whose slot name is empty ("place this card for me"):
+/// the entity takes the first fitting slot of the verb's craftable, chain-free
+/// recipes in commit-selection order (priority, then declaration order);
+/// `internal` slots never take player cards. Named pairs pass through
+/// unchanged, so an unresolved name-less pair stays name-less and the engine
+/// reports its real refusal.
+fn resolve_staged(
+    presenter: &Presenter,
+    verb: &str,
+    staged: Vec<(SlotName, EntityId)>,
+) -> Vec<(SlotName, EntityId)> {
+    if !staged.iter().any(|(s, _)| s.0.is_empty()) {
+        return staged;
+    }
+    let Some(v) = presenter.content().verbs.get(verb) else {
+        return staged;
+    };
+    let mut recipes: Vec<&story_content::ir::RecipeDecl> = v
+        .recipes
+        .values()
+        .filter(|r| r.craftable && !r.chain_only)
+        .collect();
+    recipes.sort_by_key(|r| (r.priority, r.decl_index));
+    let engine = presenter.engine();
+    staged
+        .into_iter()
+        .map(|(s, e)| {
+            if !s.0.is_empty() {
+                return (s, e);
+            }
+            for r in &recipes {
+                for sl in &r.slots {
+                    if sl.internal {
+                        continue;
+                    }
+                    if engine
+                        .slot_candidates(r.id.clone(), sl.name.clone())
+                        .contains(&e)
+                    {
+                        return (sl.name.clone(), e);
+                    }
+                }
+            }
+            (s, e)
+        })
+        .collect()
 }
 
 fn emit_err(msg: &str) {

@@ -50,6 +50,19 @@
             "description": "We empty the luggage, upend the books to shake them, turn pictures to check the backs. We find clothes, tickets, maps, nothing out of the ordinary... although there is a curious translucent material like a sheet of snakeskin draped over a chair-back. At last, when we slash the mattress to search its stuffing, we find a little collection of ivory scroll-cases.",
             "warmup": 30,
             "craftable": false
+        },
+        {
+            "id": "dream_affliction_cure",
+            "label": "A Quiet Rest",
+            "actionid": "dream",
+            "requirements": {
+                "illhealth": 1
+            },
+            "effects": {},
+            "startdescription": "Perhaps a little rest will restore me.",
+            "description": ".",
+            "warmup": 60,
+            "craftable": true
         }
     ]
 }

@@ -137,6 +137,9 @@ struct PlannedSlot {
     /// The precomputed emission line for a merged element slot (its filter
     /// terms are fixed at plan time); `None` for every other kind.
     line: Option<String>,
+    /// The precomputed `shown when` sub-line for a merged element slot (its
+    /// donor card is fixed at plan time); `None` for every other kind.
+    shown: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -145,13 +148,15 @@ enum SlotKind {
     Source,
     /// The owning verb's own slot, name-qualified: `0..1 open`.
     Verb,
-    /// A requirement key the recipe's own effects pay for: `1..N consuming`.
+    /// A requirement key the recipe's own effects pay for:
+    /// `1..N consuming internal` (the host stages the payment).
     Cost,
-    /// A synthesized requirement slot: `0..1 open <term>`.
+    /// A synthesized requirement slot: `0..1 internal <term>`.
     Req,
     /// An element slot merged from a referenced card's CS `slots`:
-    /// `0..1 [consuming] open <term>` (CS opens it as a dependent threshold
-    /// of the situation when the card is present).
+    /// `0..1 [consuming] open <term>` plus a `shown when` presence line (CS
+    /// opens it as a dependent threshold of the situation only while the
+    /// carrier card is bound).
     Merged,
 }
 

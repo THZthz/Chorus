@@ -24,6 +24,7 @@ pub enum DiagKind {
     EntityDead,
     EntityLocked,
     ZoneNotBindable,
+    SlotHidden,
     SlotFilterFail,
     SlotUnderMin,
     SlotOverMax,
@@ -64,6 +65,7 @@ impl DiagKind {
             | DiagKind::EntityDead
             | DiagKind::EntityLocked
             | DiagKind::ZoneNotBindable
+            | DiagKind::SlotHidden
             | DiagKind::SlotFilterFail
             | DiagKind::SlotUnderMin
             | DiagKind::SlotOverMax
@@ -99,6 +101,7 @@ impl DiagKind {
             DiagKind::EntityDead => "EntityDead",
             DiagKind::EntityLocked => "EntityLocked",
             DiagKind::ZoneNotBindable => "ZoneNotBindable",
+            DiagKind::SlotHidden => "SlotHidden",
             DiagKind::SlotFilterFail => "SlotFilterFail",
             DiagKind::SlotUnderMin => "SlotUnderMin",
             DiagKind::SlotOverMax => "SlotOverMax",

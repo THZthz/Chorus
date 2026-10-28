@@ -463,6 +463,12 @@ pub struct SlotDecl {
     pub consuming: bool,
     pub open: bool,
     pub take: bool,
+    /// Engine machinery: never shown to the player, never player-bindable.
+    pub internal: bool,
+    /// Player-facing presence condition; `None` is always shown. Evaluated
+    /// with the situation context (a live instance, or staged bindings at
+    /// preview). A hidden slot refuses player `bind` (`SlotHidden`).
+    pub presence: Option<Expr>,
     pub query: Vec<QueryTerm>,
     pub decl_index: u32,
 }

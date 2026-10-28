@@ -1,6 +1,7 @@
 use std::sync::Arc;
-use story_core::{EntityId, SlotName};
-use story_engine::{CommitAction, EffectRegistry, Engine};
+use story_content::runtime::DiagKind;
+use story_core::{EntityId, RecipeId, SlotName};
+use story_engine::{CommitAction, EffectRegistry, Engine, Event};
 use story_present::{BeatKind, PresentationCatalog, Presenter};
 
 const GAME_DSL: &str = r#"
@@ -437,4 +438,193 @@ fn test_snapshot_and_restore() {
         .find(|c| c.prototype == "coal")
         .expect("coal exists");
     assert_eq!(coal_card.count, 2, "both coal cards restored");
+}
+
+/// A fixture with `shown when` and `internal` slots. `with_charge_cards`
+/// controls whether any card matching the internal `cost` slot exists.
+fn presence_dsl(with_charge_cards: bool) -> String {
+    let rod = if with_charge_cards {
+        "\n  card rod\n    stackable\n    start in table count 2\n    aspects charge 1\n"
+    } else {
+        ""
+    };
+    format!(
+        r#"
+game "PresenceTest"
+  seed host
+  turn 1m
+  home table
+
+zones
+  table
+
+aspects
+  spark: 0
+  charge: 0
+
+legacies
+  favor: 0
+
+cards
+  card cell
+    stackable
+    start in table count 3
+    aspects spark 1
+{rod}
+verbs
+  verb tinker committable instances 1
+    recipe assemble
+      priority 10
+      duration 5m
+      slots
+        main: 1..1 open aspect:spark
+        echo: 0..1 open aspect:spark
+          shown when count(slot:main) == 1
+        gated: 0..1 open aspect:spark
+          shown when legacy.favor >= 1
+        cost: 1..1 consuming internal aspect:charge
+      effects
+        narrate "assembled"
+"#
+    )
+}
+
+fn setup_presence(with_charge_cards: bool) -> Presenter {
+    let out = story_lang::compile_source("presence_game", &presence_dsl(with_charge_cards));
+    assert!(
+        out.diagnostics.iter().all(|d| !d.is_error()),
+        "DSL compilation failed: {:?}",
+        out.diagnostics
+    );
+    let content = Arc::new(out.content.expect("compiled content"));
+    let (engine, diags) = Engine::boot(content, EffectRegistry::new(), 7, None);
+    assert!(
+        diags.iter().all(|d| !d.is_error()),
+        "Engine boot failed: {:?}",
+        diags
+    );
+    Presenter::new(engine, PresentationCatalog::default())
+}
+
+fn entities_of(presenter: &Presenter, proto: &str) -> Vec<EntityId> {
+    presenter
+        .state()
+        .entities
+        .values()
+        .filter(|e| e.prototype.as_str() == proto)
+        .map(|e| e.id)
+        .collect()
+}
+
+#[test]
+fn test_presence_gates_open_slots_and_flags_internal() {
+    let mut presenter = setup_presence(true);
+    let cells = entities_of(&presenter, "cell");
+    let rods = entities_of(&presenter, "rod");
+
+    // Internal slots are ordinary commit data: the host assembles them.
+    presenter
+        .commit(CommitAction {
+            verb: "tinker".into(),
+            bindings: vec![
+                (SlotName::from("main"), cells[0]),
+                (SlotName::from("cost"), rods[0]),
+            ],
+        })
+        .expect("commit with an internal-slot binding opens");
+
+    let sit = &presenter.board_view().situations[0];
+    let open_names: Vec<&str> = sit.open_slots.iter().map(|s| s.name.as_str()).collect();
+    assert!(open_names.contains(&"main"));
+    assert!(
+        open_names.contains(&"echo"),
+        "count(slot:main) == 1 holds, so echo is shown"
+    );
+    assert!(
+        !open_names.contains(&"gated"),
+        "a condition-false slot is gated out"
+    );
+    assert!(
+        !open_names.contains(&"cost"),
+        "an internal slot is never prompted"
+    );
+    // Bound cards of hidden slots still appear in `slotted`.
+    assert!(sit
+        .slotted
+        .iter()
+        .any(|sc| sc.slot == "cost" && sc.entity_id == rods[0]));
+
+    // The flag word lands last in the slot prompt flags.
+    let tinker = presenter
+        .verbs_view(false)
+        .into_iter()
+        .find(|v| v.id == "tinker")
+        .expect("tinker listed");
+    let cost = tinker.recipes[0]
+        .slots
+        .iter()
+        .find(|s| s.name == "cost")
+        .expect("cost prompt");
+    assert_eq!(cost.flags, "consuming internal");
+}
+
+#[test]
+fn test_staging_view() {
+    let presenter = setup_presence(true);
+    let cells = entities_of(&presenter, "cell");
+
+    let view = presenter.staging_view("tinker", &[(SlotName::from("main"), cells[0])]);
+    assert_eq!(view.verb, "tinker");
+    assert_eq!(view.matched, Some(RecipeId::from("tinker.assemble")));
+    assert_eq!(view.recipe_label.as_deref(), Some("assemble"));
+    let names: Vec<&str> = view.slots.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["main", "echo"],
+        "the internal cost slot and the condition-false gated slot are excluded"
+    );
+    let main = &view.slots[0];
+    assert_eq!(main.bounds, "1..1");
+    assert_eq!(main.candidates.len(), 3, "every cell is a candidate");
+    assert!(main.candidates.iter().any(|(e, _)| *e == cells[0]));
+
+    // Nothing staged: main's minimum is unmet, so nothing matches.
+    let none = presenter.staging_view("tinker", &[]);
+    assert_eq!(none.matched, None);
+    assert_eq!(none.recipe_label, None);
+    assert!(none.slots.is_empty());
+}
+
+#[test]
+fn test_commit_staged() {
+    let mut presenter = setup_presence(true);
+    let cells = entities_of(&presenter, "cell");
+
+    let output = presenter
+        .commit_staged("tinker", &[(SlotName::from("main"), cells[0])])
+        .expect("the internal cost slot auto-stages and the commit opens");
+    assert!(output
+        .raw_events
+        .iter()
+        .any(|e| matches!(e, Event::SituationStarted { .. })));
+    let sit = presenter
+        .state()
+        .situations
+        .values()
+        .next()
+        .expect("situation open");
+    assert_eq!(sit.recipe.as_str(), "tinker.assemble");
+    assert_eq!(
+        sit.bindings.get(&SlotName::from("cost")).map(|b| b.len()),
+        Some(1),
+        "one rod auto-staged into the internal slot"
+    );
+
+    // No charge card in the world: the kernel's real refusal surfaces.
+    let mut presenter = setup_presence(false);
+    let cells = entities_of(&presenter, "cell");
+    let err = presenter
+        .commit_staged("tinker", &[(SlotName::from("main"), cells[0])])
+        .expect_err("the kernel refuses without a cost candidate");
+    assert_eq!(err.kind, DiagKind::NoRecipe);
 }

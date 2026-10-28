@@ -394,6 +394,11 @@ impl TransitionGenerator {
     /// Cartesian product without reuse. Greedy slots baseline at exactly
     /// `min` explicit bindings, with one displacement variant per
     /// equivalence class whose representative the greedy pull cannot reach.
+    /// Internal slots are engine machinery, never player choices: a
+    /// `min >= 1` internal slot contributes exactly one choice — the
+    /// host-staged fill of the first `min` kernel candidates the set under
+    /// construction does not already use — and a `min = 0` internal slot
+    /// contributes the empty binding (no branching).
     fn commit_binding_sets(
         &self,
         rec: &RecipeDecl,
@@ -402,8 +407,29 @@ impl TransitionGenerator {
         query_cache: &mut BTreeMap<(usize, usize), Vec<EntityId>>,
         greedy_pool: &[EntityId],
     ) -> Vec<BindingSet> {
-        let mut per_slot: Vec<(SlotName, Vec<Vec<EntityId>>)> = Vec::new();
+        let mut per_slot: Vec<(SlotName, SlotChoices)> = Vec::new();
         for sd in &rec.slots {
+            if sd.internal {
+                // The kernel's deterministic candidate list is the same one
+                // commit materialization stages from; presence-blind and
+                // mechanical.
+                let candidates = self
+                    .engine
+                    .slot_candidates(rec.id.clone(), sd.name.clone());
+                if candidates.len() < sd.min as usize {
+                    // No host-staged fill can ever be built; the recipe's
+                    // candidacy dies.
+                    return Vec::new();
+                }
+                per_slot.push((
+                    sd.name.clone(),
+                    SlotChoices::Internal {
+                        min: sd.min,
+                        candidates,
+                    },
+                ));
+                continue;
+            }
             let candidates = self.slot_pool(sd, bindable, query_cache);
             if candidates.len() < sd.min as usize {
                 // A slot that cannot be filled kills the recipe's candidacy.
@@ -418,7 +444,7 @@ impl TransitionGenerator {
             if choices.is_empty() {
                 return Vec::new();
             }
-            per_slot.push((sd.name.clone(), choices));
+            per_slot.push((sd.name.clone(), SlotChoices::Player(choices)));
         }
         // Cross-slot product without reuse (§5.2).
         let mut out = Vec::new();
@@ -757,10 +783,23 @@ impl TransitionGenerator {
     }
 }
 
+/// One slot's contribution to the cross-slot product: the player choices of
+/// a visible slot, or the single host-staged fill of an internal one.
+enum SlotChoices {
+    Player(Vec<Vec<EntityId>>),
+    Internal {
+        min: u32,
+        candidates: Vec<EntityId>,
+    },
+}
+
 /// The cross-slot product of per-slot choice lists without reuse: a later
-/// slot's picks never intersect an earlier slot's (§5.2).
+/// slot's picks never intersect an earlier slot's (§5.2). An internal slot
+/// takes its single host-staged fill here against the set under
+/// construction; a branch that leaves fewer than `min` candidates yields no
+/// sets.
 fn product_slots(
-    per_slot: &[(SlotName, Vec<Vec<EntityId>>)],
+    per_slot: &[(SlotName, SlotChoices)],
     idx: usize,
     acc: &mut BindingSet,
     out: &mut Vec<BindingSet>,
@@ -770,14 +809,40 @@ fn product_slots(
         return;
     }
     let (slot, choices) = &per_slot[idx];
-    for choice in choices {
-        if choice.iter().any(|e| acc.iter().any(|(_, b)| b == e)) {
-            continue;
+    match choices {
+        SlotChoices::Player(cs) => {
+            for choice in cs {
+                if choice.iter().any(|e| acc.iter().any(|(_, b)| b == e)) {
+                    continue;
+                }
+                let mark = acc.len();
+                acc.extend(choice.iter().map(|e| (slot.clone(), *e)));
+                product_slots(per_slot, idx + 1, acc, out);
+                acc.truncate(mark);
+            }
         }
-        let mark = acc.len();
-        acc.extend(choice.iter().map(|e| (slot.clone(), *e)));
-        product_slots(per_slot, idx + 1, acc, out);
-        acc.truncate(mark);
+        SlotChoices::Internal { min, candidates } => {
+            let min = *min as usize;
+            let mut fill: Vec<EntityId> = Vec::with_capacity(min);
+            for c in candidates {
+                if fill.len() == min {
+                    break;
+                }
+                if acc.iter().any(|(_, b)| b == c) {
+                    continue;
+                }
+                fill.push(*c);
+            }
+            if fill.len() < min {
+                // This branch leaves fewer candidates than the slot needs:
+                // the commit cannot be built here.
+                return;
+            }
+            let mark = acc.len();
+            acc.extend(fill.into_iter().map(|e| (slot.clone(), e)));
+            product_slots(per_slot, idx + 1, acc, out);
+            acc.truncate(mark);
+        }
     }
 }
 

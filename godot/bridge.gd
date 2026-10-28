@@ -40,6 +40,12 @@ func request(payload: Dictionary) -> Dictionary:
 	_stdio.flush()
 	return _read_response()
 
+## The staging view for a verb under the staged bindings: the matched recipe
+## and its shown slots with candidates. An empty slot name in a binding asks
+## the bridge to place the card.
+func staging(verb: String, bindings: Array) -> Dictionary:
+	return request({"cmd": "staging", "verb": verb, "bindings": bindings})
+
 func _read_response() -> Dictionary:
 	if _stdio == null:
 		return {"ok": false, "error": "No stdio handle"}
